@@ -28,7 +28,7 @@
         <div class="sidebar-section">
             <div class="section-head">
                 <span class="section-title">Agents · @agents.Count</span>
-                <button type="button" class="btn small" @onclick="OpenCreate">＋ Create agent</button>
+                <button type="button" class="btn small" disabled="@isRunning" @onclick="OpenCreate">＋ Create agent</button>
             </div>
 
             <div class="agent-list">
@@ -57,12 +57,15 @@
                                 @if (!agent.IsManager)
                                 {
                                     <button type="button" class="icon-btn" title="Make this agent the CEO"
-                                            aria-label="Make @agent.Name the CEO" @onclick="() => MakeCeoAsync(agent)">★</button>
+                                            aria-label="Make @agent.Name the CEO" disabled="@isRunning"
+                                            @onclick="() => MakeCeoAsync(agent)">★</button>
                                 }
                                 <button type="button" class="icon-btn" title="Edit agent"
-                                        aria-label="Edit @agent.Name" @onclick="() => OpenEdit(agent)">✎</button>
+                                        aria-label="Edit @agent.Name" disabled="@isRunning"
+                                        @onclick="() => OpenEdit(agent)">✎</button>
                                 <button type="button" class="icon-btn danger" title="Delete agent"
-                                        aria-label="Delete @agent.Name" @onclick="() => RequestDelete(agent)">✕</button>
+                                        aria-label="Delete @agent.Name" disabled="@isRunning"
+                                        @onclick="() => RequestDelete(agent)">✕</button>
                             </div>
                         </div>
 
@@ -299,12 +302,22 @@
 
     private void OpenCreate()
     {
+        if (isRunning)
+        {
+            return;
+        }
+
         editingAgent = null;
         showEditor = true;
     }
 
     private void OpenEdit(Agent agent)
     {
+        if (isRunning)
+        {
+            return;
+        }
+
         editingAgent = agent;
         showEditor = true;
         pendingDeleteId = null;
@@ -318,6 +331,12 @@
 
     private async Task SaveAgentAsync(AgentFormModel form)
     {
+        if (isRunning)
+        {
+            CloseEditor();
+            return;
+        }
+
         try
         {
             if (form.Id is { } id && id != Guid.Empty)
@@ -350,6 +369,11 @@
 
     private async Task MakeCeoAsync(Agent agent)
     {
+        if (isRunning)
+        {
+            return;
+        }
+
         try
         {
             await Directory.MakeManagerAsync(agent.Id);
@@ -363,12 +387,25 @@
         }
     }
 
-    private void RequestDelete(Agent agent) => pendingDeleteId = agent.Id;
+    private void RequestDelete(Agent agent)
+    {
+        if (isRunning)
+        {
+            return;
+        }
+
+        pendingDeleteId = agent.Id;
+    }
 
     private void CancelDelete() => pendingDeleteId = null;
 
     private async Task ConfirmDeleteAsync(Agent agent)
     {
+        if (isRunning)
+        {
+            return;
+        }
+
         try
         {
             await Directory.DeleteAsync(agent.Id);
