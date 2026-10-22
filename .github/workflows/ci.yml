@@ -83,7 +83,9 @@ jobs:
           sleep 1
 
           if [ "$BLZ_CODE" != "200" ] || [ "$AGENTS_CODE" != "200" ]; then
-            echo "::error::Static assets or the API were not served (blazor=$BLZ_CODE, agents=$AGENTS_CODE)"
+            DIAG=$(curl -s --max-time 5 http://127.0.0.1:5088/api/diagnostics | head -c 700)
+            LOG=$(tail -c 1200 "$RUNNER_TEMP/app.log" | tr '\n' '|')
+            echo "::error title=static-assets::blazor=$BLZ_CODE agents=$AGENTS_CODE diag=$DIAG log=$LOG"
             exit 1
           fi
 
@@ -120,7 +122,9 @@ jobs:
           sleep 1
 
           if [ "$READY" -ne 1 ] || [ "$BLZ" != "200" ] || [ "$AGENTS" != "200" ]; then
-            echo "::error::A lone AiCeo binary could not serve the UI (ready=$READY, blazor=$BLZ, agents=$AGENTS)"
+            DIAG=$(curl -s --max-time 5 http://127.0.0.1:5099/api/diagnostics | head -c 700)
+            LOG=$(tail -c 1200 "$RUNNER_TEMP/alone.log" | tr '\n' '|')
+            echo "::error title=standalone::ready=$READY blazor=$BLZ agents=$AGENTS diag=$DIAG log=$LOG"
             exit 1
           fi
 

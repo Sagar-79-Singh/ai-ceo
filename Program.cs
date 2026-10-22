@@ -70,7 +70,10 @@ if (!string.IsNullOrEmpty(app.Environment.WebRootPath))
 app.UseAntiforgery();
 
 var frameworkAssets = FrameworkAssetStore.Instance;
-app.Logger.LogInformation("Embedded framework assets: {Count}", frameworkAssets.Paths.Count);
+app.Logger.LogInformation(
+    "Embedded framework assets ({Count}): {Assets}",
+    frameworkAssets.Paths.Count,
+    string.Join(", ", frameworkAssets.Paths));
 
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
@@ -103,6 +106,17 @@ var api = app.MapGroup("/api");
 
 api.MapGet("/health", async (OmniRouteChatService llm, CancellationToken cancellationToken) =>
     Results.Ok(await llm.CheckHealthAsync(cancellationToken)));
+
+// Support endpoint: tells you exactly which paths the running instance is serving from.
+api.MapGet("/diagnostics", (IHostEnvironment environment, AppRuntimeInfo runtime) => Results.Ok(new
+{
+    runtime.Version,
+    runtime.DatabasePath,
+    ContentRoot = environment.ContentRootPath,
+    WebRoot = environment.WebRootPath,
+    environment.EnvironmentName,
+    EmbeddedFrameworkAssets = frameworkAssets.Paths.OrderBy(path => path, StringComparer.Ordinal)
+}));
 
 api.MapGet("/agents", async (AgentDirectory directory, CancellationToken cancellationToken) =>
     Results.Ok(await directory.ListAsync(cancellationToken)));
