@@ -53,18 +53,6 @@ jobs:
           ls -la ./publish
           echo "--- wwwroot ---"
           find ./publish/wwwroot -maxdepth 2 -type f 2>/dev/null | sort | head -20
-          echo "--- fwa diag ---"
-          cat fwa-diag.txt 2>/dev/null | head -12
-          echo "--- resources in dll ---"
-          grep -a -o "AiCeo\.FrameworkAssets" bin/Release/net10.0/AiCeo.dll | head -3
-          echo "--- blazor.web.js locations ---"
-          find /usr/share/dotnet /home/runner/.dotnet -name "blazor.web.js" 2>/dev/null | head -5
-          find bin -name "blazor.web.js" 2>/dev/null | head -5
-          DIAG=$(cat fwa-diag.txt 2>/dev/null | head -8 | tr '\n' '|')
-          RES=$(grep -a -c "AiCeo\.FrameworkAssets" bin/Release/net10.0/AiCeo.dll 2>/dev/null)
-          SDKJS=$(find /usr/share/dotnet /home/runner/.dotnet -name "blazor.web.js" 2>/dev/null | head -3 | tr '\n' ' ')
-          BINJS=$(find bin -name "blazor.web.js" 2>/dev/null | head -3 | tr '\n' ' ')
-          echo "::warning title=fwa::diag=$DIAG resources=$RES sdkjs=$SDKJS binjs=$BINJS"
 
       - name: Smoke test in place
         shell: bash
