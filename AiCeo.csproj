@@ -42,8 +42,11 @@
       <Output TaskParameter="Filtered" ItemName="_FrameworkStaticAsset" />
     </RemoveDuplicates>
 
+    <PropertyGroup>
+      <_FrameworkStaticAssetCount>@(_FrameworkStaticAsset->Count())</_FrameworkStaticAssetCount>
+    </PropertyGroup>
     <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
-                      Lines="matched=@(_FrameworkStaticAsset->Count())"
+                      Lines="matched=$(_FrameworkStaticAssetCount)"
                       Overwrite="true" />
     <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
                       Lines="%(Identity) rel=%(RelativePath) full=%(FullPath)" />
