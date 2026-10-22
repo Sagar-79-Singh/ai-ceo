@@ -108,7 +108,7 @@ api.MapGet("/health", async (OmniRouteChatService llm, CancellationToken cancell
     Results.Ok(await llm.CheckHealthAsync(cancellationToken)));
 
 // Support endpoint: tells you exactly which paths the running instance is serving from.
-api.MapGet("/diagnostics", (IHostEnvironment environment, AppRuntimeInfo runtime) => Results.Ok(new
+api.MapGet("/diagnostics", (IWebHostEnvironment environment, AppRuntimeInfo runtime) => Results.Ok(new
 {
     runtime.Version,
     runtime.DatabasePath,
