@@ -15,65 +15,80 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+        continue-on-error: true
 
       - name: Prepare baseline copy
+        continue-on-error: true
         shell: bash
         run: |
           set +e
           rm -rf "$RUNNER_TEMP/old"
           cp -r "$GITHUB_WORKSPACE" "$RUNNER_TEMP/old"
           cd "$RUNNER_TEMP/old"
-          git show c641b1e:AiCeo.csproj > AiCeo.csproj
-          git show c641b1e:Program.cs > Program.cs
-          echo "baseline ready"
+          git show c641b1e:AiCeo.csproj > AiCeo.csproj 2> "$RUNNER_TEMP/baseline.err"
+          git show c641b1e:Program.cs > Program.cs 2>> "$RUNNER_TEMP/baseline.err"
+          wc -c AiCeo.csproj Program.cs >> "$RUNNER_TEMP/baseline.err"
+          exit 0
 
       - name: Publish variants
+        continue-on-error: true
         shell: bash
         run: |
           set +e
+          ulimit -c 0
           P="-c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true"
           dotnet publish AiCeo.csproj $P -o ./outA > "$RUNNER_TEMP/pubA.log" 2>&1; echo "A exit=$?"
           dotnet publish AiCeo.csproj $P -p:IncludeAllContentForSelfExtract=false -o ./outB > "$RUNNER_TEMP/pubB.log" 2>&1; echo "B exit=$?"
           cd "$RUNNER_TEMP/old"
           dotnet publish AiCeo.csproj $P -o "$RUNNER_TEMP/outC" > "$RUNNER_TEMP/pubC.log" 2>&1; echo "C exit=$?"
-          ls "$RUNNER_TEMP/outC" | head
+          cd "$GITHUB_WORKSPACE"
+          dotnet publish AiCeo.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=false -o ./outD > "$RUNNER_TEMP/pubD.log" 2>&1; echo "D exit=$?"
+          dotnet build AiCeo.csproj -c Release > "$RUNNER_TEMP/buildE.log" 2>&1; echo "E exit=$?"
+          exit 0
 
       - name: Run variants
+        continue-on-error: true
         shell: bash
         run: |
           set +e
+          ulimit -c 0
           mkdir -p "$RUNNER_TEMP/logs" "$RUNNER_TEMP/data" "$RUNNER_TEMP/cwd"
-          port=5088
-          run() {
-            name="$1"; dir="$2"
-            echo "### $name ($dir)" > "$RUNNER_TEMP/logs/$name.txt"
-            mkdir -p "$RUNNER_TEMP/appdir-$name"
-            cp -r "$dir"/. "$RUNNER_TEMP/appdir-$name"/ 2>/dev/null
+
+          run_exe() {
+            name="$1"; exe="$2"
+            echo "### $name -> $exe"
             cd "$RUNNER_TEMP/cwd"
             AICEO_DB_PATH="$RUNNER_TEMP/data/$name.db" ASPNETCORE_URLS="http://127.0.0.1:$port" \
-              "$RUNNER_TEMP/appdir-$name/AiCeo" > "$RUNNER_TEMP/logs/$name-app.log" 2>&1 &
+              "$exe" > "$RUNNER_TEMP/logs/$name-app.log" 2>&1 &
             pid=$!
             sleep 10
             if kill -0 "$pid" 2>/dev/null; then
-              echo "alive=yes" >> "$RUNNER_TEMP/logs/$name.txt"
-              echo "root=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:$port/)" >> "$RUNNER_TEMP/logs/$name.txt"
-              echo "blazor=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:$port/_framework/blazor.web.js)" >> "$RUNNER_TEMP/logs/$name.txt"
+              echo "alive=yes"
+              echo "root=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:$port/)"
+              echo "blazor=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:$port/_framework/blazor.web.js)"
               kill -9 "$pid" 2>/dev/null
             else
               wait "$pid"
-              echo "alive=no exit=$?" >> "$RUNNER_TEMP/logs/$name.txt"
+              echo "alive=no exit=$?"
             fi
-            echo "--- log ---" >> "$RUNNER_TEMP/logs/$name.txt"
-            head -80 "$RUNNER_TEMP/logs/$name-app.log" >> "$RUNNER_TEMP/logs/$name.txt"
+            echo "--- app log ($name) ---"
+            head -60 "$RUNNER_TEMP/logs/$name-app.log"
             port=$((port+1))
           }
-          run A "$GITHUB_WORKSPACE/outA"
-          run B "$GITHUB_WORKSPACE/outB"
-          run C "$RUNNER_TEMP/outC"
+
+          port=5088
+          run_exe A "$GITHUB_WORKSPACE/outA/AiCeo"
+          run_exe B "$GITHUB_WORKSPACE/outB/AiCeo"
+          run_exe C "$RUNNER_TEMP/outC/AiCeo"
+          run_exe D "$GITHUB_WORKSPACE/outD/AiCeo"
+          run_exe F "$GITHUB_WORKSPACE/outA/AiCeo"
+          exit 0
 
       - name: Post diagnostics as commit statuses
         if: always()
@@ -86,16 +101,16 @@ jobs:
           set +e
           cd "$RUNNER_TEMP"
           {
-            for f in logs/A.txt logs/B.txt logs/C.txt logs/A-app.log logs/B-app.log logs/C-app.log pubA.log pubB.log pubC.log; do
+            for f in logs/*.log baseline.err; do
               echo "=== $f ==="
-              head -50 "$f" 2>/dev/null
+              tail -c 2000 "$f" 2>/dev/null
             done
             echo "=== outA listing ==="
-            ls "$GITHUB_WORKSPACE/outA" 2>/dev/null
-            echo "=== outA wwwroot ==="
-            find "$GITHUB_WORKSPACE/outA/wwwroot" -maxdepth 2 2>/dev/null | head -20
-            echo "=== outC listing ==="
-            ls "$RUNNER_TEMP/outC" 2>/dev/null
+            ls "$GITHUB_WORKSPACE/outA" 2>/dev/null | head -20
+            echo "=== outD listing ==="
+            ls "$GITHUB_WORKSPACE/outD" 2>/dev/null | head -20
+            echo "=== extraction ==="
+            find /tmp/.net -maxdepth 4 2>/dev/null | head -30
           } > "$RUNNER_TEMP/diag.txt" 2>&1
           wc -c "$RUNNER_TEMP/diag.txt"
           python3 - <<'PY'
@@ -103,8 +118,8 @@ jobs:
           token, repo, sha = os.environ["TOKEN"], os.environ["REPO"], os.environ["SHA"]
           path = os.path.join(os.environ["RUNNER_TEMP"], "diag.txt")
           text = open(path, encoding="utf-8", errors="replace").read()
-          print(text[:3000])
-          chunks = [text[i:i+120].replace("\n", " ") for i in range(0, len(text), 120)][:40]
+          print(text[:4000])
+          chunks = [text[i:i+120].replace("\n", " ") for i in range(0, len(text), 120)][:60]
           for index, chunk in enumerate(chunks):
               payload = json.dumps({"state": "pending", "context": f"diag-{index:02d}", "description": chunk}).encode()
               req = urllib.request.Request(
@@ -117,3 +132,4 @@ jobs:
               except Exception as exc:
                   print("post failed", index, exc)
           PY
+          exit 0
