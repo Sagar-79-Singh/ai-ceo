@@ -47,10 +47,19 @@ jobs:
         run: dotnet publish AiCeo.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
       - name: Inspect publish output
+        shell: bash
         run: |
+          set +e
           ls -la ./publish
           echo "--- wwwroot ---"
           find ./publish/wwwroot -maxdepth 2 -type f 2>/dev/null | sort | head -20
+          echo "--- fwa diag ---"
+          head -20 obj/Release/net10.0/fwa-diag.txt 2>/dev/null
+          echo "--- embedded resource names in dll ---"
+          grep -a -o "AiCeo\.FrameworkAssets[^\"]\{0,60\}" bin/Release/net10.0/AiCeo.dll 2>/dev/null | head -10
+          DIAGFILES=$(head -12 obj/Release/net10.0/fwa-diag.txt 2>/dev/null | tr '\n' '|')
+          RES=$(grep -a -o "AiCeo\.FrameworkAssets[^\"]\{0,60\}" bin/Release/net10.0/AiCeo.dll 2>/dev/null | head -5 | tr '\n' ' ')
+          echo "::warning title=fwa-diag::$DIAGFILES ||| resources: $RES"
 
       - name: Smoke test in place
         shell: bash

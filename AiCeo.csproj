@@ -30,8 +30,9 @@
     present, UseStaticFiles serves the on-disk copy first; the embedded copy is the fallback.
   -->
   <Target Name="EmbedFrameworkStaticAssets"
-          BeforeTargets="PrepareResourceNames;CoreCompile"
-          DependsOnTargets="ResolveStaticWebAssetsInputs">
+          AfterTargets="ResolveStaticWebAssetsInputs"
+          DependsOnTargets="ResolveStaticWebAssetsInputs"
+          BeforeTargets="PrepareResourceNames;CoreCompile">
     <ItemGroup>
       <_FrameworkStaticAssetRaw Include="@(StaticWebAsset)"
                                 Condition="$([System.String]::Copy('%(RelativePath)').StartsWith('_framework/')) AND '%(AssetRole)' != 'Alternative'" />
@@ -40,6 +41,12 @@
     <RemoveDuplicates Inputs="@(_FrameworkStaticAssetRaw)">
       <Output TaskParameter="Filtered" ItemName="_FrameworkStaticAsset" />
     </RemoveDuplicates>
+
+    <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
+                      Lines="matched=@(_FrameworkStaticAsset->Count())"
+                      Overwrite="true" />
+    <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
+                      Lines="%(Identity) rel=%(RelativePath) full=%(FullPath)" />
 
     <Error Condition="'@(_FrameworkStaticAsset)' == ''"
            Text="No _framework/* static web assets were found to embed. The single-file build needs them for the Blazor client script." />
