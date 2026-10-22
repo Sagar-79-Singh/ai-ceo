@@ -1,8 +1,8 @@
 name: CI
 
-# Build check for every branch/PR, plus smoke tests that publish the single-file build, boot it,
-# and verify the Blazor script + REST API are actually served. A Windows job mirrors the release
-# publish command so a broken release only ever surfaces in CI, never in a release.
+# Build check for every branch/PR. The smoke tests publish the single-file build, boot it, and
+# verify the Blazor script + REST API are served — including when the binary is copied away from
+# its publish folder (which is how the release ships: one lone AiCeo.exe).
 on:
   push:
     branches:
@@ -40,11 +40,10 @@ jobs:
         run: dotnet publish AiCeo.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
 
       - name: Inspect publish output
-        shell: bash
         run: |
           ls -la ./publish
-          LIST=$(find ./publish -maxdepth 2 -type f | sort | tr '\n' ' ')
-          echo "::warning title=publish-files::${LIST:0:6000}"
+          echo "--- wwwroot ---"
+          find ./publish/wwwroot -maxdepth 2 -type f 2>/dev/null | sort | head -20
 
       - name: Smoke test in place
         shell: bash
@@ -69,7 +68,7 @@ jobs:
           cat "$RUNNER_TEMP/app.log"
 
           if [ "$READY" -ne 1 ]; then
-            echo "::error title=in-place-startup::The published app did not start listening on 5088"
+            echo "::error::The published app did not start listening on 5088"
             kill $APP_PID 2>/dev/null || true
             exit 1
           fi
@@ -77,35 +76,34 @@ jobs:
           BLZ_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/_framework/blazor.web.js)
           AGENTS_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/api/agents)
           echo "blazor.web.js => $BLZ_CODE / api/agents => $AGENTS_CODE"
-          curl -fsS http://127.0.0.1:5088/api/agents | head -c 400
+          curl -fsS http://127.0.0.1:5088/api/agents | head -c 320
           echo
 
           kill $APP_PID 2>/dev/null || true
           sleep 1
 
-          echo "::warning title=in-place-test::blazor=$BLZ_CODE agents=$AGENTS_CODE"
-
-          if [ "$BLZ_CODE" != "200" ]; then
-            echo "::error title=in-place-blazor::_framework/blazor.web.js was not served (HTTP $BLZ_CODE)"
+          if [ "$BLZ_CODE" != "200" ] || [ "$AGENTS_CODE" != "200" ]; then
+            echo "::error::Static assets or the API were not served (blazor=$BLZ_CODE, agents=$AGENTS_CODE)"
             exit 1
           fi
 
-      - name: Standalone .exe test (exe alone, foreign working directory)
+      - name: Standalone exe test (binary alone, foreign working directory)
         shell: bash
         run: |
           set -uo pipefail
-          mkdir -p "$RUNNER_TEMP/standalone" "$RUNNER_TEMP/cwd" "$RUNNER_TEMP/data"
-          cp ./publish/AiCeo "$RUNNER_TEMP/standalone/AiCeo"
+          mkdir -p "$RUNNER_TEMP/alone" "$RUNNER_TEMP/cwd" "$RUNNER_TEMP/data"
+          cp ./publish/AiCeo "$RUNNER_TEMP/alone/AiCeo"
           export AICEO_DB_PATH="$RUNNER_TEMP/data/aiceo.db"
           export ASPNETCORE_URLS="http://127.0.0.1:5099"
+          export AICEO_NO_BROWSER=1
 
           cd "$RUNNER_TEMP/cwd"
-          "$RUNNER_TEMP/standalone/AiCeo" > "$RUNNER_TEMP/standalone.log" 2>&1 &
+          "$RUNNER_TEMP/alone/AiCeo" > "$RUNNER_TEMP/alone.log" 2>&1 &
           APP_PID=$!
 
           READY=0
-          for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:5099/ -o "$RUNNER_TEMP/standalone.html"; then
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:5099/ -o "$RUNNER_TEMP/alone.html"; then
               READY=1
               break
             fi
@@ -114,19 +112,15 @@ jobs:
 
           BLZ=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/_framework/blazor.web.js)
           AGENTS=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/agents)
-          LOG=$(tail -c 1500 "$RUNNER_TEMP/standalone.log" | tr '\n' '|')
-
           echo "standalone: ready=$READY blazor=$BLZ agents=$AGENTS"
           echo "--- standalone log ---"
-          cat "$RUNNER_TEMP/standalone.log"
+          cat "$RUNNER_TEMP/alone.log"
 
           kill $APP_PID 2>/dev/null || true
           sleep 1
 
-          echo "::warning title=standalone-test::ready=$READY blazor=$BLZ agents=$AGENTS log=$LOG"
-
-          if [ "$READY" -ne 1 ] || [ "$BLZ" != "200" ]; then
-            echo "::error title=standalone-failure::A lone AiCeo binary could not serve the UI (ready=$READY, blazor=$BLZ)"
+          if [ "$READY" -ne 1 ] || [ "$BLZ" != "200" ] || [ "$AGENTS" != "200" ]; then
+            echo "::error::A lone AiCeo binary could not serve the UI (ready=$READY, blazor=$BLZ, agents=$AGENTS)"
             exit 1
           fi
 
@@ -152,9 +146,7 @@ jobs:
           Get-ChildItem -Path ./publish | Select-Object Name, Length | Format-Table -AutoSize
           $exe = Join-Path $PWD "publish/AiCeo.exe"
           if (-not (Test-Path -LiteralPath $exe)) {
-            Write-Host "::error title=missing-exe::AiCeo.exe was not produced by publish"
-            exit 1
+            throw "AiCeo.exe was not produced by publish"
           }
           $sizeMb = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 2)
           Write-Host "AiCeo.exe size: $sizeMb MB"
-          Write-Host "::warning title=windows-exe::AiCeo.exe produced ($sizeMb MB)"
