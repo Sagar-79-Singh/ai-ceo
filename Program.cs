@@ -24,6 +24,7 @@ if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URL
 }
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
 builder.Services.AddHttpClient(OmniRouteChatService.HttpClientName);
 builder.Services.Configure<OmniRouteOptions>(
@@ -59,11 +60,22 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/error", createScopeForErrors: true);
 }
 
+// Classic static-file middleware on purpose: it serves wwwroot straight from the content root,
+// which works both for a normal build and for the single-file .exe whose bundled content is
+// extracted at startup. (MapStaticAssets requires a sidecar manifest file that the single-file
+// bundler does not extract.)
 app.UseStaticFiles();
 app.UseAntiforgery();
-app.MapStaticAssets();
 
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+
+// Double-clicking the published .exe should just work: open the UI once the server is up.
+var launchUrl = BrowserLauncher.ResolveLaunchUrl(builder.Configuration);
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    app.Logger.LogInformation("Open {Url} in your browser.", launchUrl);
+    BrowserLauncher.TryOpen(app.Logger, launchUrl);
+});
 
 // ---------------------------------------------------------------------------------------------
 // REST surface (docs/ARCHITECTURE.md): POST /api/task is the canonical entry point.
