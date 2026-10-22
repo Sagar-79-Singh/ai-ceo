@@ -60,14 +60,33 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/error", createScopeForErrors: true);
 }
 
-// Classic static-file middleware on purpose: it serves wwwroot straight from the content root,
-// which works both for a normal build and for the single-file .exe whose bundled content is
-// extracted at startup. (MapStaticAssets requires a sidecar manifest file that the single-file
-// bundler does not extract.)
-app.UseStaticFiles();
+// Static files straight from wwwroot when it is present (normal build / multi-file publish).
+// A lone single-file .exe has no wwwroot, so /_framework/* falls through to the embedded copy.
+if (!string.IsNullOrEmpty(app.Environment.WebRootPath))
+{
+    app.UseStaticFiles();
+}
+
 app.UseAntiforgery();
 
+var frameworkAssets = FrameworkAssetStore.Instance;
+app.Logger.LogInformation("Embedded framework assets: {Count}", frameworkAssets.Paths.Count);
+
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+
+// Fallback for the single-file build: serve the Blazor client script from the embedded copy.
+app.MapGet("/_framework/{**assetPath}", (string assetPath) =>
+{
+    if (!frameworkAssets.TryGetResource(assetPath, out var resourceName))
+    {
+        return Results.NotFound();
+    }
+
+    var stream = frameworkAssets.Open(resourceName);
+    return stream is null
+        ? Results.NotFound()
+        : Results.Stream(stream, FrameworkAssetStore.ContentTypeFor(assetPath));
+});
 
 // Double-clicking the published .exe should just work: open the UI once the server is up.
 var launchUrl = BrowserLauncher.ResolveLaunchUrl(builder.Configuration);
