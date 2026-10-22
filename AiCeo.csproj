@@ -45,10 +45,10 @@
     <PropertyGroup>
       <_FrameworkStaticAssetCount>@(_FrameworkStaticAsset->Count())</_FrameworkStaticAssetCount>
     </PropertyGroup>
-    <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)/fwa-diag.txt"
                       Lines="matched=$(_FrameworkStaticAssetCount)"
                       Overwrite="true" />
-    <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)/fwa-diag.txt"
                       Lines="%(_FrameworkStaticAsset.RelativePath) => %(_FrameworkStaticAsset.FullPath)"
                       Overwrite="false" />
 
