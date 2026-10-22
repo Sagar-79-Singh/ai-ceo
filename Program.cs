@@ -4,8 +4,16 @@ using AiCeo.Models;
 using AiCeo.Options;
 using AiCeo.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
-var builder = WebApplication.CreateBuilder(args);
+// Content root is the app's base directory: normally the folder holding the executable, and for
+// a single-file bundle (IncludeAllContentForSelfExtract) the extraction directory. Either way
+// wwwroot and appsettings.json are found without relying on the current working directory.
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+});
 
 // A published single-file .exe should behave like a desktop app: if nobody configured URLs,
 // listen on a friendly local port.
@@ -32,6 +40,12 @@ builder.Services.AddScoped<AgentDirectory>();
 builder.Services.AddScoped<AgentOrchestrator>();
 
 var app = builder.Build();
+
+var omniRoute = app.Services.GetRequiredService<IOptions<OmniRouteOptions>>().Value;
+app.Logger.LogInformation("AI CEO Orchestrator v{Version}", typeof(Agent).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
+app.Logger.LogInformation("Content root: {ContentRoot}", app.Environment.ContentRootPath);
+app.Logger.LogInformation("SQLite database: {DatabasePath}", databasePath);
+app.Logger.LogInformation("OmniRoute endpoint: {Endpoint}", omniRoute.ResolveEndpoint());
 
 // Create the SQLite database (Code-First) and seed the default CEO + workers.
 using (var scope = app.Services.CreateScope())

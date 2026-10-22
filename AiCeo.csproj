@@ -12,6 +12,9 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <!-- Bundle static assets (and appsettings.json) into the single-file .exe so a lone
+         AiCeo.exe can be shipped without a sibling wwwroot folder. -->
+    <IncludeAllContentForSelfExtract Condition="'$(PublishSingleFile)' == 'true'">true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
