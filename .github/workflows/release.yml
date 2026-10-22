@@ -1,0 +1,113 @@
+name: Release (Windows x64)
+
+# Publishes a self-contained, single-file Windows executable and attaches it to a GitHub Release.
+# Triggers on a push to main (automatic v1.0.<run> tag) or on an explicit version tag (v1.2.3).
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag (e.g. v1.0.0). Leave empty to auto-generate v1.0.<run number>."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and release .exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Show SDK info
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore AiCeo.csproj
+
+      - name: Build
+        run: dotnet build AiCeo.csproj -c Release --no-restore
+
+      # This is the exact publish command required by the project brief.
+      - name: Publish self-contained single-file executable
+        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+
+      - name: Verify the executable exists
+        shell: pwsh
+        run: |
+          Write-Host "Publish output:"
+          Get-ChildItem -Path ./publish | Select-Object Name, Length | Format-Table -AutoSize
+
+          $exe = Join-Path $PWD "publish/AiCeo.exe"
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "Expected executable was not produced at $exe"
+          }
+
+          $sizeMb = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 2)
+          Write-Host "Found AiCeo.exe ($sizeMb MB)"
+
+      - name: Resolve release tag
+        id: meta
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.tag_name }}" -ne "") {
+            $tag = "${{ inputs.tag_name }}"
+          }
+          elseif ($env:GITHUB_REF_TYPE -eq "tag") {
+            $tag = $env:GITHUB_REF_NAME
+          }
+          else {
+            $tag = "v1.0.$env:GITHUB_RUN_NUMBER"
+          }
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Release tag: $tag"
+
+      - name: Create GitHub Release and upload the .exe
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: AI CEO Orchestrator ${{ steps.meta.outputs.tag }}
+          body: |
+            ## AI CEO Orchestrator ${{ steps.meta.outputs.tag }}
+
+            A Star-topology AI orchestrator built with ASP.NET Core (Blazor Server, .NET 10),
+            Entity Framework Core + SQLite, and the official `OpenAI` .NET client pointed at a
+            local OmniRoute gateway (`http://localhost:20128/v1`).
+
+            ### Download
+            - `AiCeo.exe` — self-contained Windows x64 single-file build. No .NET runtime install required.
+
+            ### Run
+            1. Start your OmniRoute gateway on `http://localhost:20128/v1`.
+            2. Double-click `AiCeo.exe`.
+            3. Open http://localhost:5088 (the app prints the URL on startup).
+
+            ### Configuration (optional)
+            - `OMNIROUTE_KEY` — API key sent to the gateway.
+            - `AICEO_DB_PATH` — SQLite file location (defaults to `%LOCALAPPDATA%\AiCeoOrchestrator\aiceo.db`).
+            - `ASPNETCORE_URLS` — override the listening address.
+
+            Build: `${{ github.sha }}`
+          files: ./publish/AiCeo.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          draft: false
+          prerelease: false

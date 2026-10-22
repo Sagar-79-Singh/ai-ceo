@@ -1,0 +1,95 @@
+name: CI
+
+# Build check for every branch/PR, plus a smoke test that publishes the single-file build,
+# boots it, and verifies the Blazor script + REST API are actually served.
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, publish and smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Show SDK info
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore AiCeo.csproj
+
+      - name: Build
+        run: dotnet build AiCeo.csproj -c Release --no-restore
+
+      - name: Publish (linux-x64, single file)
+        run: dotnet publish AiCeo.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+
+      - name: Inspect publish output
+        run: |
+          ls -la ./publish
+          echo "--- files (depth 3) ---"
+          find ./publish -maxdepth 3 -type f | sort | head -150
+
+      - name: Smoke test the published app
+        shell: bash
+        run: |
+          set -uo pipefail
+          export AICEO_DB_PATH="$RUNNER_TEMP/aiceo.db"
+          export ASPNETCORE_URLS="http://127.0.0.1:5088"
+
+          ./publish/AiCeo > "$RUNNER_TEMP/app.log" 2>&1 &
+          APP_PID=$!
+
+          READY=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5088/ -o "$RUNNER_TEMP/page.html"; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          echo "--- app log ---"
+          cat "$RUNNER_TEMP/app.log"
+
+          if [ "$READY" -ne 1 ]; then
+            echo "::error::The published app did not start listening on 5088"
+            kill $APP_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "--- landing page (head) ---"
+          head -c 600 "$RUNNER_TEMP/page.html"
+          echo
+
+          BLZ_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/_framework/blazor.web.js)
+          echo "blazor.web.js => $BLZ_CODE"
+
+          echo "--- /api/agents ---"
+          curl -fsS http://127.0.0.1:5088/api/agents | head -c 600
+          echo
+          echo "--- /api/health ---"
+          curl -sS http://127.0.0.1:5088/api/health | head -c 300
+          echo
+
+          kill $APP_PID 2>/dev/null || true
+          sleep 1
+
+          if [ "$BLZ_CODE" != "200" ]; then
+            echo "::error::_framework/blazor.web.js was not served (HTTP $BLZ_CODE)"
+            exit 1
+          fi
