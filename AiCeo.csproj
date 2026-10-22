@@ -24,44 +24,28 @@
   </ItemGroup>
 
   <!--
-    A single-file publish leaves wwwroot (which holds _framework/blazor.web.js) as loose files
-    next to the exe. Embed those framework assets so a lone AiCeo.exe still serves the Blazor
-    client script (FrameworkAssetStore maps /_framework/* to these resources). When wwwroot is
-    present, UseStaticFiles serves the on-disk copy first; the embedded copy is the fallback.
+    A single-file publish keeps wwwroot (which holds _framework/blazor.web.js) as loose files
+    beside the exe. Embed the Blazor client scripts instead so a lone AiCeo.exe can serve them
+    (FrameworkAssetStore maps /_framework/* onto these resources). When wwwroot is present,
+    UseStaticFiles serves the on-disk copy first and the embedded copy is only a fallback.
+
+    The files live in the NuGet cache (microsoft.aspnetcore.app.internal.assets). Embedding them
+    at evaluation time keeps the resource list complete before the compiler names resources, and
+    the version stays in the logical name so several cached SDK versions can never collide.
   -->
-  <Target Name="EmbedFrameworkStaticAssets"
-          AfterTargets="ResolveStaticWebAssetsInputs"
-          DependsOnTargets="ResolveStaticWebAssetsInputs"
-          BeforeTargets="PrepareResourceNames;CoreCompile">
-    <ItemGroup>
-      <_FrameworkStaticAssetRaw Include="@(StaticWebAsset)"
-                                Condition="$([System.String]::Copy('%(RelativePath)').StartsWith('_framework/')) AND '%(AssetRole)' != 'Alternative'" />
-    </ItemGroup>
+  <ItemGroup>
+    <_BlazorClientScript Include="$(NuGetPackageRoot)microsoft.aspnetcore.app.internal.assets/*/_framework/blazor.web.js"
+                         Condition="'$(NuGetPackageRoot)' != ''" />
+    <_BlazorClientScript Include="$(NuGetPackageRoot)microsoft.aspnetcore.app.internal.assets/*/_framework/blazor.server.js"
+                         Condition="'$(NuGetPackageRoot)' != ''" />
+    <EmbeddedResource Include="@(_BlazorClientScript)"
+                      LogicalName="AiCeo.FrameworkAssets.%(RecursiveDir)%(Filename)%(Extension)"
+                      Visible="false" />
+  </ItemGroup>
 
-    <RemoveDuplicates Inputs="@(_FrameworkStaticAssetRaw)">
-      <Output TaskParameter="Filtered" ItemName="_FrameworkStaticAsset" />
-    </RemoveDuplicates>
-
-    <PropertyGroup>
-      <_FrameworkStaticAssetCount>@(_FrameworkStaticAsset->Count())</_FrameworkStaticAssetCount>
-    </PropertyGroup>
-    <WriteLinesToFile File="$(MSBuildProjectDirectory)/fwa-diag.txt"
-                      Lines="matched=$(_FrameworkStaticAssetCount)"
-                      Overwrite="true" />
-    <WriteLinesToFile File="$(MSBuildProjectDirectory)/fwa-diag.txt"
-                      Lines="%(_FrameworkStaticAsset.RelativePath) => %(_FrameworkStaticAsset.FullPath)"
-                      Overwrite="false" />
-
-    <Error Condition="'@(_FrameworkStaticAsset)' == ''"
-           Text="No _framework/* static web assets were found to embed. The single-file build needs them for the Blazor client script." />
-
-    <ItemGroup>
-      <EmbeddedResource Include="@(_FrameworkStaticAsset->'%(FullPath)')"
-                        LogicalName="AiCeo.FrameworkAssets.%(RelativePath)"
-                        Visible="false" />
-    </ItemGroup>
-
-    <Message Importance="high" Text="Embedding framework asset: %(_FrameworkStaticAsset.RelativePath)" />
+  <Target Name="WarnIfBlazorScriptMissing" BeforeTargets="CoreCompile">
+    <Warning Condition="'@(_BlazorClientScript)' == ''"
+             Text="Could not find _framework/blazor.web.js in the NuGet cache. A single-file .exe will then need the wwwroot folder beside it." />
   </Target>
 
 </Project>
