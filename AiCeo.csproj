@@ -49,7 +49,8 @@
                       Lines="matched=$(_FrameworkStaticAssetCount)"
                       Overwrite="true" />
     <WriteLinesToFile File="$(BaseIntermediateOutputPath)fwa-diag.txt"
-                      Lines="%(Identity) rel=%(RelativePath) full=%(FullPath)" />
+                      Lines="%(_FrameworkStaticAsset.RelativePath) => %(_FrameworkStaticAsset.FullPath)"
+                      Overwrite="false" />
 
     <Error Condition="'@(_FrameworkStaticAsset)' == ''"
            Text="No _framework/* static web assets were found to embed. The single-file build needs them for the Blazor client script." />
