@@ -1,0 +1,162 @@
+name: CI
+
+# Build check for every branch/PR. The smoke tests publish the single-file build, boot it, and
+# verify the Blazor script + REST API are served — including when the binary is copied away from
+# its publish folder (which is how the release ships: one lone AiCeo.exe).
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, publish and smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Show SDK info
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore AiCeo.csproj
+
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! dotnet build AiCeo.csproj -c Release --no-restore 2>&1 | tee "$RUNNER_TEMP/build.log"; then
+            MSG=$(grep -E "error [A-Z]+[0-9]+|error MSB" "$RUNNER_TEMP/build.log" | head -6 | tr '\n' '|')
+            echo "::error title=build-failed::${MSG:0:1200}"
+            exit 1
+          fi
+
+      - name: Publish (linux-x64, single file)
+        run: dotnet publish AiCeo.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+
+      - name: Inspect publish output
+        shell: bash
+        run: |
+          set +e
+          ls -la ./publish
+          echo "--- wwwroot ---"
+          find ./publish/wwwroot -maxdepth 2 -type f 2>/dev/null | sort | head -20
+
+      - name: Smoke test in place
+        shell: bash
+        run: |
+          set +e
+          export AICEO_DB_PATH="$RUNNER_TEMP/aiceo.db"
+          export ASPNETCORE_URLS="http://127.0.0.1:5088"
+          export AICEO_NO_BROWSER=1
+
+          ./publish/AiCeo > "$RUNNER_TEMP/app.log" 2>&1 &
+          APP_PID=$!
+
+          READY=0
+          for i in $(seq 1 45); do
+            curl -fsS --max-time 3 http://127.0.0.1:5088/ -o "$RUNNER_TEMP/page.html" && READY=1 && break
+            kill -0 $APP_PID 2>/dev/null || break
+            sleep 1
+          done
+
+          BLZ_CODE=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/_framework/blazor.web.js)
+          AGENTS_CODE=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/api/agents)
+          DIAG=$(curl -s --max-time 5 http://127.0.0.1:5088/api/diagnostics | head -c 900)
+          LOG=$(tail -c 1500 "$RUNNER_TEMP/app.log" | tr '\n' '|')
+
+          echo "ready=$READY blazor=$BLZ_CODE agents=$AGENTS_CODE"
+          echo "--- app log ---"
+          cat "$RUNNER_TEMP/app.log"
+
+          kill $APP_PID 2>/dev/null
+          sleep 1
+
+          if [ "$READY" -ne 1 ] || [ "$BLZ_CODE" != "200" ] || [ "$AGENTS_CODE" != "200" ]; then
+            echo "::error title=smoke-failed::ready=$READY blazor=$BLZ_CODE agents=$AGENTS_CODE diag=$DIAG log=$LOG"
+            exit 1
+          fi
+
+      - name: Standalone exe test (binary alone, foreign working directory)
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/alone" "$RUNNER_TEMP/cwd" "$RUNNER_TEMP/data"
+          cp ./publish/AiCeo "$RUNNER_TEMP/alone/AiCeo"
+          export AICEO_DB_PATH="$RUNNER_TEMP/data/aiceo.db"
+          export ASPNETCORE_URLS="http://127.0.0.1:5099"
+          export AICEO_NO_BROWSER=1
+
+          cd "$RUNNER_TEMP/cwd"
+          "$RUNNER_TEMP/alone/AiCeo" > "$RUNNER_TEMP/alone.log" 2>&1 &
+          APP_PID=$!
+
+          READY=0
+          for i in $(seq 1 45); do
+            curl -fsS --max-time 3 http://127.0.0.1:5099/ -o "$RUNNER_TEMP/alone.html" && READY=1 && break
+            kill -0 $APP_PID 2>/dev/null || break
+            sleep 1
+          done
+
+          BLZ=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/_framework/blazor.web.js)
+          AGENTS=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/agents)
+          DIAG=$(curl -s --max-time 5 http://127.0.0.1:5099/api/diagnostics | head -c 900)
+          LOG=$(tail -c 1500 "$RUNNER_TEMP/alone.log" | tr '\n' '|')
+
+          echo "standalone: ready=$READY blazor=$BLZ agents=$AGENTS"
+          echo "--- standalone log ---"
+          cat "$RUNNER_TEMP/alone.log"
+
+          kill $APP_PID 2>/dev/null
+          sleep 1
+
+          if [ "$READY" -ne 1 ] || [ "$BLZ" != "200" ] || [ "$AGENTS" != "200" ]; then
+            echo "::error title=standalone-failed::ready=$READY blazor=$BLZ agents=$AGENTS diag=$DIAG log=$LOG"
+            exit 1
+          fi
+
+  windows-publish:
+    name: Windows publish check (release parity)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish self-contained single-file executable
+        shell: pwsh
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            $errors = Select-String -Path build.log -Pattern 'error [A-Z]+[0-9]+|error MSB' | Select-Object -First 6 | ForEach-Object { $_.Line.Trim() }
+            Write-Host "::error title=windows-publish-failed::$($errors -join ' || ')"
+            exit 1
+          }
+
+      - name: Verify AiCeo.exe
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path ./publish | Select-Object Name, Length | Format-Table -AutoSize
+          $exe = Join-Path $PWD "publish/AiCeo.exe"
+          if (-not (Test-Path -LiteralPath $exe)) {
+            throw "AiCeo.exe was not produced by publish"
+          }
+          $sizeMb = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 2)
+          Write-Host "AiCeo.exe size: $sizeMb MB"

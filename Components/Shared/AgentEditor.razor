@@ -1,0 +1,123 @@
+@namespace AiCeo.Components.Shared
+
+<div class="modal-backdrop" @onclick="Cancel">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="agent-editor-title" @onclick:stopPropagation="true">
+        <div class="modal-header">
+            <div>
+                <h3 id="agent-editor-title">@(IsEdit ? "Edit agent" : "Create agent")</h3>
+                <p>Agents in the star topology. Workers never talk to each other.</p>
+            </div>
+            <button type="button" class="icon-btn" title="Close" @onclick="Cancel">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <div class="field-row">
+                <div class="field">
+                    <label for="agent-name">Name</label>
+                    <input id="agent-name" @bind="form.Name" @bind:event="oninput" placeholder="Atlas" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label for="agent-role">Role</label>
+                    <input id="agent-role" @bind="form.Role" @bind:event="oninput" placeholder="Researcher" autocomplete="off" />
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="agent-prompt">System prompt</label>
+                <textarea id="agent-prompt" @bind="form.SystemPrompt" @bind:event="oninput"
+                          placeholder="Describe how this agent thinks, what it optimises for, and how it reports back."></textarea>
+            </div>
+
+            <div class="field">
+                <label for="agent-model">Model ID</label>
+                <input id="agent-model" @bind="form.ModelId" @bind:event="oninput" placeholder="@DefaultModel" autocomplete="off" />
+                <span class="hint">Routed through OmniRoute, e.g. <code>gh/gpt-5.4-nano</code>.</span>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(validationError))
+            {
+                <p class="form-error">@validationError</p>
+            }
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn ghost" @onclick="Cancel">Cancel</button>
+            <button type="button" class="btn primary" @onclick="Submit">@(IsEdit ? "Save changes" : "Create agent")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private AgentFormModel form = new();
+    private string? validationError;
+
+    [Parameter]
+    public Agent? Agent { get; set; }
+
+    [Parameter]
+    public string DefaultModel { get; set; } = OmniRouteOptions.DefaultModel;
+
+    [Parameter]
+    public EventCallback<AgentFormModel> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private bool IsEdit => Agent is not null && Agent.Id != Guid.Empty;
+
+    protected override void OnInitialized()
+    {
+        if (Agent is null)
+        {
+            form = new AgentFormModel { ModelId = DefaultModel };
+            return;
+        }
+
+        form = new AgentFormModel
+        {
+            Id = Agent.Id,
+            Name = Agent.Name,
+            Role = Agent.Role,
+            SystemPrompt = Agent.SystemPrompt,
+            ModelId = string.IsNullOrWhiteSpace(Agent.ModelId) ? DefaultModel : Agent.ModelId
+        };
+    }
+
+    private async Task Submit()
+    {
+        validationError = Validate();
+        if (validationError is not null)
+        {
+            return;
+        }
+
+        form.Name = form.Name.Trim();
+        form.Role = form.Role.Trim();
+        form.SystemPrompt = form.SystemPrompt.Trim();
+        form.ModelId = string.IsNullOrWhiteSpace(form.ModelId) ? DefaultModel : form.ModelId.Trim();
+
+        await OnSave.InvokeAsync(form);
+    }
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name))
+        {
+            return "Name is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Role))
+        {
+            return "Role is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.SystemPrompt))
+        {
+            return "System prompt is required.";
+        }
+
+        return null;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+}
