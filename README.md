@@ -88,6 +88,7 @@ that may sit in a read-only directory.
 | `GET` | `/api/tasks` | last 25 runs |
 | `GET` | `/api/tasks/{id}` | one run + logs |
 | `POST` | `/api/task` | run the CEO: `{ "prompt": "..." }` |
+| `GET` | `/api/diagnostics` | version, content root, database path, embedded assets |
 
 ```bash
 curl -X POST http://localhost:5088/api/task \
@@ -127,7 +128,16 @@ dotnet publish -c Release -r win-x64 --self-contained true \
 ```
 
 The working directory gets `publish/AiCeo.exe`. Double-click it (or run it) and browse to
-<http://localhost:5088>.
+<http://localhost:5088>. No .NET runtime, no sibling files, no `wwwroot` folder needed.
+
+### A truly standalone `.exe`
+
+`PublishSingleFile` normally leaves `wwwroot/` (holding `_framework/blazor.web.js`) next to the
+exe. The build therefore embeds the Blazor client script into the assembly
+(`FrameworkAssetStore` + the `_BlazorClientScript` items in `AiCeo.csproj`) and serves
+`/_framework/*` from that copy whenever the on-disk file is missing. Result: `AiCeo.exe` can be
+copied anywhere and still boots the UI. `AI CEO` also opens your default browser on Windows the
+first time it starts (disable with `AICEO_NO_BROWSER=1`).
 
 ### GitHub Releases
 
@@ -142,8 +152,10 @@ The working directory gets `publish/AiCeo.exe`. Double-click it (or run it) and 
 
 Main pushes get an automatic tag `v1.0.<run number>`; pushing a tag like `v1.2.0` releases that tag.
 
-`.github/workflows/ci.yml` builds every branch/PR and smoke-tests the published binary
-(the page must return 200 and `_framework/blazor.web.js` must be served).
+`.github/workflows/ci.yml` builds every branch/PR, publishes the single-file build, boots it,
+and asserts the landing page, `_framework/blazor.web.js` and `/api/agents` all answer — first in
+place and then with the binary copied alone into a foreign working directory. A second job runs
+the release publish command on `windows-latest` and checks `AiCeo.exe` is produced.
 
 ---
 

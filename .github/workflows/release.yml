@@ -97,8 +97,8 @@ jobs:
 
             ### Run
             1. Start your OmniRoute gateway on `http://localhost:20128/v1`.
-            2. Double-click `AiCeo.exe`.
-            3. Open http://localhost:5088 (the app prints the URL on startup).
+            2. Double-click `AiCeo.exe` (it opens your browser automatically on Windows).
+            3. Or browse to http://localhost:5088 yourself.
 
             ### Configuration (optional)
             - `OMNIROUTE_KEY` — API key sent to the gateway.
