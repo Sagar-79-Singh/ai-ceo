@@ -1,0 +1,79 @@
+name: Diagnostics (temporary)
+
+on:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  diag:
+    name: Capture publish + runtime diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish
+        run: dotnet publish AiCeo.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+
+      - name: Collect
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo "### publish listing"
+            find ./publish -maxdepth 2 | sort
+            echo
+            echo "### in-place run (cwd=repo root)"
+            mkdir -p "$RUNNER_TEMP/data"
+            AICEO_DB_PATH="$RUNNER_TEMP/data/a.db" ASPNETCORE_URLS="http://127.0.0.1:5088" ./publish/AiCeo > "$RUNNER_TEMP/a.log" 2>&1 &
+            PID=$!
+            OK=0
+            for i in $(seq 1 45); do
+              if curl -fsS http://127.0.0.1:5088/ -o "$RUNNER_TEMP/a.html"; then OK=1; break; fi
+              sleep 1
+            done
+            echo "root=$OK blazor=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/_framework/blazor.web.js) agents=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5088/api/agents)"
+            kill $PID 2>/dev/null || true
+            echo "--- app log ---"
+            cat "$RUNNER_TEMP/a.log"
+            echo
+            echo "### extraction dirs"
+            ls -la "$RUNNER_TEMP/.net" 2>/dev/null || echo "no DOTNET_BUNDLE_EXTRACT_BASE_DIR under runner temp"
+            find /tmp/.net -maxdepth 3 2>/dev/null | head -40
+          } > "$RUNNER_TEMP/diag.txt" 2>&1
+
+      - name: Post diagnostics as commit statuses
+        if: always()
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          token, repo, sha = os.environ["TOKEN"], os.environ["REPO"], os.environ["SHA"]
+          path = os.path.join(os.environ["RUNNER_TEMP"], "diag.txt")
+          text = open(path, encoding="utf-8", errors="replace").read() if os.path.exists(path) else "no diag file"
+          chunks = [text[i:i+120].replace("\n", " ") for i in range(0, len(text), 120)][:30]
+          print("chunks:", len(chunks))
+          for index, chunk in enumerate(chunks):
+              payload = json.dumps({"state": "pending", "context": f"diag-{index:02d}", "description": chunk}).encode()
+              req = urllib.request.Request(
+                  f"https://api.github.com/repos/{repo}/statuses/{sha}",
+                  data=payload, method="POST",
+                  headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                           "Content-Type": "application/json"})
+              try:
+                  urllib.request.urlopen(req, timeout=20).read()
+              except Exception as exc:
+                  print("post failed", index, exc)
+          PY
