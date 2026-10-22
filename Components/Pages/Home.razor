@@ -1,0 +1,426 @@
+@page "/"
+@namespace AiCeo.Components.Pages
+@implements IDisposable
+@inject AgentDirectory Directory
+@inject AgentOrchestrator Orchestrator
+@inject OmniRouteChatService Llm
+@inject AppRuntimeInfo Runtime
+@inject IJSRuntime JS
+@inject ILogger<Home> Logger
+
+<PageTitle>AI CEO Orchestrator</PageTitle>
+
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">AI</div>
+            <div>
+                <div class="brand-name">AI CEO</div>
+                <div class="brand-sub">Orchestrator</div>
+            </div>
+        </div>
+
+        <button type="button" class="gateway" title="@(health?.Message ?? "Checking the OmniRoute gateway…")" @onclick="RefreshHealthAsync">
+            <span class="dot @HealthDotClass"></span>
+            <span class="endpoint">@Llm.Endpoint</span>
+        </button>
+
+        <div class="sidebar-section">
+            <div class="section-head">
+                <span class="section-title">Agents · @agents.Count</span>
+                <button type="button" class="btn small" @onclick="OpenCreate">＋ New</button>
+            </div>
+
+            <div class="agent-list">
+                @if (agents.Count == 0)
+                {
+                    <div class="agent-card">
+                        <div class="agent-role">No agents yet. Create one to get started — the first agent becomes the CEO.</div>
+                    </div>
+                }
+
+                @foreach (var agent in agents)
+                {
+                    <div class="agent-card @(agent.IsManager ? "is-ceo" : string.Empty)">
+                        <div class="agent-top">
+                            <div style="min-width: 0;">
+                                <div class="agent-name">
+                                    <span class="truncate">@agent.Name</span>
+                                    @if (agent.IsManager)
+                                    {
+                                        <span class="badge-ceo">CEO</span>
+                                    }
+                                </div>
+                                <div class="agent-role">@agent.Role</div>
+                            </div>
+                            <div class="agent-actions">
+                                @if (!agent.IsManager)
+                                {
+                                    <button type="button" class="icon-btn" title="Make this agent the CEO"
+                                            aria-label="Make @agent.Name the CEO" @onclick="() => MakeCeoAsync(agent)">★</button>
+                                }
+                                <button type="button" class="icon-btn" title="Edit agent"
+                                        aria-label="Edit @agent.Name" @onclick="() => OpenEdit(agent)">✎</button>
+                                <button type="button" class="icon-btn danger" title="Delete agent"
+                                        aria-label="Delete @agent.Name" @onclick="() => RequestDelete(agent)">✕</button>
+                            </div>
+                        </div>
+
+                        <div class="agent-model">@agent.ModelId</div>
+
+                        @if (pendingDeleteId == agent.Id)
+                        {
+                            <div class="confirm-row">
+                                <span>Delete @agent.Name?</span>
+                                <span style="display: flex; gap: 6px;">
+                                    <button type="button" class="btn small ghost" @onclick="CancelDelete">Keep</button>
+                                    <button type="button" class="btn small danger" @onclick="() => ConfirmDeleteAsync(agent)">Delete</button>
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <span title="@Runtime.DatabasePath">db · @Runtime.DatabasePath</span>
+            <span>omni · @Llm.Endpoint</span>
+            <span>v@Runtime.Version · .NET 10</span>
+        </div>
+    </aside>
+
+    <main class="main">
+        <header class="main-header">
+            <div>
+                <h1 class="main-title">Execution feed</h1>
+                <div class="main-sub">Strict star topology · sequential delegation · no worker chatter</div>
+            </div>
+            <div class="flow">
+                <b>You</b> <em>→</em> <b>@ceoName</b> <em>→</em> <b>workers</b> <em>→</em> <b>@ceoName</b> <em>→</em> <b>You</b>
+            </div>
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(banner))
+        {
+            <div class="banner @bannerKind">
+                <span>@banner</span>
+                <button type="button" class="icon-btn" title="Dismiss" @onclick="ClearBanner">✕</button>
+            </div>
+        }
+
+        <div class="feed-wrap">
+            <ExecutionFeed Logs="logs"
+                           Prompt="@currentPrompt"
+                           FinalOutput="@finalOutput"
+                           IsRunning="isRunning"
+                           CeoName="@ceoName"
+                           OnSuggestion="UseSuggestion" />
+        </div>
+
+        <div class="composer">
+            <div class="composer-inner">
+                <textarea @bind="prompt"
+                          @bind:event="oninput"
+                          @onkeydown="OnComposerKeyDown"
+                          rows="1"
+                          placeholder="Tell your CEO what to achieve…"
+                          aria-label="Prompt for the CEO"
+                          disabled="@isRunning"></textarea>
+
+                @if (isRunning)
+                {
+                    <button type="button" class="btn danger send" @onclick="CancelRun">■ Stop</button>
+                }
+                else
+                {
+                    <button type="button" class="btn primary send"
+                            disabled="@string.IsNullOrWhiteSpace(prompt)"
+                            @onclick="SendAsync">Send</button>
+                }
+            </div>
+            <div class="composer-hint">
+                <span>Only the CEO sees your prompt. Workers only see the CEO's assignment.</span>
+                <span><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> to send</span>
+            </div>
+        </div>
+    </main>
+</div>
+
+@if (showEditor)
+{
+    <AgentEditor Agent="editingAgent"
+                 DefaultModel="@Llm.DefaultModel"
+                 OnSave="SaveAgentAsync"
+                 OnCancel="CloseEditor" />
+}
+
+@code {
+    private List<Agent> agents = new();
+    private List<TaskLog> logs = new();
+    private string prompt = string.Empty;
+    private string? currentPrompt;
+    private string? finalOutput;
+    private bool isRunning;
+    private bool showEditor;
+    private Agent? editingAgent;
+    private Guid? pendingDeleteId;
+    private string? banner;
+    private string bannerKind = "info";
+    private CancellationTokenSource? runCts;
+    private OmniRouteHealth? health;
+    private bool healthChecking;
+    private string ceoName = "the CEO";
+
+    private string HealthDotClass
+        => healthChecking ? "wait" : health is null ? string.Empty : health.Online ? "ok" : "bad";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAgentsAsync();
+
+        // Do not block the first paint on a gateway probe.
+        _ = RefreshHealthAsync();
+    }
+
+    private async Task LoadAgentsAsync()
+    {
+        try
+        {
+            agents = await Directory.ListAsync();
+            ceoName = agents.FirstOrDefault(agent => agent.IsManager)?.Name ?? "the CEO";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to load agents");
+            SetBanner("error", "Could not load agents: " + exception.Message);
+        }
+    }
+
+    private async Task RefreshHealthAsync()
+    {
+        if (healthChecking)
+        {
+            return;
+        }
+
+        healthChecking = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            health = await Llm.CheckHealthAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "OmniRoute health check failed");
+            health = new OmniRouteHealth(false, "Gateway offline", Llm.Endpoint, Llm.DefaultModel);
+        }
+        finally
+        {
+            healthChecking = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        if (isRunning)
+        {
+            return;
+        }
+
+        var text = prompt.Trim();
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        prompt = string.Empty;
+        currentPrompt = text;
+        logs = new List<TaskLog>();
+        finalOutput = null;
+        isRunning = true;
+        ClearBanner();
+        runCts = new CancellationTokenSource();
+
+        StateHasChanged();
+        await ScrollFeedAsync();
+
+        try
+        {
+            var task = await Orchestrator.RunAsync(text, AddLogAsync, runCts.Token);
+            finalOutput = task.FinalOutput;
+        }
+        catch (OperationCanceledException)
+        {
+            SetBanner("info", "Run cancelled. The CEO stopped before writing a final answer.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Run failed");
+            logs.Add(new TaskLog
+            {
+                AgentName = ceoName,
+                Action = LogActions.Error,
+                Content = exception.Message,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+        finally
+        {
+            isRunning = false;
+            runCts?.Dispose();
+            runCts = null;
+            StateHasChanged();
+        }
+
+        await ScrollFeedAsync();
+    }
+
+    private async Task AddLogAsync(TaskLog log)
+    {
+        logs.Add(log);
+        await InvokeAsync(StateHasChanged);
+        await ScrollFeedAsync();
+    }
+
+    private void CancelRun() => runCts?.Cancel();
+
+    private void UseSuggestion(string suggestion) => prompt = suggestion;
+
+    private async Task OnComposerKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && (args.CtrlKey || args.MetaKey))
+        {
+            await SendAsync();
+        }
+    }
+
+    private void OpenCreate()
+    {
+        editingAgent = null;
+        showEditor = true;
+    }
+
+    private void OpenEdit(Agent agent)
+    {
+        editingAgent = agent;
+        showEditor = true;
+        pendingDeleteId = null;
+    }
+
+    private void CloseEditor()
+    {
+        showEditor = false;
+        editingAgent = null;
+    }
+
+    private async Task SaveAgentAsync(AgentFormModel form)
+    {
+        try
+        {
+            if (form.Id is { } id && id != Guid.Empty)
+            {
+                var updated = await Directory.UpdateAsync(id, form);
+                if (updated is null)
+                {
+                    SetBanner("error", "That agent no longer exists.");
+                    CloseEditor();
+                    return;
+                }
+
+                SetBanner("info", $"{updated.Name} updated.");
+            }
+            else
+            {
+                var created = await Directory.CreateAsync(form);
+                SetBanner("info", $"{created.Name} added as {(created.IsManager ? "CEO" : created.Role)}.");
+            }
+
+            CloseEditor();
+            await LoadAgentsAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save agent");
+            SetBanner("error", "Could not save the agent: " + exception.Message);
+        }
+    }
+
+    private async Task MakeCeoAsync(Agent agent)
+    {
+        try
+        {
+            await Directory.MakeManagerAsync(agent.Id);
+            await LoadAgentsAsync();
+            SetBanner("info", $"{agent.Name} is now the CEO. The user only ever talks to them.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to promote agent");
+            SetBanner("error", "Could not promote the agent: " + exception.Message);
+        }
+    }
+
+    private void RequestDelete(Agent agent) => pendingDeleteId = agent.Id;
+
+    private void CancelDelete() => pendingDeleteId = null;
+
+    private async Task ConfirmDeleteAsync(Agent agent)
+    {
+        try
+        {
+            await Directory.DeleteAsync(agent.Id);
+            pendingDeleteId = null;
+            await LoadAgentsAsync();
+            SetBanner("info", $"{agent.Name} removed.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to delete agent");
+            SetBanner("error", "Could not delete the agent: " + exception.Message);
+        }
+    }
+
+    private void SetBanner(string kind, string message)
+    {
+        bannerKind = kind;
+        banner = message;
+    }
+
+    private void ClearBanner()
+    {
+        banner = null;
+        bannerKind = "info";
+    }
+
+    private async Task ScrollFeedAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("aiCeo.scrollFeed");
+        }
+        catch (JSException)
+        {
+            // The circuit may be gone or the script not yet loaded; scrolling is cosmetic.
+        }
+        catch (InvalidOperationException)
+        {
+            // JS interop is unavailable while prerendering; ignore.
+        }
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            runCts?.Cancel();
+            runCts?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already cleaned up.
+        }
+    }
+}
