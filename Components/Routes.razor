@@ -1,0 +1,23 @@
+@namespace AiCeo.Components
+
+<Router AppAssembly="typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MainLayout)">
+            <div class="shell">
+                <main class="main">
+                    <div class="feed" style="align-items:center; justify-content:center;">
+                        <div class="empty-state">
+                            <div class="empty-mark">?</div>
+                            <h2>Page not found</h2>
+                            <p>The execution feed lives at <a href="/" style="color:var(--accent)">the home page</a>.</p>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>
