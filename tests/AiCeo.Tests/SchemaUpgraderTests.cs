@@ -59,7 +59,7 @@ public class SchemaUpgraderTests
 
         var columns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "Agents");
         Assert.Single(columns, column => column.Equals("Provider", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(6, columns.Count);
+        Assert.Equal(9, columns.Count); // 6 legacy columns + Provider, BaseUrl, ApiKey
     }
 
     [Fact]

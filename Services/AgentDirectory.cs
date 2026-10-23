@@ -171,6 +171,11 @@ public sealed class AgentDirectory
         }
 
         LlmConnections.ValidateForSave(form.Provider, form.BaseUrl);
+
+        if (form.Provider == LlmProvider.Custom && string.IsNullOrWhiteSpace(form.ModelId))
+        {
+            throw new ArgumentException("The Custom provider requires a Model ID.");
+        }
     }
 
     private static string NormalizeModel(LlmProvider provider, string? modelId)

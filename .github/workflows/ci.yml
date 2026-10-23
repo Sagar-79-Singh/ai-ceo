@@ -50,8 +50,10 @@ jobs:
         run: |
           set -o pipefail
           if ! dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj -c Release --logger "console;verbosity=normal" 2>&1 | tee "$RUNNER_TEMP/test.log"; then
-            MSG=$(grep -E "error [A-Z]+[0-9]+|Failed!|\[FAIL\]" "$RUNNER_TEMP/test.log" | head -8 | tr '\n' '|')
-            echo "::error title=tests-failed::${MSG:0:1400}"
+            MSG=$(grep -E "error [A-Z]+[0-9]+|\[FAIL\]|Error Message" "$RUNNER_TEMP/test.log" | head -8 | tr '\n' '|')
+            DETAIL=$(grep -A 4 "Error Message:" "$RUNNER_TEMP/test.log" | head -24 | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=tests-failed::${MSG:0:900}"
+            echo "::error title=test-detail::${DETAIL:0:1500}"
             exit 1
           fi
           tail -12 "$RUNNER_TEMP/test.log"
