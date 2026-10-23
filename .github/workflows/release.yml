@@ -1,54 +1,31 @@
-name: Release v1.0.2
+name: Release
 
-# Builds the orchestrator for every supported runtime identifier and publishes one GitHub
-# Release (tag v1.0.2) carrying all seven self-contained single-file binaries.
+# v1.0.3 ships as a Windows desktop application (.NET MAUI Blazor Hybrid) in a native window.
+# MAUI cannot cross-compile to Windows from Linux/macOS, so the whole desktop build runs on
+# windows-latest and produces:
+#   * AI-CEO-Orchestrator-<version>-win-x64-setup.exe      (Inno Setup installer)
+#   * AI-CEO-Orchestrator-<version>-win-x64-portable.zip   (the same app, unpackaged)
+#   * AI-CEO-Orchestrator-<version>-win-x64.msix           (best effort, when the MSIX packs)
+#   * SHA256 checksums for all of them
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: "Release tag to create/update"
-        required: true
-        default: "v1.0.2"
-        type: string
 
 permissions:
   contents: write
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 env:
-  RELEASE_TAG: v1.0.2
   DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
-  build:
-    name: Publish ${{ matrix.rid }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: win-x64
-            os: windows-latest
-          - rid: win-x86
-            os: windows-latest
-          - rid: win-arm64
-            os: windows-latest
-          - rid: linux-x64
-            os: ubuntu-latest
-          - rid: linux-arm64
-            os: ubuntu-latest
-          - rid: osx-x64
-            os: macos-latest
-          - rid: osx-arm64
-            os: macos-latest
+  build-desktop:
+    name: Build Windows desktop app + installer
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
@@ -59,171 +36,217 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore
-        run: dotnet restore AiCeo.csproj
+      - name: Install the MAUI workload
+        run: dotnet workload install maui-windows --skip-sign-check
 
-      - name: Publish ${{ matrix.rid }}
-        run: >-
-          dotnet publish -c Release -r ${{ matrix.rid }}
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -o ./publish
-
-      - name: Package asset
-        shell: bash
+      - name: Resolve version
+        id: version
+        shell: pwsh
         run: |
-          set -euo pipefail
-          mkdir -p dist
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          if ([string]::IsNullOrWhiteSpace($version) -or $version -eq "v*") { $version = "1.0.3" }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "releasing $version"
 
-          SRC=""
-          for candidate in publish/AiCeo.exe publish/AiCeo; do
-            if [ -f "$candidate" ]; then SRC="$candidate"; break; fi
-          done
+      - name: Restore
+        run: dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64
 
-          if [ -z "$SRC" ]; then
-            echo "::error::No AiCeo binary was produced for ${{ matrix.rid }}"
-            ls -la publish || true
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "tests.log"
+          dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj -c Release --logger "console;verbosity=normal" 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $failures = (Select-String -Path $log -Pattern "\[FAIL\]|Error Message|Assert\.|error [A-Z]+[0-9]+" -Context 0,4 |
+                         Select-Object -First 14 |
+                         ForEach-Object { ($_.Line + " " + ($_.Context.PostContext -join " ")).Trim() -replace "\s+", " " }) -join " | "
+            if (-not $failures) { $failures = ((Get-Content $log -Tail 30) -join " | ") -replace "\r?\n", " " }
+            Write-Host "::error title=tests-failed::$($failures.Substring(0, [Math]::Min(2500, $failures.Length)))"
             exit 1
-          fi
+          }
 
-          EXT=""
-          case "$SRC" in
-            *.exe) EXT=".exe" ;;
-          esac
+      # ---- 1. The portable (self-contained) app ----------------------------------------------
+      - name: Publish the unpackaged app
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "publish.log"
+          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:ApplicationDisplayVersion=${{ steps.version.outputs.version }} `
+            -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:SelfContained=true `
+            -o ./artifacts/portable 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = ((Get-Content $log -Tail 50) -join " | ") -replace "\r?\n", " "
+            Write-Host "::error title=publish-failed::$($tail.Substring(0, [Math]::Min(2500, $tail.Length)))"
+            exit 1
+          }
 
-          TARGET="dist/AiCeo-${{ matrix.rid }}${EXT}"
-          cp "$SRC" "$TARGET"
+      # ---- 2. The setup installer (Inno Setup) ------------------------------------------------
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
 
-          if [ -z "$EXT" ]; then
-            chmod +x "$TARGET"
-          fi
+      - name: Build the setup installer
+        shell: pwsh
+        run: |
+          $iscc = (Get-ChildItem "C:\Program Files*\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $iscc) {
+            Write-Host "::error title=missing-iscc::Inno Setup's ISCC.exe was not found"
+            exit 1
+          }
 
-          # Checksum next to each binary so users can verify the download.
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "$TARGET" | sed 's#dist/##' > "$TARGET.sha256"
-          else
-            shasum -a 256 "$TARGET" | sed 's#dist/##' > "$TARGET.sha256"
-          fi
+          New-Item -ItemType Directory -Force -Path ./artifacts/out | Out-Null
 
-          ls -la dist
-          cat "$TARGET.sha256"
+          $log = Join-Path $env:RUNNER_TEMP "inno.log"
+          & $iscc "/DAppVersion=${{ steps.version.outputs.version }}" "/DSourceDir=$(Resolve-Path ./artifacts/portable)" "/DOutputDir=$(Resolve-Path ./artifacts/out)" ./installer/inno-setup/AiCeo.iss 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = ((Get-Content $log -Tail 40) -join " | ") -replace "\r?\n", " "
+            Write-Host "::error title=inno-failed::$($tail.Substring(0, [Math]::Min(2500, $tail.Length)))"
+            exit 1
+          }
 
-      - name: Upload ${{ matrix.rid }} artifact
+      # ---- 3. Best-effort MSIX, plus the portable zip and checksums ---------------------------
+      - name: Try to build an MSIX (best effort)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:WindowsPackageType=MSIX `
+            -p:WindowsAppSDKSelfContained=false `
+            -p:AppxPackageSigningEnabled=false `
+            -p:UapAppxPackageBuildMode=SideloadOnly
+          $msix = Get-ChildItem -Path src/AiCeo.Maui -Recurse -Filter *.msix -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msix) {
+            Copy-Item $msix.FullName "./artifacts/out/AI-CEO-Orchestrator-${{ steps.version.outputs.version }}-win-x64.msix" -Force
+            Write-Host "msix: $($msix.FullName)"
+          } else {
+            Write-Host "no .msix produced; the setup .exe is the release installer"
+          }
+
+      - name: Package the artifacts
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+
+          $zipName = "AI-CEO-Orchestrator-$version-win-x64-portable.zip"
+          Compress-Archive -Path "./artifacts/portable/*" -DestinationPath "./artifacts/out/$zipName" -Force
+          Write-Host "portable: $zipName"
+
+          $setup = Get-ChildItem ./artifacts/out -Filter "*setup.exe" | Select-Object -First 1
+          if (-not $setup) {
+            Write-Host "::error title=missing-installer::no setup .exe was produced"
+            Get-ChildItem ./artifacts/out | Select-Object Name
+            exit 1
+          }
+          Write-Host "installer: $($setup.Name) ($([Math]::Round($setup.Length / 1MB, 1)) MB)"
+
+          $lines = @()
+          Get-ChildItem ./artifacts/out -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Out-File -FilePath "./artifacts/out/$($_.Name).sha256" -Encoding ascii
+            $lines += "$hash  $($_.Name)"
+          }
+          $lines -join "`n" | Out-File -FilePath "./artifacts/out/SHA256SUMS.txt" -Encoding ascii
+
+          Get-ChildItem ./artifacts/out | Select-Object Name, Length
+          "setup=$($setup.Name)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aiceo-${{ matrix.rid }}
-          path: dist/*
+          name: desktop-windows
+          path: artifacts/out/*
           if-no-files-found: error
-          retention-days: 7
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: build-desktop
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download every platform artifact
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the installers
         uses: actions/download-artifact@v4
         with:
-          path: dist
-          merge-multiple: true
+          name: desktop-windows
+          path: ./assets
 
-      - name: Verify all seven binaries are present
+      - name: Verify the release contents
         shell: bash
         run: |
           set -euo pipefail
-          ls -la dist
-          missing=""
-          for rid in win-x64 win-x86 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64; do
-            if [ ! -f "dist/AiCeo-$rid" ] && [ ! -f "dist/AiCeo-$rid.exe" ]; then
-              missing="$missing $rid"
-            fi
-          done
+          ls -la ./assets
 
-          if [ -n "$missing" ]; then
-            echo "::error::Missing release assets for:$missing"
+          SETUP=$(ls ./assets/*setup.exe 2>/dev/null | head -1 || true)
+          ZIP=$(ls ./assets/*.zip 2>/dev/null | head -1 || true)
+          SUMS=$(ls ./assets/SHA256SUMS.txt 2>/dev/null | head -1 || true)
+
+          if [ -z "$SETUP" ]; then
+            echo "::error title=missing-installer::the release needs the Windows setup .exe"
             exit 1
           fi
-          echo "All seven binaries present."
-
-      - name: Write combined checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd dist
-          sha256sum AiCeo-* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
-
-      - name: Resolve release tag
-        id: meta
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag_name }}" ]; then
-            TAG="${{ inputs.tag_name }}"
-          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            TAG="${GITHUB_REF_NAME}"
-          else
-            TAG="${RELEASE_TAG}"
+          if [ -z "$ZIP" ]; then
+            echo "::error title=missing-portable::the release needs the portable zip"
+            exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Releasing as $TAG"
+          if [ -z "$SUMS" ]; then
+            echo "::error title=missing-checksums::SHA256SUMS.txt was not uploaded"
+            exit 1
+          fi
 
-      - name: Create GitHub Release with all binaries
+          # The checksum file must describe the installer we are about to publish.
+          if ! grep -q "$(basename "$SETUP")" "$SUMS"; then
+            echo "::error title=checksum-mismatch::SHA256SUMS.txt does not mention $(basename "$SETUP")"
+            exit 1
+          fi
+
+      - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: AI CEO Orchestrator ${{ steps.meta.outputs.tag }}
-          generate_release_notes: true
+          name: AI CEO Orchestrator ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.2
+            ## AI CEO Orchestrator ${{ github.ref_name }}
 
-            Star-topology AI orchestration in a single executable: **User → CEO → Workers → CEO → User**,
-            with strictly sequential worker execution (`foreach`, never `Task.WhenAll`/`Parallel.ForEachAsync`).
+            A Windows desktop app (.NET 10 · MAUI Blazor Hybrid) that opens in a native window.
 
-            ### What's new in v1.0.2
-            - **Multi-provider agents.** Every agent stores its own `ProviderType`, `BaseUrl`, `ApiKey`
-              and `ModelId`, and the sidebar shows which provider it uses.
-              Supported: **OmniRoute** (`http://localhost:20128/v1`), **OpenAI** (`https://api.openai.com/v1`),
-              **Gemini** (`https://generativelanguage.googleapis.com/v1beta/openai`) and **Custom** (any
-              OpenAI-compatible base URL, e.g. Ollama or vLLM).
-            - **API keys never leave the machine in clear text.** The UI and `GET /api/agents` only ever see
-              a mask (`sk-1…cdef`); blank on save keeps the stored key.
-            - **In-place database upgrade** from v1.0.x (adds the three new columns, keeps your agents).
-            - New endpoints: `GET /api/providers`, `GET /api/agents/{id}/health`.
-            - Unit tests covering topology, sequencing, plan parsing, provider resolution and the migration.
+            ### Install
+            1. Download `AI-CEO-Orchestrator-*-win-x64-setup.exe`.
+            2. Run it. It installs per-user (no administrator rights needed) and adds Start-menu and
+               optional desktop shortcuts.
+            3. Launch **AI CEO Orchestrator** from the Start menu.
+            4. In the sidebar, click **Select Workspace Folder** and choose the folder agents may use.
 
-            ### Downloads (self-contained — no .NET runtime needed)
-            | Platform | Asset |
-            | --- | --- |
-            | Windows x64 / x86 / ARM64 | `AiCeo-win-x64.exe`, `AiCeo-win-x86.exe`, `AiCeo-win-arm64.exe` |
-            | Linux x64 / ARM64 | `AiCeo-linux-x64`, `AiCeo-linux-arm64` |
-            | macOS Intel / Apple Silicon | `AiCeo-osx-x64`, `AiCeo-osx-arm64` |
+            Windows SmartScreen may warn because the build is not code-signed — choose
+            **More info → Run anyway**. The portable zip needs no installer at all: unzip it and run
+            `AiCeo.Maui.exe`.
 
-            Each binary ships with a `.sha256` file; `SHA256SUMS.txt` covers all seven.
+            ### What's new in v1.0.3
+            - **Native desktop app**: no browser, no local web server — the UI runs in a WinUI window.
+            - **Local workspace**: pick any folder with the OS folder picker; the path is stored in SQLite.
+            - **Tool calling**: workers can `list_files`, `read_file`, `write_file` and `run_command`.
+            - **Security guardrail**: every file and command path is validated against the workspace;
+              anything outside it is refused (including `..` traversal, absolute paths and symlinks).
+            - **Agentic loop**: a tool-enabled worker iterates (write → build → fix) until done, then
+              reports back to the CEO, which writes the final answer.
 
-            ### Run
-            ```bash
-            # Windows
-            AiCeo-win-x64.exe
+            ### Verify the download
+            Each asset has a `.sha256` file, and `SHA256SUMS.txt` covers them all.
 
-            # Linux / macOS
-            chmod +x AiCeo-linux-x64
-            ./AiCeo-linux-x64
-            ```
-            The app serves http://localhost:5088 and opens your browser on Windows.
-            On macOS the binaries are unsigned, so use `xattr -d com.apple.quarantine AiCeo-osx-arm64`
-            if Gatekeeper blocks the first launch.
-
-            ### Configure providers
-            - Set keys in the agent modal, or export `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OMNIROUTE_KEY`
-              (or `CUSTOM_API_KEY` for a custom server).
-            - `AICEO_DB_PATH` moves the SQLite file (default `%LOCALAPPDATA%\AiCeoOrchestrator\aiceo.db`).
-            - `ASPNETCORE_URLS` overrides the listening address; `AICEO_NO_BROWSER=1` disables auto-open.
-
-            Build: `${{ github.sha }}`
-          files: dist/*
+            ### Requirements
+            Windows 10 1809 (build 17763) or newer, x64.
+          files: |
+            assets/*setup.exe
+            assets/*.msix
+            assets/*.zip
+            assets/*.sha256
+            assets/SHA256SUMS.txt
