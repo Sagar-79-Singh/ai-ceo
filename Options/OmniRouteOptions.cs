@@ -9,13 +9,13 @@ public sealed class OmniRouteOptions
 {
     public const string SectionName = "OmniRoute";
 
-    /// <summary>Default OmniRoute gateway base URL (see docs/RULES.md).</summary>
+    /// <summary>Default OmniRoute gateway base URL.</summary>
     public const string DefaultEndpoint = "http://localhost:20128/v1";
 
-    /// <summary>Default model id used for new agents (see docs/UI_SPEC.md).</summary>
+    /// <summary>Default model id suggested for new OmniRoute agents.</summary>
     public const string DefaultModel = "gh/gpt-5.4-nano";
 
-    /// <summary>Local-only fallback key required by the gateway (see docs/RULES.md).</summary>
+    /// <summary>Local-only fallback key used when neither the agent nor the environment has one.</summary>
     public const string FallbackApiKey = "sk-48f9a7b2051199e0-64bc90-6a0ec9ee";
 
     public string Endpoint { get; set; } = DefaultEndpoint;

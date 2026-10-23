@@ -4,16 +4,20 @@ using Microsoft.EntityFrameworkCore;
 namespace AiCeo.Data;
 
 /// <summary>
-/// Creates the SQLite database on first run and seeds one CEO plus a small worker bench so the
-/// app is usable immediately. Safe to run on every start.
+/// Creates the SQLite database on first run (and upgrades v1.0.x schemas), then seeds one CEO
+/// plus a small worker bench so the app is usable immediately. Safe to run on every start.
 /// </summary>
 public static class DbSeeder
 {
     public static async Task SeedAsync(AppDbContext db, ILogger logger, CancellationToken cancellationToken = default)
     {
+        // Upgrades a v1.0.x database in place before EF touches it.
+        await SchemaUpgrader.UpgradeAsync(db, logger, cancellationToken);
+
         // Code-first: EnsureCreated builds the schema from the model. If the project is later
         // migrated with `dotnet ef migrations add`, the migrations path is used instead.
-        if (db.Database.GetMigrations().Any())
+        var migrations = db.Database.GetMigrations().ToList();
+        if (migrations.Count > 0)
         {
             await db.Database.MigrateAsync(cancellationToken);
         }
@@ -32,7 +36,8 @@ public static class DbSeeder
             {
                 Name = "Atlas",
                 Role = "Chief Executive Officer",
-                ModelId = "gh/gpt-5.4-nano",
+                Provider = LlmProvider.OmniRoute,
+                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = true,
                 SystemPrompt =
                     "You are Atlas, the Chief Executive Officer of a small AI company. You are the single point of "
@@ -44,7 +49,8 @@ public static class DbSeeder
             {
                 Name = "Scout",
                 Role = "Researcher",
-                ModelId = "gh/gpt-5.4-nano",
+                Provider = LlmProvider.OmniRoute,
+                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 SystemPrompt =
                     "You are Scout, a meticulous researcher. You gather and organise facts, call out assumptions, "
@@ -54,7 +60,8 @@ public static class DbSeeder
             {
                 Name = "Vector",
                 Role = "Analyst",
-                ModelId = "gh/gpt-5.4-nano",
+                Provider = LlmProvider.OmniRoute,
+                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 SystemPrompt =
                     "You are Vector, a quantitative analyst. You structure problems, weigh trade-offs, and produce "
@@ -64,7 +71,8 @@ public static class DbSeeder
             {
                 Name = "Quill",
                 Role = "Writer",
-                ModelId = "gh/gpt-5.4-nano",
+                Provider = LlmProvider.OmniRoute,
+                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 SystemPrompt =
                     "You are Quill, a senior writer and editor. You turn raw findings into clear, well-structured prose "

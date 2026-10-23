@@ -3,7 +3,7 @@
 @implements IDisposable
 @inject AgentDirectory Directory
 @inject AgentOrchestrator Orchestrator
-@inject OmniRouteChatService Llm
+@inject AgentHealthService Health
 @inject AppRuntimeInfo Runtime
 @inject IJSRuntime JS
 @inject ILogger<Home> Logger
@@ -16,13 +16,15 @@
             <div class="brand-logo">AI</div>
             <div>
                 <div class="brand-name">AI CEO</div>
-                <div class="brand-sub">Orchestrator</div>
+                <div class="brand-sub">Orchestrator v@(Runtime.Version)</div>
             </div>
         </div>
 
-        <button type="button" class="gateway" title="@(health?.Message ?? "Checking the OmniRoute gateway…")" @onclick="RefreshHealthAsync">
+        <button type="button" class="gateway"
+                title="@(health?.Message ?? "Checking the CEO's provider…")"
+                @onclick="RefreshHealthAsync">
             <span class="dot @HealthDotClass"></span>
-            <span class="endpoint">@Llm.Endpoint</span>
+            <span class="endpoint">@HealthLabel</span>
         </button>
 
         <div class="sidebar-section">
@@ -69,7 +71,14 @@
                             </div>
                         </div>
 
-                        <div class="agent-model">@agent.ModelId</div>
+                        <div class="agent-meta">
+                            <span class="badge-provider @ProviderClass(agent.Provider)">@agent.ProviderDisplayName</span>
+                            <span class="agent-model">@agent.ModelId</span>
+                        </div>
+
+                        <div class="agent-key" title="@agent.EffectiveBaseUrl · key: @agent.ApiKeySource">
+                            @(agent.ApiKeyMask is not null ? $"key {agent.ApiKeyMask}" : $"key: {agent.ApiKeySource}")
+                        </div>
 
                         @if (pendingDeleteId == agent.Id)
                         {
@@ -88,8 +97,7 @@
 
         <div class="sidebar-footer">
             <span title="@Runtime.DatabasePath">db · @Runtime.DatabasePath</span>
-            <span>omni · @Llm.Endpoint</span>
-            <span>v@Runtime.Version · .NET 10</span>
+            <span>v@(Runtime.Version) · .NET 10 · 4 providers</span>
         </div>
     </aside>
 
@@ -153,36 +161,54 @@
 @if (showEditor)
 {
     <AgentEditor Agent="editingAgent"
-                 DefaultModel="@Llm.DefaultModel"
+                 Providers="LlmProviderCatalog.All"
                  OnSave="SaveAgentAsync"
                  OnCancel="CloseEditor" />
 }
 
 @code {
-    private List<Agent> agents = new();
+    private List<AgentView> agents = new();
     private List<TaskLog> logs = new();
     private string prompt = string.Empty;
     private string? currentPrompt;
     private string? finalOutput;
     private bool isRunning;
     private bool showEditor;
-    private Agent? editingAgent;
+    private AgentView? editingAgent;
     private Guid? pendingDeleteId;
     private string? banner;
     private string bannerKind = "info";
     private CancellationTokenSource? runCts;
-    private OmniRouteHealth? health;
+    private ProviderHealth? health;
     private bool healthChecking;
     private string ceoName = "the CEO";
 
     private string HealthDotClass
         => healthChecking ? "wait" : health is null ? string.Empty : health.Online ? "ok" : "bad";
 
+    private string HealthLabel
+    {
+        get
+        {
+            if (healthChecking)
+            {
+                return "checking provider…";
+            }
+
+            if (health is null)
+            {
+                return "provider status";
+            }
+
+            return $"{health.ProviderDisplayName} · {CompactEndpoint(health.Endpoint)}";
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAgentsAsync();
 
-        // Do not block the first paint on a gateway probe.
+        // Do not block the first paint on a provider probe.
         _ = RefreshHealthAsync();
     }
 
@@ -190,7 +216,7 @@
     {
         try
         {
-            agents = await Directory.ListAsync();
+            agents = await Directory.ListViewsAsync();
             ceoName = agents.FirstOrDefault(agent => agent.IsManager)?.Name ?? "the CEO";
         }
         catch (Exception exception)
@@ -212,12 +238,12 @@
 
         try
         {
-            health = await Llm.CheckHealthAsync();
+            health = await Health.CheckManagerAsync();
         }
         catch (Exception exception)
         {
-            Logger.LogWarning(exception, "OmniRoute health check failed");
-            health = new OmniRouteHealth(false, "Gateway offline", Llm.Endpoint, Llm.DefaultModel);
+            Logger.LogWarning(exception, "Provider health check failed");
+            health = new ProviderHealth(false, "Provider unavailable", "—", "—", "—");
         }
         finally
         {
@@ -311,7 +337,7 @@
         showEditor = true;
     }
 
-    private void OpenEdit(Agent agent)
+    private void OpenEdit(AgentView agent)
     {
         if (isRunning)
         {
@@ -349,16 +375,20 @@
                     return;
                 }
 
-                SetBanner("info", $"{updated.Name} updated.");
+                SetBanner("info", $"{updated.Name} updated · {LlmProviderCatalog.DisplayNameFor(updated.Provider)}.");
             }
             else
             {
                 var created = await Directory.CreateAsync(form);
-                SetBanner("info", $"{created.Name} added as {(created.IsManager ? "CEO" : created.Role)}.");
+                SetBanner(
+                    "info",
+                    $"{created.Name} added as {(created.IsManager ? "CEO" : created.Role)} · "
+                    + $"{LlmProviderCatalog.DisplayNameFor(created.Provider)}.");
             }
 
             CloseEditor();
             await LoadAgentsAsync();
+            _ = RefreshHealthAsync();
         }
         catch (Exception exception)
         {
@@ -367,7 +397,7 @@
         }
     }
 
-    private async Task MakeCeoAsync(Agent agent)
+    private async Task MakeCeoAsync(AgentView agent)
     {
         if (isRunning)
         {
@@ -379,6 +409,7 @@
             await Directory.MakeManagerAsync(agent.Id);
             await LoadAgentsAsync();
             SetBanner("info", $"{agent.Name} is now the CEO. The user only ever talks to them.");
+            _ = RefreshHealthAsync();
         }
         catch (Exception exception)
         {
@@ -387,7 +418,7 @@
         }
     }
 
-    private void RequestDelete(Agent agent)
+    private void RequestDelete(AgentView agent)
     {
         if (isRunning)
         {
@@ -399,7 +430,7 @@
 
     private void CancelDelete() => pendingDeleteId = null;
 
-    private async Task ConfirmDeleteAsync(Agent agent)
+    private async Task ConfirmDeleteAsync(AgentView agent)
     {
         if (isRunning)
         {
@@ -412,6 +443,7 @@
             pendingDeleteId = null;
             await LoadAgentsAsync();
             SetBanner("info", $"{agent.Name} removed.");
+            _ = RefreshHealthAsync();
         }
         catch (Exception exception)
         {
@@ -430,6 +462,24 @@
     {
         banner = null;
         bannerKind = "info";
+    }
+
+    private static string ProviderClass(LlmProvider provider) => provider switch
+    {
+        LlmProvider.OpenAI => "prov-openai",
+        LlmProvider.Gemini => "prov-gemini",
+        LlmProvider.Custom => "prov-custom",
+        _ => "prov-omniroute"
+    };
+
+    private static string CompactEndpoint(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint) || endpoint == "—")
+        {
+            return "—";
+        }
+
+        return Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ? uri.Host : endpoint;
     }
 
     private async Task ScrollFeedAsync()

@@ -26,6 +26,15 @@ public class AppDbContext : DbContext
             entity.Property(agent => agent.Role).IsRequired();
             entity.Property(agent => agent.SystemPrompt).IsRequired();
             entity.Property(agent => agent.ModelId).IsRequired();
+
+            // Stored as text so the SQLite file stays readable and ALTER TABLE defaults are simple.
+            entity.Property(agent => agent.Provider)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(agent => agent.BaseUrl).HasMaxLength(500);
+            entity.Property(agent => agent.ApiKey).HasMaxLength(500);
         });
 
         modelBuilder.Entity<TaskItem>(entity =>
