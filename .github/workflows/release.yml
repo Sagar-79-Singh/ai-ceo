@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - arena/f82320ff-ai-ceo   # TEMP-VALIDATION: remove after the first pipeline run
     tags:
       - "v*"
   workflow_dispatch:
