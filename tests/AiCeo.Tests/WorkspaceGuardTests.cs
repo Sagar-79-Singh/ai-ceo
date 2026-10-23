@@ -15,8 +15,10 @@ public class WorkspaceGuardTests
 
         var resolved = WorkspaceGuard.Resolve(workspace.Root, "src/Program.cs");
 
-        Assert.StartsWith(workspace.Root, resolved, StringComparison.Ordinal);
+        // Compare through the guard: Windows short (8.3) temp paths differ textually from the
+        // long path the guard returns, so a raw StartsWith would be flaky.
         Assert.True(WorkspaceGuard.IsInside(workspace.Root, resolved));
+        Assert.Equal("src/Program.cs", WorkspaceGuard.ToRelative(workspace.Root, resolved));
     }
 
     [Fact]
