@@ -170,6 +170,38 @@ jobs:
             exit 1
           fi
 
+          # Crash logging: with no display, Avalonia cannot start. The binary must exit non-zero
+          # AND leave a crash.log with the stack trace next to itself.
+          echo "crash-log check (no display)"
+          rm -f "$ROOT/crash.log"
+          env -u DISPLAY -u WAYLAND_DISPLAY AICEO_DB_PATH="$AICEO_DB_PATH" "$ROOT/AiCeo" > "$RUNNER_TEMP/nodisplay.log" 2>&1
+          CRASH_CODE=$?
+          echo "exit code without a display: $CRASH_CODE"
+
+          if [ "$CRASH_CODE" -eq 0 ]; then
+            echo "::error title=crash-exit::the app exited 0 even though no display was available"
+            exit 1
+          fi
+
+          if [ ! -f "$ROOT/crash.log" ]; then
+            echo "::error title=no-crash-log::crash.log was not written next to the executable"
+            tail -20 "$RUNNER_TEMP/nodisplay.log"
+            exit 1
+          fi
+
+          echo "--- crash.log ---"
+          head -30 "$ROOT/crash.log"
+
+          if ! grep -q "crash report" "$ROOT/crash.log" || ! grep -q "context  : Startup" "$ROOT/crash.log"; then
+            echo "::error title=bad-crash-log::crash.log is missing the startup report header"
+            exit 1
+          fi
+          if ! grep -qE "at Avalonia|X11|display|Exception" "$ROOT/crash.log"; then
+            echo "::error title=no-stack::crash.log has no stack trace"
+            exit 1
+          fi
+          echo "crash.log contains the full startup stack trace"
+
           # The app must have created its database somewhere writable.
           if [ ! -f "$AICEO_DB_PATH" ]; then
             export AICEO_DB_PATH="$HOME/.local/share/AiCeoOrchestrator/aiceo.db"
