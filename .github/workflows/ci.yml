@@ -147,6 +147,17 @@ jobs:
           }
           Write-Host "app: $($exe.FullName) ($([Math]::Round($exe.Length / 1MB, 1)) MB)"
 
+          # The BlazorWebView resolves its host page from the publish output; without it the window
+          # would open blank.
+          foreach ($asset in @("wwwroot\index.html", "wwwroot\css\app.css", "wwwroot\js\app.js")) {
+            if (-not (Test-Path (Join-Path "./artifacts/portable" $asset))) {
+              $tree = ($files | Select-Object -First 40 -ExpandProperty FullName) -join ", "
+              Write-Host "::error title=missing-assets::$asset is not in the publish output (files: $tree)"
+              exit 1
+            }
+          }
+          Write-Host "blazor host page + assets are in the publish output"
+
           # The installer script expects exactly this name.
           if ($exe.Name -ne "AiCeo.Maui.exe") {
             Copy-Item $exe.FullName (Join-Path $exe.Directory "AiCeo.Maui.exe") -Force
