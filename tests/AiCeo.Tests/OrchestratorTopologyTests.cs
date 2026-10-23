@@ -2,7 +2,7 @@ using AiCeo.Models;
 using AiCeo.Options;
 using AiCeo.Services;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using MsOptions = Microsoft.Extensions.Options.Options;
 using Xunit;
 
 namespace AiCeo.Tests;
@@ -17,7 +17,7 @@ public class OrchestratorTopologyTests
         => new(
             database.Db,
             gateway,
-            Options.Create(new OmniRouteOptions()),
+            MsOptions.Create(new OmniRouteOptions()),
             NullLogger<AgentOrchestrator>.Instance);
 
     [Fact]
@@ -68,7 +68,7 @@ public class OrchestratorTopologyTests
         var actions = task.Logs.OrderBy(log => log.CreatedAt).Select(log => log.Action).ToList();
         Assert.Equal(2, actions.Count(action => action == LogActions.Delegated));
         Assert.Equal(2, actions.Count(action => action == LogActions.Result));
-        Assert.Single(actions.Where(action => action == LogActions.Plan));
+        Assert.Single(actions, action => action == LogActions.Plan);
     }
 
     [Fact]
