@@ -36,7 +36,14 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore src/AiCeo.Core/AiCeo.Core.csproj
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! dotnet restore src/AiCeo.Core/AiCeo.Core.csproj 2>&1 | tee "$RUNNER_TEMP/restore.log"; then
+            MSG=$(grep -E "error [A-Z]+[0-9]+|NU[0-9]{4}" "$RUNNER_TEMP/restore.log" | head -8 | tr '\n' '|')
+            echo "::error title=restore-failed::${MSG:0:1800}"
+            exit 1
+          fi
 
       - name: Build core
         shell: bash
@@ -88,7 +95,15 @@ jobs:
         run: dotnet workload install maui-windows --skip-sign-check
 
       - name: Restore
-        run: dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "maui-restore.log"
+          dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $errors = (Select-String -Path $log -Pattern "error [A-Z]+[0-9]+|NU[0-9]{4}" | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() }) -join " | "
+            Write-Host "::error title=maui-restore-failed::$($errors.Substring(0, [Math]::Min(1800, $errors.Length)))"
+            exit 1
+          }
 
       - name: Build the desktop app
         shell: pwsh
