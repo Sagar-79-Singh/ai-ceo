@@ -16,7 +16,7 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 | Area | Change |
 | --- | --- |
 | **Desktop app** | .NET **MAUI Blazor Hybrid** (`net10.0-windows10.0.19041.0`). The Blazor UI renders inside a `BlazorWebView` in a WinUI window. The Kestrel web host, `Program.cs` and the minimal-API endpoints are gone. |
-| **Installer** | `release.yml` builds a per-user **`.exe` installer** with Inno Setup (plus a portable `.zip`, and a best-effort `.msix`) on `windows-latest`, and attaches everything with SHA-256 checksums to the GitHub Release. |
+| **Installer** | `release.yml` builds a per-user **`.exe` installer** with Inno Setup, plus a portable `.zip` and an alternative `.msix`, all with SHA-256 checksums, on `windows-latest`, then attaches them to the GitHub Release. |
 | **Local workspace** | A **Select Workspace Folder** button in the sidebar opens the native OS folder picker and stores the chosen path in SQLite (single row, `WorkspaceSettings`). |
 | **Tool calling** | Workers marked *tools* get four function-calling tools: `list_files`, `read_file`, `write_file`, `run_command`. |
 | **Security guardrail** | **Every** file path and every terminal path token is validated against the workspace root before anything touches the disk. Anything outside is refused. |
@@ -33,7 +33,10 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 4. In the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
 Prefer no installer? Download the `-portable.zip`, unzip it anywhere and run `AiCeo.Maui.exe`.
-When the MSIX packs on the runner it is attached too, but the setup `.exe` is the supported path.
+
+The release also carries a `.msix` package. It is **not** self-contained (it depends on the
+Windows App Runtime 1.7, which Windows installs on demand), so the setup `.exe` remains the
+supported path — it bundles the runtime and needs no admin rights.
 
 **Requirements:** Windows 10 1809 (build 17763) or newer, x64.
 
@@ -179,8 +182,7 @@ built on `windows-latest`, which is exactly what CI does.
   publish, and the Inno Setup installer on `windows-latest`; and a grep that fails the build if
   `Task.WhenAll`, `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
 - `release.yml` — on a `v*` tag: MAUI workload, unit tests, self-contained publish, setup `.exe`,
-  portable zip, best-effort MSIX, SHA-256 checksums, and a GitHub Release with install
-  instructions.
+  portable zip, MSIX, SHA-256 checksums, and a GitHub Release with install instructions.
 
 ---
 
