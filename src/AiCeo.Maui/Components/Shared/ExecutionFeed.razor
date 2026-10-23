@@ -1,0 +1,207 @@
+@namespace AiCeo.Components.Shared
+
+<div class="feed" id="feed">
+    @if (string.IsNullOrWhiteSpace(Prompt) && Logs.Count == 0 && !IsRunning)
+    {
+        <div class="empty-state">
+            <div class="empty-mark">◎</div>
+            <h2>Brief your CEO</h2>
+            <p>
+                You talk to <strong>@CeoName</strong> only. It plans the work, delegates to the worker bench
+                one agent at a time, then writes the answer you see here. Workers marked
+                <span class="badge-tools" style="vertical-align: middle;">tools</span> can edit files in your
+                workspace and run builds.
+            </p>
+            <div class="chips">
+                @foreach (var suggestion in Suggestions)
+                {
+                    <button type="button" class="chip" @onclick="() => OnSuggestion.InvokeAsync(suggestion)">
+                        @suggestion
+                    </button>
+                }
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Prompt))
+    {
+        <div class="row-end">
+            <div class="bubble user">@Prompt</div>
+        </div>
+    }
+
+    @for (var index = 0; index < Logs.Count; index++)
+    {
+        var log = Logs[index];
+        var position = index;
+
+        if (log.Action == LogActions.Plan)
+        {
+            var steps = PlanJson.Parse(log.Content);
+            <div class="card plan">
+                <div class="card-head">
+                    <span class="dot ok"></span>
+                    <span>CEO plan</span>
+                    <span class="who">@log.AgentName</span>
+                </div>
+                @if (steps.Count == 0)
+                {
+                    <pre class="prose">@log.Content</pre>
+                }
+                else
+                {
+                    <ol class="plan-steps">
+                        @for (var stepIndex = 0; stepIndex < steps.Count; stepIndex++)
+                        {
+                            var step = steps[stepIndex];
+                            <li class="plan-step">
+                                <span class="step-index">@(stepIndex + 1)</span>
+                                <div class="step-body">
+                                    <div class="step-role">@step.Role</div>
+                                    <div class="step-text">@step.Instructions</div>
+                                </div>
+                            </li>
+                        }
+                    </ol>
+                }
+            </div>
+        }
+        else if (log.Action == LogActions.Delegated)
+        {
+            var pending = IsPending(position, log.AgentName);
+            <div class="delegation">
+                @if (pending)
+                {
+                    <span class="spinner"></span>
+                }
+                else
+                {
+                    <span class="dot ok" style="margin-top: 6px;"></span>
+                }
+                <div>
+                    <div class="delegation-head">
+                        [@log.AgentName] @(pending ? "is thinking…" : "was delegated")
+                    </div>
+                    <div class="delegation-text">@log.Content</div>
+                </div>
+            </div>
+        }
+        else if (log.Action == LogActions.Tool)
+        {
+            <div class="tool-entry">
+                <div class="tool-head">
+                    <span>⚙</span>
+                    <span class="tool-name">@(log.ToolName ?? "tool")</span>
+                    <span class="tool-agent">@log.AgentName</span>
+                </div>
+                <pre class="tool-args">@log.Content</pre>
+            </div>
+        }
+        else if (log.Action == LogActions.ToolResult)
+        {
+            var failed = log.Content.StartsWith("ERROR:", StringComparison.Ordinal);
+            <div class="tool-entry">
+                <div class="tool-head">
+                    <span class="dot @(failed ? "bad" : "ok")"></span>
+                    <span class="tool-name">@(log.ToolName ?? "tool")</span>
+                    <span class="tool-agent">@(failed ? "refused / failed" : "result")</span>
+                </div>
+                <pre class="tool-output @(failed ? "failed" : string.Empty)">@log.Content</pre>
+            </div>
+        }
+        else if (log.Action == LogActions.Result)
+        {
+            <div class="card result">
+                <div class="result-head">
+                    <span class="dot ok"></span>
+                    <span>@log.AgentName</span>
+                    <span class="role-tag">worker result</span>
+                </div>
+                <pre class="prose">@log.Content</pre>
+            </div>
+        }
+        else if (log.Action == LogActions.Error)
+        {
+            <div class="error-line">
+                <span>⚠</span>
+                <span>@log.Content</span>
+            </div>
+        }
+        else
+        {
+            <div class="delegation">
+                <span class="dot"></span>
+                <div>
+                    <div class="delegation-head">[@log.AgentName]</div>
+                    <div class="delegation-text">@log.Content</div>
+                </div>
+            </div>
+        }
+    }
+
+    @if (IsRunning && Logs.Count > 0)
+    {
+        <div class="typing">
+            <span class="pulse-dots"><i></i><i></i><i></i></span>
+            <span>orchestrating…</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(FinalOutput))
+    {
+        <div class="final-card">
+            <div class="final-head">
+                <span class="dot ok"></span>
+                <span>Final answer · @CeoName</span>
+            </div>
+            <pre class="prose">@FinalOutput</pre>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly string[] Suggestions =
+    {
+        "Create a small Python script in the workspace that prints a fibonacci table, then run it",
+        "Inspect the workspace, list the files, and summarise what this project does",
+        "Write a README.md for this workspace and verify it exists"
+    };
+
+    [Parameter]
+    public IReadOnlyList<TaskLog> Logs { get; set; } = Array.Empty<TaskLog>();
+
+    [Parameter]
+    public string? Prompt { get; set; }
+
+    [Parameter]
+    public string? FinalOutput { get; set; }
+
+    [Parameter]
+    public bool IsRunning { get; set; }
+
+    [Parameter]
+    public string CeoName { get; set; } = "the CEO";
+
+    [Parameter]
+    public EventCallback<string> OnSuggestion { get; set; }
+
+    private bool IsPending(int index, string agentName)
+    {
+        if (!IsRunning)
+        {
+            return false;
+        }
+
+        for (var i = index + 1; i < Logs.Count; i++)
+        {
+            var log = Logs[i];
+            if (string.Equals(log.AgentName, agentName, StringComparison.Ordinal)
+                && (log.Action == LogActions.Result || log.Action == LogActions.Error))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

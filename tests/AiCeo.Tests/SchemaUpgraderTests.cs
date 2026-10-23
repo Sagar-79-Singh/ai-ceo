@@ -49,6 +49,49 @@ public class SchemaUpgraderTests
     }
 
     [Fact]
+    public async Task Adds_the_v1_0_3_columns_and_the_workspace_table()
+    {
+        await using var legacy = await LegacyDatabase.CreateAsync();
+
+        // A legacy database also has a TaskLogs table without ToolName.
+        await using (var createLogs = legacy.Connection.CreateCommand())
+        {
+            createLogs.CommandText = """
+                CREATE TABLE "TaskLogs" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_TaskLogs" PRIMARY KEY,
+                    "TaskId" TEXT NOT NULL,
+                    "AgentName" TEXT NOT NULL,
+                    "Action" TEXT NOT NULL,
+                    "Content" TEXT NOT NULL,
+                    "CreatedAt" TEXT NOT NULL
+                );
+                """;
+            await createLogs.ExecuteNonQueryAsync();
+        }
+
+        Assert.False(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "WorkspaceSettings"));
+
+        await SchemaUpgrader.UpgradeAsync(legacy.Db, NullLogger.Instance);
+
+        var agentColumns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "Agents");
+        Assert.Contains("CanUseTools", agentColumns);
+
+        var logColumns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "TaskLogs");
+        Assert.Contains("ToolName", logColumns);
+
+        Assert.True(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "WorkspaceSettings"));
+
+        // The new table is usable straight after the upgrade.
+        legacy.Db.WorkspaceSettings.Add(new WorkspaceSettings { RootPath = "C:\\work" });
+        await legacy.Db.SaveChangesAsync();
+
+        var stored = await legacy.Db.WorkspaceSettings.AsNoTracking().SingleAsync();
+        Assert.Equal(WorkspaceSettings.SingletonId, stored.Id);
+        Assert.Equal("C:\\work", stored.RootPath);
+        Assert.True(stored.ToolsEnabled);
+    }
+
+    [Fact]
     public async Task Is_idempotent()
     {
         await using var legacy = await LegacyDatabase.CreateAsync();
@@ -59,7 +102,7 @@ public class SchemaUpgraderTests
 
         var columns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "Agents");
         Assert.Single(columns, column => column.Equals("Provider", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(9, columns.Count); // 6 legacy columns + Provider, BaseUrl, ApiKey
+        Assert.Equal(10, columns.Count); // 6 legacy columns + Provider, BaseUrl, ApiKey, CanUseTools
     }
 
     [Fact]

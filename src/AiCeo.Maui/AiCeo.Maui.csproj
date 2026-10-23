@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <!-- Windows-only desktop app: .NET MAUI Blazor Hybrid, rendered in a native window. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>AiCeo.Maui</RootNamespace>
+    <AssemblyName>AiCeo.Maui</AssemblyName>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+
+    <ApplicationTitle>AI CEO Orchestrator</ApplicationTitle>
+    <ApplicationId>com.aiceo.orchestrator</ApplicationId>
+    <ApplicationDisplayVersion>1.0.3</ApplicationDisplayVersion>
+    <ApplicationVersion>3</ApplicationVersion>
+
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+
+    <!-- Windows handles its own theme; the Blazor UI is dark by design. -->
+    <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)' == ''">true</WindowsAppSDKSelfContained>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
+
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <MauiVersion Condition="'$(MauiVersion)' == ''">10.0.0</MauiVersion>
+  </PropertyGroup>
+
+  <!-- MSIX packaging metadata (only used when WindowsPackageType=MSIX). -->
+  <PropertyGroup Condition="'$(WindowsPackageType)' == 'MSIX'">
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <AppxAutoIncrementPackageRevision>false</AppxAutoIncrementPackageRevision>
+    <AppxBundle>never</AppxBundle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- $(MauiVersion) comes from the installed MAUI workload; the fallback keeps restore working. -->
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiCeo.Core\AiCeo.Core.csproj" />
+  </ItemGroup>
+
+  <!-- The Blazor host page and assets ship as MauiAssets so they are inside the app package. -->
+  <ItemGroup>
+    <MauiAsset Include="wwwroot\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+
+    <MauiIcon Include="Resources\AppIcon\appicon.png" Color="#080B11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="wwwroot\**" />
+  </ItemGroup>
+
+</Project>
