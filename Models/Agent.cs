@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using AiCeo.Options;
 
 namespace AiCeo.Models;
 
@@ -20,9 +19,27 @@ public class Agent
     [Required]
     public string SystemPrompt { get; set; } = string.Empty;
 
-    /// <summary>OmniRoute model id, e.g. <c>gh/gpt-5.4-nano</c>.</summary>
+    /// <summary>Model id understood by the selected provider, e.g. <c>gh/gpt-5.4-nano</c>.</summary>
     [Required, MaxLength(200)]
-    public string ModelId { get; set; } = OmniRouteOptions.DefaultModel;
+    public string ModelId { get; set; } = LlmProviderCatalog.OmniRouteDefaultModel;
+
+    /// <summary>Which OpenAI-compatible backend this agent talks to.</summary>
+    [MaxLength(32)]
+    public LlmProvider Provider { get; set; } = LlmProvider.OmniRoute;
+
+    /// <summary>
+    /// Optional override of the provider's base URL. Empty means "use the provider default"
+    /// (for <see cref="LlmProvider.Custom"/> it is required).
+    /// </summary>
+    [MaxLength(500)]
+    public string? BaseUrl { get; set; }
+
+    /// <summary>
+    /// Optional per-agent API key, stored in the local SQLite file. When empty the provider's
+    /// environment variable is used instead. Never returned to the browser in clear text.
+    /// </summary>
+    [MaxLength(500)]
+    public string? ApiKey { get; set; }
 
     public bool IsManager { get; set; }
 }
