@@ -44,7 +44,17 @@ public partial class App : Application
                 desktop.MainWindow = window;
 
                 // Loading agents/workspace touches SQLite, so it runs after the window exists.
-                window.Opened += async (_, _) => await viewModel.InitializeAsync();
+                window.Opened += async (_, _) =>
+                {
+                    await viewModel.InitializeAsync();
+
+                    if (Program.SmokeTestMode)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(1.5));
+                        Console.WriteLine($"UI SMOKE: window '{window.Title}' rendered, {viewModel.Agents.Count} agents loaded");
+                        window.Close();
+                    }
+                };
             }
             catch (Exception exception)
             {

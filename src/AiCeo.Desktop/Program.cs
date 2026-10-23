@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 
 namespace AiCeo.Desktop;
 
@@ -14,6 +15,9 @@ namespace AiCeo.Desktop;
 internal static class Program
 {
     internal const string CrashLogFileName = "crash.log";
+
+    /// <summary>When true the app closes itself right after the main window is shown.</summary>
+    internal static bool SmokeTestMode { get; private set; }
 
     [STAThread]
     public static int Main(string[] args)
@@ -34,6 +38,25 @@ internal static class Program
             if (args.Any(argument => string.Equals(argument, "--self-test", StringComparison.OrdinalIgnoreCase)))
             {
                 return SelfTest.Run();
+            }
+
+            // UI smoke test used by CI: builds the real window (XAML + DI + database) on a virtual
+            // display, closes it after a couple of seconds and exits 0.
+            SmokeTestMode = args.Any(argument => string.Equals(argument, "--smoke-ui", StringComparison.OrdinalIgnoreCase));
+
+            if (SmokeTestMode)
+            {
+                var lifetime = new ClassicDesktopStyleApplicationLifetime
+                {
+                    ShutdownMode = ShutdownMode.OnMainWindowClose
+                };
+
+                BuildAvaloniaApp().SetupWithLifetime(lifetime);
+
+                lifetime.Start(args);
+
+                Console.WriteLine("UI SMOKE OK");
+                return 0;
             }
 
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
