@@ -135,14 +135,23 @@ jobs:
       - name: Verify the app executable
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path ./artifacts/portable -Filter "AiCeo.Maui.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          $files = Get-ChildItem -Path ./artifacts/portable -Recurse -File -ErrorAction SilentlyContinue
+          Write-Host "publish output: $($files.Count) files"
+          Write-Host "top level: $((Get-ChildItem ./artifacts/portable | Select-Object -First 25 -ExpandProperty Name) -join ', ')"
+
+          $exe = $files | Where-Object { $_.Extension -eq ".exe" -and $_.BaseName -like "AiCeo*" } | Select-Object -First 1
           if (-not $exe) {
-            Write-Host "::error title=missing-exe::the publish output has no AiCeo.Maui.exe"
-            Get-ChildItem ./artifacts/portable | Select-Object Name
+            $exes = ($files | Where-Object { $_.Extension -eq ".exe" } | Select-Object -First 20 -ExpandProperty Name) -join ", "
+            Write-Host "::error title=missing-exe::no AiCeo*.exe in the publish output (exes: $exes)"
             exit 1
           }
           Write-Host "app: $($exe.FullName) ($([Math]::Round($exe.Length / 1MB, 1)) MB)"
-          Write-Host "files: $((Get-ChildItem ./artifacts/portable -Recurse -File).Count)"
+
+          # The installer script expects exactly this name.
+          if ($exe.Name -ne "AiCeo.Maui.exe") {
+            Copy-Item $exe.FullName (Join-Path $exe.Directory "AiCeo.Maui.exe") -Force
+            Write-Host "normalised the app host name to AiCeo.Maui.exe"
+          }
 
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
