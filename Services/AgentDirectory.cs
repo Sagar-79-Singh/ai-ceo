@@ -2,6 +2,7 @@ using AiCeo.Data;
 using AiCeo.Models;
 using AiCeo.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AiCeo.Services;
 
@@ -9,22 +10,43 @@ namespace AiCeo.Services;
 public sealed class AgentDirectory
 {
     private readonly AppDbContext _db;
+    private readonly OmniRouteOptions _options;
 
-    public AgentDirectory(AppDbContext db)
+    public AgentDirectory(AppDbContext db, IOptions<OmniRouteOptions> options)
     {
         _db = db;
+        _options = options.Value;
     }
 
+    /// <summary>Entities (with their keys) — for the orchestrator and health probes only.</summary>
     public Task<List<Agent>> ListAsync(CancellationToken cancellationToken = default)
         => _db.Agents.AsNoTracking()
             .OrderByDescending(agent => agent.IsManager)
             .ThenBy(agent => agent.Name)
             .ToListAsync(cancellationToken);
 
+    /// <summary>Redacted read model — safe to hand to the UI or the REST API.</summary>
+    public async Task<List<AgentView>> ListViewsAsync(CancellationToken cancellationToken = default)
+        => (await ListAsync(cancellationToken)).Select(ToView).ToList();
+
+    public Task<Agent?> FindAsync(Guid id, CancellationToken cancellationToken = default)
+        => _db.Agents.AsNoTracking().FirstOrDefaultAsync(agent => agent.Id == id, cancellationToken);
+
     public Task<Agent?> GetManagerAsync(CancellationToken cancellationToken = default)
         => _db.Agents.AsNoTracking()
             .OrderBy(agent => agent.Name)
             .FirstOrDefaultAsync(agent => agent.IsManager, cancellationToken);
+
+    public AgentView ToView(Agent agent)
+    {
+        var baseUrl = LlmConnections.ResolveBaseUrl(agent.Provider, agent.BaseUrl, _options);
+        var (apiKey, source) = LlmConnections.ResolveApiKey(agent.Provider, agent.ApiKey, _options);
+
+        // Only mask keys the user actually stored; shared/fallback keys are reported as a source.
+        var mask = !string.IsNullOrWhiteSpace(agent.ApiKey) ? LlmConnections.MaskKey(agent.ApiKey) : null;
+
+        return AgentView.From(agent, baseUrl, mask, source);
+    }
 
     public async Task<Agent> CreateAsync(AgentFormModel form, CancellationToken cancellationToken = default)
     {
@@ -36,7 +58,10 @@ public sealed class AgentDirectory
             Name = form.Name.Trim(),
             Role = form.Role.Trim(),
             SystemPrompt = form.SystemPrompt.Trim(),
-            ModelId = NormalizeModel(form.ModelId),
+            Provider = form.Provider,
+            BaseUrl = LlmConnections.NormalizeOptionalBaseUrl(form.Provider, form.BaseUrl),
+            ApiKey = string.IsNullOrWhiteSpace(form.ApiKey) ? null : form.ApiKey.Trim(),
+            ModelId = NormalizeModel(form.Provider, form.ModelId),
             // The first agent ever created becomes the CEO so the app is never headless.
             IsManager = !await _db.Agents.AnyAsync(cancellationToken)
         };
@@ -59,7 +84,20 @@ public sealed class AgentDirectory
         agent.Name = form.Name.Trim();
         agent.Role = form.Role.Trim();
         agent.SystemPrompt = form.SystemPrompt.Trim();
-        agent.ModelId = NormalizeModel(form.ModelId);
+        agent.Provider = form.Provider;
+        agent.BaseUrl = LlmConnections.NormalizeOptionalBaseUrl(form.Provider, form.BaseUrl);
+        agent.ModelId = NormalizeModel(form.Provider, form.ModelId);
+
+        // Blank key means "unchanged"; an explicit clear removes it. The secret itself is never
+        // round-tripped through the browser.
+        if (!string.IsNullOrWhiteSpace(form.ApiKey))
+        {
+            agent.ApiKey = form.ApiKey.Trim();
+        }
+        else if (form.ClearApiKey)
+        {
+            agent.ApiKey = null;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
         return agent;
@@ -126,8 +164,17 @@ public sealed class AgentDirectory
         {
             throw new ArgumentException("System prompt is required.");
         }
+
+        if (!Enum.IsDefined(form.Provider))
+        {
+            throw new ArgumentException($"Unknown provider '{form.Provider}'.");
+        }
+
+        LlmConnections.ValidateForSave(form.Provider, form.BaseUrl);
     }
 
-    private static string NormalizeModel(string? modelId)
-        => string.IsNullOrWhiteSpace(modelId) ? OmniRouteOptions.DefaultModel : modelId.Trim();
+    private static string NormalizeModel(LlmProvider provider, string? modelId)
+        => string.IsNullOrWhiteSpace(modelId)
+            ? LlmProviderCatalog.DefaultModelFor(provider)
+            : modelId.Trim();
 }

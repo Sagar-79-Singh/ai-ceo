@@ -1,94 +1,90 @@
-# AI CEO Orchestrator
+# AI CEO Orchestrator · v1.0.2
 
-A Star-topology AI orchestrator: **you talk only to the CEO agent**, the CEO plans and delegates
-sequentially to worker agents, workers report only to the CEO, and the CEO writes the answer you
-read. Built as a single ASP.NET Core Web App (Blazor Server) on **.NET 10** with
-**Entity Framework Core + SQLite** and the official **`OpenAI` .NET client** pointed at a local
-**OmniRoute** gateway.
+A Star-topology AI orchestrator in a single ASP.NET Core app (.NET 10, Blazor Server):
+**you talk only to the CEO**, the CEO plans and delegates **sequentially** to worker agents,
+workers report only to the CEO, and the CEO writes the answer you read.
 
-> The brief asked for .NET 10, so `net10.0` is the target (the architecture doc's ".NET 8" line is
-> superseded by the build request). Everything else follows `docs/PRD.md`, `docs/ARCHITECTURE.md`,
-> `docs/RULES.md` and `docs/UI_SPEC.md`.
+Every agent carries its own provider: **OmniRoute**, **OpenAI**, **Gemini**, or any **Custom**
+OpenAI-compatible base URL (Ollama, vLLM, Azure proxy…). One `OpenAI` .NET client drives all four.
 
 ---
 
-## Rules this implementation enforces
+## Star topology (enforced, not just documented)
 
-| Rule | Where |
+```
+User ──► CEO ──► Worker A ──► CEO ──► Worker B ──► CEO ──► User
+```
+
+| Rule | Implementation |
 | --- | --- |
-| User ↔ CEO only | `Services/AgentOrchestrator.cs` (the only entry point is the CEO) |
-| CEO plans, workers execute, CE0 synthesizes | `BuildPlanAsync` → `foreach` delegations → `SynthesizeAsync` |
-| Strictly sequential workers (no `Task.WhenAll`, no `Parallel`) | plain `foreach` in `RunAsync` |
-| Strict JSON parsing with graceful failure | `Services/TaskPlanParser.cs` + fallback plan |
-| No agent framework / no Python / no Node | custom C# orchestrator only |
-| All LLM calls via OmniRoute | `Services/OmniRouteChatService.cs` |
-| EF Core + SQLite, code-first | `Data/AppDbContext.cs`, `Data/DbSeeder.cs` |
+| Only the CEO sees the user prompt | `AgentOrchestrator.RunAsync` is the only entry point |
+| CEO plans, workers execute, CEO synthesizes | `BuildPlanAsync` → `foreach` delegations → `SynthesizeAsync` |
+| Strictly sequential — no parallel workers | a plain `foreach` (no `Task.WhenAll`, no `Parallel.ForEachAsync`); a test asserts max concurrency is 1 |
+| Workers never talk to each other | each worker gets only its own persona + its own assignment (+ read-only prior *results*) |
+| Workers cannot spawn tasks | workers have no orchestration tools; the loop is the only scheduler |
+| Plans are parsed strictly | `System.Text.Json` in `TaskPlanParser`, fenced/prose tolerant, graceful fallback |
+| No Python / Node / LangChain | 100% C#, no external agent framework |
 
-### The one LLM entry point
+## Multi-provider support (v1.0.2)
+
+| Provider | Base URL | Key source | Default model |
+| --- | --- | --- | --- |
+| **OmniRoute** | `http://localhost:20128/v1` | `OMNIROUTE_KEY` → `OmniRoute:ApiKey` → local fallback | `gh/gpt-5.4-nano` |
+| **OpenAI** | `https://api.openai.com/v1` | agent key → `OPENAI_API_KEY` | `gpt-4o-mini` |
+| **Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai` | agent key → `GEMINI_API_KEY` | `gemini-2.5-flash` |
+| **Custom** | user supplied (required) | agent key → `CUSTOM_API_KEY` (optional) | user supplied |
+
+Provider defaults live in `Models/LlmProvider.cs` (`LlmProviderCatalog`), so the UI, the API and
+the resolver never disagree. All calls go through `LlmGateway` (`Services/LlmGateway.cs`), which
+builds an `OpenAIClient` per `(baseUrl, key)` pair:
 
 ```csharp
-var client = new OpenAIClient(
-    new ApiKeyCredential(Environment.GetEnvironmentVariable("OMNIROUTE_KEY")
-        ?? "sk-48f9a7b2051199e0-64bc90-6a0ec9ee"),
-    new OpenAIClientOptions() { Endpoint = new Uri("http://localhost:20128/v1") }
+new OpenAIClient(
+    new ApiKeyCredential(apiKey),
+    new OpenAIClientOptions { Endpoint = new Uri(baseUrl) }
 );
 ```
 
-`OmniRouteChatService` builds exactly this client (endpoint/key overridable through
-`OmniRoute:Endpoint`, `OmniRoute:ApiKey` or `OMNIROUTE_KEY`) and calls
-`GetChatClient(modelId).CompleteChatAsync(...)`. No other code talks to an LLM.
+**API keys never reach the browser.** `GET /api/agents` returns an `AgentView` with a mask
+(`sk-1…cdef`) and the key *source*; saving with a blank key keeps the stored secret.
 
----
+## Database (EF Core + SQLite)
 
-## Run it
-
-```bash
-# 1. Start OmniRoute on http://localhost:20128/v1
-# 2. Then:
-dotnet run
+```
+Agents     Id, Name, Role, SystemPrompt, ModelId, Provider, BaseUrl, ApiKey, IsManager
+Tasks      Id, UserPrompt, CeoPlan (JSON), FinalOutput, CreatedAt
+TaskLogs   Id, TaskId, AgentName, Action (plan|delegated|result|error), Content, CreatedAt
 ```
 
-The app listens on <http://localhost:5088> (override with `ASPNETCORE_URLS`).
-On first start it creates the SQLite database and seeds a CEO (**Atlas**) plus three workers
-(**Scout** researcher, **Vector** analyst, **Quill** writer).
+`Provider` is stored as text (`OmniRoute`, `OpenAI`, `Gemini`, `Custom`) so the SQLite file stays
+readable. A database created by v1.0.x is upgraded in place on first start —
+`Data/SchemaUpgrader.cs` adds the three new columns with `ALTER TABLE` and keeps your agents.
 
-### Configuration
+## UI (Blazor Server, dark)
 
-| Setting | Default | Notes |
-| --- | --- | --- |
-| `OmniRoute:Endpoint` | `http://localhost:20128/v1` | OmniRoute gateway base URL |
-| `OMNIROUTE_KEY` (env) | `OmniRoute:ApiKey` → built-in local key | Win over everything else |
-| `OmniRoute:ModelId` | `gh/gpt-5.4-nano` | Default in the "Create agent" modal |
-| `OmniRoute:TimeoutSeconds` | `300` | Per-call ceiling |
-| `OmniRoute:MaxOutputTokens` | `0` (gateway default) | Optional cap |
-| `AICEO_DB_PATH` (env) / `Database:Path` | `%LOCALAPPDATA%\AiCeoOrchestrator\aiceo.db` | SQLite file |
+- **Sidebar (25%)** — agents with a **CEO** badge, a provider badge, model id and key status.
+  `＋ Create agent` opens a modal with **Name**, **Role**, **System Prompt**, **Provider**
+  dropdown (OpenAI / OmniRoute / Gemini / Custom), **Base URL**, **API Key** and **Model ID**.
+  Switching provider swaps in that provider's default URL and model without clobbering your edits.
+- **Main feed (75%)** — your prompt, the CEO's plan, `[Researcher] is thinking…` delegations,
+  each worker result, errors, then the final synthesized answer.
+- Provider health badge in the sidebar probes the CEO's endpoint server-side.
 
-User data lives outside the install folder on purpose: the published release is a single `.exe`
-that may sit in a read-only directory.
-
-### UI (Blazor Server, dark by default)
-
-- **Sidebar (25%)** — agent list (name, role, `CEO` badge, model), `＋ New` modal with
-  Name / Role / System Prompt / Model ID, edit, delete-with-inline-confirm, and "make CEO".
-- **Main feed (75%)** — chat-style: your prompt, the CEO's plan, `[Researcher] is thinking…`
-  delegations, worker results, errors, and the final CEO answer.
-- Live streaming of every step through an orchestrator callback; `Ctrl`+`Enter` sends,
-  **Stop** cancels a run.
-
-### REST API
+## REST API
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | OmniRoute reachability |
-| `GET` | `/api/agents` | list agents |
+| `GET` | `/api/providers` | provider catalogue (defaults, env vars) |
+| `GET` | `/api/health` | health of the CEO's provider |
+| `GET` | `/api/agents` | agents (keys masked) |
 | `POST` | `/api/agents` | create agent |
-| `PUT` | `/api/agents/{id}` | update agent |
+| `PUT` | `/api/agents/{id}` | update agent (blank key keeps the stored one) |
 | `DELETE` | `/api/agents/{id}` | delete agent |
 | `POST` | `/api/agents/{id}/manager` | promote to CEO |
-| `GET` | `/api/tasks` | last 25 runs |
-| `GET` | `/api/tasks/{id}` | one run + logs |
+| `GET` | `/api/agents/{id}/health` | probe one agent's provider |
+| `GET` | `/api/tasks` · `/api/tasks/{id}` | recent runs / one run with logs |
 | `POST` | `/api/task` | run the CEO: `{ "prompt": "..." }` |
-| `GET` | `/api/diagnostics` | version, content root, database path, embedded assets |
+| `GET` | `/api/diagnostics` | paths, version, embedded assets |
 
 ```bash
 curl -X POST http://localhost:5088/api/task \
@@ -98,86 +94,67 @@ curl -X POST http://localhost:5088/api/task \
 
 ---
 
-## Database
-
-Code-first EF Core. The schema mirrors `docs/ARCHITECTURE.md`; the run entity is named
-`TaskItem` (table **`Tasks`**) only to avoid colliding with `System.Threading.Tasks.Task`.
-
-```
-Tasks        Id, UserPrompt, CeoPlan (JSON), FinalOutput, CreatedAt
-TaskLogs     Id, TaskId, AgentName, Action (plan|delegated|result|error), Content, CreatedAt
-Agents       Id, Name, Role, SystemPrompt, ModelId, IsManager
-```
-
-The database is created automatically at startup. To use migrations instead:
+## Run locally
 
 ```bash
-dotnet ef migrations add InitialCreate
-dotnet ef database update
+dotnet run
+# → http://localhost:5088
 ```
 
-`DbSeeder` runs `Migrate()` when migrations exist and `EnsureCreated()` otherwise.
+First start creates the SQLite file and seeds a CEO (**Atlas**) plus **Scout** (researcher),
+**Vector** (analyst) and **Quill** (writer), all on OmniRoute. Edit any of them to switch provider.
 
----
+| Setting | Default |
+| --- | --- |
+| `OmniRoute:Endpoint` | `http://localhost:20128/v1` |
+| `OmniRoute:TimeoutSeconds` | `300` |
+| `OmniRoute:MaxOutputTokens` | `0` (provider default) |
+| `AICEO_DB_PATH` | `%LOCALAPPDATA%\AiCeoOrchestrator\aiceo.db` |
+| `ASPNETCORE_URLS` | `http://localhost:5088` |
+| `AICEO_NO_BROWSER` | unset (auto-opens the browser on Windows) |
 
-## Publish a Windows executable
+## Tests
 
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained true \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
+dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj
 ```
 
-The working directory gets `publish/AiCeo.exe`. Double-click it (or run it) and browse to
-<http://localhost:5088>. No .NET runtime, no sibling files, no `wwwroot` folder needed.
+Covers: plan parsing (prose/fences/garbage/caps), provider defaults and key precedence, key
+masking, the sequential topology (max 1 concurrent call, ordering plan → workers → synthesis,
+worker isolation), worker failure isolation, the JSON fallback path, agent CRUD keep/clear key
+semantics, and the v1.0.x → v1.0.2 schema upgrade.
 
-### A truly standalone `.exe`
+## Releases (7 platforms, tag `v1.0.2`)
 
-`PublishSingleFile` normally leaves `wwwroot/` (holding `_framework/blazor.web.js`) next to the
-exe. The build therefore embeds the Blazor client script into the assembly
-(`FrameworkAssetStore` + the `_BlazorClientScript` items in `AiCeo.csproj`) and serves
-`/_framework/*` from that copy whenever the on-disk file is missing. Result: `AiCeo.exe` can be
-copied anywhere and still boots the UI. `AI CEO` also opens your default browser on Windows the
-first time it starts (disable with `AICEO_NO_BROWSER=1`).
+`.github/workflows/release.yml` runs on every push to `main` (and on `v*` tags / manual dispatch):
 
-### GitHub Releases
+1. **Matrix build** — `win-x64`, `win-x86`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`,
+   `osx-arm64`, each with:
+   ```bash
+   dotnet publish -c Release -r <RID> --self-contained true \
+     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+   ```
+2. Each binary is renamed `AiCeo-<RID>[.exe]`, marked executable on Unix, checksummed and
+   uploaded as an artifact.
+3. A single **release job** downloads all seven, asserts none is missing, writes `SHA256SUMS.txt`
+   and publishes the GitHub Release **tagged `v1.0.2`** with every binary attached.
 
-`.github/workflows/release.yml` runs on **push to `main`** or on a **`v*` tag** (and manually via
-`workflow_dispatch`):
-
-1. `windows-latest`, installs the .NET 10 SDK,
-2. restores + builds,
-3. runs the exact publish command above,
-4. verifies `./publish/AiCeo.exe` exists,
-5. creates a GitHub Release with `softprops/action-gh-release@v2` and uploads `AiCeo.exe`.
-
-Main pushes get an automatic tag `v1.0.<run number>`; pushing a tag like `v1.2.0` releases that tag.
-
-`.github/workflows/ci.yml` builds every branch/PR, publishes the single-file build, boots it,
-and asserts the landing page, `_framework/blazor.web.js` and `/api/agents` all answer — first in
-place and then with the binary copied alone into a foreign working directory. A second job runs
-the release publish command on `windows-latest` and checks `AiCeo.exe` is produced.
-
----
+`.github/workflows/ci.yml` runs the unit tests, boots the published single-file binary twice
+(in place, and copied alone into a foreign directory), verifies `/api/providers` and that no key
+leaks through `/api/agents`, upgrades a real v1.0.x SQLite database, and dry-runs the publish for
+all seven RIDs so a broken platform shows up before a release, not during one.
 
 ## Project layout
 
 ```
 AiCeo.csproj                     .NET 10 web SDK, EF Core SQLite, OpenAI
 Program.cs                       host, DI, DB bootstrap, Blazor + REST endpoints
-Data/                            AppDbContext, seeder, SQLite path resolution, EF design-time factory
-Models/                          Agent, TaskItem, TaskLog, PlanStep, log actions, form models
-Options/OmniRouteOptions.cs      gateway endpoint/key/model + defaults from RULES.md
-Services/                        OmniRoute client, orchestrator, plan parser, agent CRUD
-Components/App.razor             HTML shell + dark theme CSS + blazor.web.js
-Components/Pages/Home.razor      sidebar + execution feed + composer
-Components/Shared/               AgentEditor modal, ExecutionFeed renderer
-.github/workflows/               release.yml (Windows .exe release), ci.yml (build + smoke test)
+Data/                            AppDbContext, seeder, SchemaUpgrader, paths, design-time factory
+Models/                          Agent, AgentView, LlmProvider(+catalog), TaskItem, TaskLog, PlanStep
+Options/OmniRouteOptions.cs      gateway endpoint/key/timeouts
+Services/                        LlmGateway, LlmConnections, AgentOrchestrator, TaskPlanParser,
+                                 AgentDirectory, AgentHealthService, FrameworkAssetStore
+Components/                      dark shell (App.razor), Home.razor, AgentEditor, ExecutionFeed
+tests/AiCeo.Tests/               xunit suite (topology, providers, parsing, migration)
+.github/workflows/               release.yml (7-RID matrix → v1.0.2), ci.yml
 ```
-
-## Notes
-
-- All LLM traffic goes to the local gateway; the fallback key is the one specified in
-  `docs/RULES.md` and is only meaningful for that local gateway.
-- The UI holds no conversation state across runs: each run persists a `Tasks` row plus an
-  ordered `TaskLogs` trail, so the feed is fully reproducible from the database.
-- There is no telemetry, no background worker, and no external service beyond OmniRoute.

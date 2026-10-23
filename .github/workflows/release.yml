@@ -1,7 +1,7 @@
-name: Release (Windows x64)
+name: Release v1.0.2
 
-# Publishes a self-contained, single-file Windows executable and attaches it to a GitHub Release.
-# Triggers on a push to main (automatic v1.0.<run> tag) or on an explicit version tag (v1.2.3).
+# Builds the orchestrator for every supported runtime identifier and publishes one GitHub
+# Release (tag v1.0.2) carrying all seven self-contained single-file binaries.
 on:
   push:
     branches:
@@ -11,8 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag (e.g. v1.0.0). Leave empty to auto-generate v1.0.<run number>."
-        required: false
+        description: "Release tag to create/update"
+        required: true
+        default: "v1.0.2"
         type: string
 
 permissions:
@@ -22,10 +23,32 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  RELEASE_TAG: v1.0.2
+  DOTNET_VERSION: "10.0.x"
+
 jobs:
-  release:
-    name: Build and release .exe
-    runs-on: windows-latest
+  build:
+    name: Publish ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: win-x86
+            os: windows-latest
+          - rid: win-arm64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: linux-arm64
+            os: ubuntu-latest
+          - rid: osx-x64
+            os: macos-latest
+          - rid: osx-arm64
+            os: macos-latest
 
     steps:
       - name: Checkout
@@ -34,80 +57,173 @@ jobs:
       - name: Install .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
-
-      - name: Show SDK info
-        run: dotnet --info
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
         run: dotnet restore AiCeo.csproj
 
-      - name: Build
-        run: dotnet build AiCeo.csproj -c Release --no-restore
+      - name: Publish ${{ matrix.rid }}
+        run: >-
+          dotnet publish -c Release -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o ./publish
 
-      # This is the exact publish command required by the project brief.
-      - name: Publish self-contained single-file executable
-        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ./publish
-
-      - name: Verify the executable exists
-        shell: pwsh
+      - name: Package asset
+        shell: bash
         run: |
-          Write-Host "Publish output:"
-          Get-ChildItem -Path ./publish | Select-Object Name, Length | Format-Table -AutoSize
+          set -euo pipefail
+          mkdir -p dist
 
-          $exe = Join-Path $PWD "publish/AiCeo.exe"
-          if (-not (Test-Path -LiteralPath $exe)) {
-            throw "Expected executable was not produced at $exe"
-          }
+          SRC=""
+          for candidate in publish/AiCeo.exe publish/AiCeo; do
+            if [ -f "$candidate" ]; then SRC="$candidate"; break; fi
+          done
 
-          $sizeMb = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 2)
-          Write-Host "Found AiCeo.exe ($sizeMb MB)"
+          if [ -z "$SRC" ]; then
+            echo "::error::No AiCeo binary was produced for ${{ matrix.rid }}"
+            ls -la publish || true
+            exit 1
+          fi
+
+          EXT=""
+          case "$SRC" in
+            *.exe) EXT=".exe" ;;
+          esac
+
+          TARGET="dist/AiCeo-${{ matrix.rid }}${EXT}"
+          cp "$SRC" "$TARGET"
+
+          if [ -z "$EXT" ]; then
+            chmod +x "$TARGET"
+          fi
+
+          # Checksum next to each binary so users can verify the download.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$TARGET" | sed 's#dist/##' > "$TARGET.sha256"
+          else
+            shasum -a 256 "$TARGET" | sed 's#dist/##' > "$TARGET.sha256"
+          fi
+
+          ls -la dist
+          cat "$TARGET.sha256"
+
+      - name: Upload ${{ matrix.rid }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiceo-${{ matrix.rid }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download every platform artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify all seven binaries are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la dist
+          missing=""
+          for rid in win-x64 win-x86 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64; do
+            if [ ! -f "dist/AiCeo-$rid" ] && [ ! -f "dist/AiCeo-$rid.exe" ]; then
+              missing="$missing $rid"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing release assets for:$missing"
+            exit 1
+          fi
+          echo "All seven binaries present."
+
+      - name: Write combined checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum AiCeo-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Resolve release tag
         id: meta
-        shell: pwsh
+        shell: bash
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.tag_name }}" -ne "") {
-            $tag = "${{ inputs.tag_name }}"
-          }
-          elseif ($env:GITHUB_REF_TYPE -eq "tag") {
-            $tag = $env:GITHUB_REF_NAME
-          }
-          else {
-            $tag = "v1.0.$env:GITHUB_RUN_NUMBER"
-          }
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag_name }}" ]; then
+            TAG="${{ inputs.tag_name }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${RELEASE_TAG}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing as $TAG"
 
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          Write-Host "Release tag: $tag"
-
-      - name: Create GitHub Release and upload the .exe
+      - name: Create GitHub Release with all binaries
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: AI CEO Orchestrator ${{ steps.meta.outputs.tag }}
-          body: |
-            ## AI CEO Orchestrator ${{ steps.meta.outputs.tag }}
-
-            A Star-topology AI orchestrator built with ASP.NET Core (Blazor Server, .NET 10),
-            Entity Framework Core + SQLite, and the official `OpenAI` .NET client pointed at a
-            local OmniRoute gateway (`http://localhost:20128/v1`).
-
-            ### Download
-            - `AiCeo.exe` — self-contained Windows x64 single-file build. No .NET runtime install required.
-
-            ### Run
-            1. Start your OmniRoute gateway on `http://localhost:20128/v1`.
-            2. Double-click `AiCeo.exe` (it opens your browser automatically on Windows).
-            3. Or browse to http://localhost:5088 yourself.
-
-            ### Configuration (optional)
-            - `OMNIROUTE_KEY` — API key sent to the gateway.
-            - `AICEO_DB_PATH` — SQLite file location (defaults to `%LOCALAPPDATA%\AiCeoOrchestrator\aiceo.db`).
-            - `ASPNETCORE_URLS` — override the listening address.
-
-            Build: `${{ github.sha }}`
-          files: ./publish/AiCeo.exe
-          fail_on_unmatched_files: true
           generate_release_notes: true
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
+          body: |
+            ## AI CEO Orchestrator v1.0.2
+
+            Star-topology AI orchestration in a single executable: **User → CEO → Workers → CEO → User**,
+            with strictly sequential worker execution (`foreach`, never `Task.WhenAll`/`Parallel.ForEachAsync`).
+
+            ### What's new in v1.0.2
+            - **Multi-provider agents.** Every agent stores its own `ProviderType`, `BaseUrl`, `ApiKey`
+              and `ModelId`, and the sidebar shows which provider it uses.
+              Supported: **OmniRoute** (`http://localhost:20128/v1`), **OpenAI** (`https://api.openai.com/v1`),
+              **Gemini** (`https://generativelanguage.googleapis.com/v1beta/openai`) and **Custom** (any
+              OpenAI-compatible base URL, e.g. Ollama or vLLM).
+            - **API keys never leave the machine in clear text.** The UI and `GET /api/agents` only ever see
+              a mask (`sk-1…cdef`); blank on save keeps the stored key.
+            - **In-place database upgrade** from v1.0.x (adds the three new columns, keeps your agents).
+            - New endpoints: `GET /api/providers`, `GET /api/agents/{id}/health`.
+            - Unit tests covering topology, sequencing, plan parsing, provider resolution and the migration.
+
+            ### Downloads (self-contained — no .NET runtime needed)
+            | Platform | Asset |
+            | --- | --- |
+            | Windows x64 / x86 / ARM64 | `AiCeo-win-x64.exe`, `AiCeo-win-x86.exe`, `AiCeo-win-arm64.exe` |
+            | Linux x64 / ARM64 | `AiCeo-linux-x64`, `AiCeo-linux-arm64` |
+            | macOS Intel / Apple Silicon | `AiCeo-osx-x64`, `AiCeo-osx-arm64` |
+
+            Each binary ships with a `.sha256` file; `SHA256SUMS.txt` covers all seven.
+
+            ### Run
+            ```bash
+            # Windows
+            AiCeo-win-x64.exe
+
+            # Linux / macOS
+            chmod +x AiCeo-linux-x64
+            ./AiCeo-linux-x64
+            ```
+            The app serves http://localhost:5088 and opens your browser on Windows.
+            On macOS the binaries are unsigned, so use `xattr -d com.apple.quarantine AiCeo-osx-arm64`
+            if Gatekeeper blocks the first launch.
+
+            ### Configure providers
+            - Set keys in the agent modal, or export `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OMNIROUTE_KEY`
+              (or `CUSTOM_API_KEY` for a custom server).
+            - `AICEO_DB_PATH` moves the SQLite file (default `%LOCALAPPDATA%\AiCeoOrchestrator\aiceo.db`).
+            - `ASPNETCORE_URLS` overrides the listening address; `AICEO_NO_BROWSER=1` disables auto-open.
+
+            Build: `${{ github.sha }}`
+          files: dist/*

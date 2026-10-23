@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using AiCeo.Data;
 using AiCeo.Models;
+using AiCeo.Options;
 using Microsoft.EntityFrameworkCore;
 
 namespace AiCeo.Services;
@@ -17,15 +18,27 @@ public sealed class AgentOrchestrator
     private const int MaxContextCharsPerWorker = 1500;
 
     private readonly AppDbContext _db;
-    private readonly OmniRouteChatService _llm;
+    private readonly ILlmGateway _llm;
+    private readonly OmniRouteOptions _options;
     private readonly ILogger<AgentOrchestrator> _logger;
 
-    public AgentOrchestrator(AppDbContext db, OmniRouteChatService llm, ILogger<AgentOrchestrator> logger)
+    public AgentOrchestrator(
+        AppDbContext db,
+        ILlmGateway llm,
+        IOptions<OmniRouteOptions> options,
+        ILogger<AgentOrchestrator> logger)
     {
         _db = db;
         _llm = llm;
+        _options = options.Value;
         _logger = logger;
     }
+
+    /// <summary>Stable fragment of the planning contract, used by tests to identify the plan call.</summary>
+    public const string PlanningContractMarker = "Respond with ONLY a JSON array";
+
+    /// <summary>Stable fragment of the synthesis contract.</summary>
+    public const string SynthesisContractMarker = "writing the final answer for the user";
 
     private const string PlanningContract =
         """
@@ -138,9 +151,15 @@ public sealed class AgentOrchestrator
 
                 try
                 {
+                    var connection = LlmConnections.Resolve(worker, _options);
+
                     var output = await _llm.CompleteAsync(
-                        new ChatRequest(
-                            worker.ModelId,
+                        new LlmCall(
+                            worker.Name,
+                            connection.Provider,
+                            connection.BaseUrl,
+                            connection.ApiKey,
+                            connection.ModelId,
                             ComposeWorkerSystemPrompt(worker),
                             ComposeWorkerPrompt(prompt, step, results)),
                         cancellationToken);
@@ -201,8 +220,17 @@ public sealed class AgentOrchestrator
         string raw;
         try
         {
+            var connection = LlmConnections.Resolve(ceo, _options);
+
             raw = await _llm.CompleteAsync(
-                new ChatRequest(ceo.ModelId, systemPrompt, $"User goal:\n{prompt}"),
+                new LlmCall(
+                    ceo.Name,
+                    connection.Provider,
+                    connection.BaseUrl,
+                    connection.ApiKey,
+                    connection.ModelId,
+                    systemPrompt,
+                    $"User goal:\n{prompt}"),
                 cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -286,8 +314,17 @@ public sealed class AgentOrchestrator
 
         try
         {
+            var connection = LlmConnections.Resolve(ceo, _options);
+
             return await _llm.CompleteAsync(
-                new ChatRequest(ceo.ModelId, systemPrompt, context.ToString()),
+                new LlmCall(
+                    ceo.Name,
+                    connection.Provider,
+                    connection.BaseUrl,
+                    connection.ApiKey,
+                    connection.ModelId,
+                    systemPrompt,
+                    context.ToString()),
                 cancellationToken);
         }
         catch (OperationCanceledException)
