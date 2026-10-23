@@ -1,0 +1,309 @@
+@namespace AiCeo.Components.Shared
+
+<div class="modal-backdrop" @onclick="Cancel">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="agent-editor-title" @onclick:stopPropagation="true">
+        <div class="modal-header">
+            <div>
+                <h3 id="agent-editor-title">@(IsEdit ? "Edit agent" : "Create agent")</h3>
+                <p>Agents in the star topology. Workers never talk to each other.</p>
+            </div>
+            <button type="button" class="icon-btn" title="Close" @onclick="Cancel">✕</button>
+        </div>
+
+        <div class="modal-body">
+            <div class="field-row">
+                <div class="field">
+                    <label for="agent-name">Name</label>
+                    <input id="agent-name" @bind="form.Name" @bind:event="oninput" placeholder="Atlas" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label for="agent-role">Role</label>
+                    <input id="agent-role" @bind="form.Role" @bind:event="oninput" placeholder="Researcher" autocomplete="off" />
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="agent-prompt">System prompt</label>
+                <textarea id="agent-prompt" @bind="form.SystemPrompt" @bind:event="oninput"
+                          placeholder="Describe how this agent thinks, what it optimises for, and how it reports back."></textarea>
+            </div>
+
+            <div class="field">
+                <label for="agent-provider">Provider</label>
+                <select id="agent-provider" @bind="form.Provider" @bind:after="OnProviderChanged">
+                    @foreach (var provider in Providers)
+                    {
+                        <option value="@provider.Provider">@provider.DisplayName</option>
+                    }
+                </select>
+                <span class="hint">@ProviderInfo.Hint</span>
+            </div>
+
+            <div class="field">
+                <label for="agent-base-url">Base URL</label>
+                <div class="input-row">
+                    <input id="agent-base-url"
+                           @bind="form.BaseUrl"
+                           @bind:event="oninput"
+                           placeholder="@DefaultBaseUrlPlaceholder"
+                           spellcheck="false"
+                           autocomplete="off" />
+                    @if (CanResetBaseUrl)
+                    {
+                        <button type="button" class="btn small ghost" @onclick="UseDefaultBaseUrl">Default</button>
+                    }
+                </div>
+                @if (form.Provider == LlmProvider.Custom)
+                {
+                    <span class="hint">Required for Custom — the OpenAI-compatible root, e.g. <code>http://localhost:11434/v1</code>.</span>
+                }
+                else
+                {
+                    <span class="hint">Leave blank to use the provider default.</span>
+                }
+            </div>
+
+            <div class="field">
+                <label for="agent-key">API key</label>
+                <input id="agent-key"
+                       type="password"
+                       @bind="form.ApiKey"
+                       @bind:event="oninput"
+                       placeholder="@ApiKeyPlaceholder"
+                       autocomplete="new-password"
+                       spellcheck="false" />
+                @if (IsEdit && Agent!.HasStoredApiKey)
+                {
+                    <label class="check-line">
+                        <input type="checkbox" @bind="form.ClearApiKey" disabled="@(!string.IsNullOrWhiteSpace(form.ApiKey))" />
+                        <span>Remove the stored key (currently @Agent.ApiKeyMask)</span>
+                    </label>
+                }
+                <span class="hint">
+                    Stored locally in SQLite. Blank keeps the current key; otherwise
+                    <code>@ProviderInfo.ApiKeyEnvironmentVariable</code> is used.
+                </span>
+            </div>
+
+            <div class="field">
+                <label for="agent-model">Model ID</label>
+                <input id="agent-model" @bind="form.ModelId" @bind:event="oninput"
+                       placeholder="@DefaultModelPlaceholder" autocomplete="off" spellcheck="false" />
+                <span class="hint">@ProviderInfo.DisplayName model, e.g. <code>@DefaultModelPlaceholder</code>.</span>
+            </div>
+
+            <label class="check-line @(IsCeo ? "disabled" : string.Empty)" title="Workers with tools can read, write and run commands inside the workspace">
+                <input type="checkbox" @bind="form.CanUseTools" disabled="@IsCeo" />
+                <span>
+                    Allow this worker to use workspace tools
+                    (list / read / write files and run terminal commands)
+                </span>
+            </label>
+
+            @if (IsCeo)
+            {
+                <p class="hint" style="margin: 0;">
+                    The CEO coordinates only — tool access always belongs to a worker, never to the manager.
+                </p>
+            }
+            else if (!string.IsNullOrWhiteSpace(WorkspacePath))
+            {
+                <p class="hint" style="margin: 0;">
+                    Confined to <code>@WorkspacePath</code>. Paths outside that folder are refused.
+                </p>
+            }
+            else if (form.CanUseTools)
+            {
+                <p class="hint" style="margin: 0; color: var(--warn);">
+                    No workspace folder is selected, so tools stay off until you pick one in the sidebar.
+                </p>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(validationError))
+            {
+                <p class="form-error">@validationError</p>
+            }
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn ghost" @onclick="Cancel">Cancel</button>
+            <button type="button" class="btn primary" @onclick="Submit">@(IsEdit ? "Save changes" : "Create agent")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private AgentFormModel form = new();
+    private string? validationError;
+    private LlmProvider? lastProvider;
+
+    [Parameter]
+    public AgentView? Agent { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<LlmProviderInfo> Providers { get; set; } = LlmProviderCatalog.All;
+
+    /// <summary>Shown as a hint so the user knows where tools will act.</summary>
+    [Parameter]
+    public string? WorkspacePath { get; set; }
+
+    [Parameter]
+    public EventCallback<AgentFormModel> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private bool IsEdit => Agent is not null && Agent.Id != Guid.Empty;
+
+    /// <summary>The manager never gets tools, so the checkbox is disabled while editing it.</summary>
+    private bool IsCeo => Agent?.IsManager == true;
+
+    private LlmProviderInfo ProviderInfo => LlmProviderCatalog.Get(form.Provider);
+
+    private string DefaultBaseUrlPlaceholder
+        => string.IsNullOrWhiteSpace(ProviderInfo.DefaultBaseUrl)
+            ? "https://your-server.example/v1"
+            : ProviderInfo.DefaultBaseUrl;
+
+    private string DefaultModelPlaceholder
+        => string.IsNullOrWhiteSpace(ProviderInfo.DefaultModel) ? "model-id" : ProviderInfo.DefaultModel;
+
+    private bool CanResetBaseUrl
+        => form.Provider != LlmProvider.Custom && !string.IsNullOrWhiteSpace(ProviderInfo.DefaultBaseUrl);
+
+    private string ApiKeyPlaceholder
+    {
+        get
+        {
+            if (IsEdit && Agent!.HasStoredApiKey)
+            {
+                return $"{Agent.ApiKeyMask} — leave blank to keep";
+            }
+
+            return $"Uses {ProviderInfo.ApiKeyEnvironmentVariable} if blank";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Agent is null)
+        {
+            form = new AgentFormModel
+            {
+                Provider = LlmProvider.OmniRoute,
+                ModelId = LlmProviderCatalog.OmniRouteDefaultModel
+            };
+
+            lastProvider = form.Provider;
+            return;
+        }
+
+        form = new AgentFormModel
+        {
+            Id = Agent.Id,
+            Name = Agent.Name,
+            Role = Agent.Role,
+            SystemPrompt = Agent.SystemPrompt,
+            Provider = Agent.Provider,
+            BaseUrl = Agent.BaseUrl,
+            ModelId = Agent.ModelId,
+            CanUseTools = Agent.CanUseTools
+        };
+
+        lastProvider = form.Provider;
+    }
+
+    /// <summary>Swaps the default base URL/model when the provider changes, without clobbering custom values.</summary>
+    private Task OnProviderChanged()
+    {
+        var previous = lastProvider ?? form.Provider;
+
+        var previousBaseUrl = LlmProviderCatalog.DefaultBaseUrlFor(previous);
+        if (string.IsNullOrWhiteSpace(form.BaseUrl)
+            || string.Equals(form.BaseUrl.Trim(), previousBaseUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            form.BaseUrl = null;
+        }
+
+        var previousModel = LlmProviderCatalog.DefaultModelFor(previous);
+        if (string.IsNullOrWhiteSpace(form.ModelId)
+            || string.Equals(form.ModelId.Trim(), previousModel, StringComparison.OrdinalIgnoreCase))
+        {
+            form.ModelId = LlmProviderCatalog.DefaultModelFor(form.Provider);
+        }
+
+        lastProvider = form.Provider;
+        validationError = null;
+        return Task.CompletedTask;
+    }
+
+    private void UseDefaultBaseUrl() => form.BaseUrl = null;
+
+    private async Task Submit()
+    {
+        validationError = Validate();
+        if (validationError is not null)
+        {
+            return;
+        }
+
+        form.Name = form.Name.Trim();
+        form.Role = form.Role.Trim();
+        form.SystemPrompt = form.SystemPrompt.Trim();
+        form.ModelId = string.IsNullOrWhiteSpace(form.ModelId)
+            ? ProviderInfo.DefaultModel
+            : form.ModelId.Trim();
+        form.BaseUrl = string.IsNullOrWhiteSpace(form.BaseUrl) ? null : form.BaseUrl.Trim();
+        form.ApiKey = string.IsNullOrWhiteSpace(form.ApiKey) ? null : form.ApiKey.Trim();
+
+        if (form.ClearApiKey && !string.IsNullOrWhiteSpace(form.ApiKey))
+        {
+            form.ClearApiKey = false;
+        }
+
+        if (IsCeo)
+        {
+            form.CanUseTools = false;
+        }
+
+        await OnSave.InvokeAsync(form);
+    }
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name))
+        {
+            return "Name is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.Role))
+        {
+            return "Role is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(form.SystemPrompt))
+        {
+            return "System prompt is required.";
+        }
+
+        if (form.Provider == LlmProvider.Custom && string.IsNullOrWhiteSpace(form.BaseUrl))
+        {
+            return "The Custom provider requires a Base URL.";
+        }
+
+        if (form.Provider == LlmProvider.Custom && string.IsNullOrWhiteSpace(form.ModelId))
+        {
+            return "The Custom provider requires a Model ID.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(form.BaseUrl)
+            && !LlmConnections.TryCreateEndpoint(form.BaseUrl.Trim(), out _))
+        {
+            return "Base URL must be an absolute http:// or https:// URL.";
+        }
+
+        return null;
+    }
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+}
