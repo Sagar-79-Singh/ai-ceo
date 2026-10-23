@@ -20,7 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../AiCeo.csproj" />
+    <!-- The UI (MAUI) project is Windows-only, so tests target the portable core. -->
+    <ProjectReference Include="../../src/AiCeo.Core/AiCeo.Core.csproj" />
   </ItemGroup>
 
 </Project>

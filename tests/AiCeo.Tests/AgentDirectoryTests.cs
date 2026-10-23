@@ -9,7 +9,7 @@ namespace AiCeo.Tests;
 public class AgentDirectoryTests
 {
     private static AgentDirectory Create(TestDatabase database)
-        => new(database.Db, MsOptions.Create(new OmniRouteOptions()));
+        => new(database.Factory, MsOptions.Create(new OmniRouteOptions()));
 
     private static AgentFormModel Form(LlmProvider provider = LlmProvider.OmniRoute, string? apiKey = "sk-secret-1234567890") => new()
     {
@@ -110,6 +110,31 @@ public class AgentDirectoryTests
         var created = await Create(database).CreateAsync(form);
 
         Assert.Equal(LlmProviderCatalog.GeminiDefaultModel, created.ModelId);
+    }
+
+    [Fact]
+    public async Task The_ceo_never_gets_workspace_tools()
+    {
+        using var database = TestDatabase.Create();
+        var directory = Create(database);
+
+        var form = Form();
+        form.CanUseTools = true; // the first agent becomes the CEO, so this must be dropped
+
+        var ceo = await directory.CreateAsync(form);
+        Assert.True(ceo.IsManager);
+        Assert.False(ceo.CanUseTools);
+
+        var workerForm = Form(apiKey: null);
+        workerForm.Name = "Forge";
+        workerForm.CanUseTools = true;
+        var worker = await directory.CreateAsync(workerForm);
+        Assert.False(worker.IsManager);
+        Assert.True(worker.CanUseTools);
+
+        // Promoting the worker to CEO strips its tools.
+        await directory.MakeManagerAsync(worker.Id);
+        Assert.False((await directory.FindAsync(worker.Id))!.CanUseTools);
     }
 
     [Fact]

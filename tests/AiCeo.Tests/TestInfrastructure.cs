@@ -6,18 +6,59 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AiCeo.Tests;
 
-/// <summary>An isolated SQLite database (in memory) for each test.</summary>
+/// <summary>An isolated SQLite database (in memory) plus the factory the services expect.</summary>
 internal sealed class TestDatabase : IDisposable
 {
-    private TestDatabase(SqliteConnection connection, AppDbContext db)
+    private TestDatabase(SqliteConnection connection, DbContextOptions<AppDbContext> options)
     {
         Connection = connection;
-        Db = db;
+        Options = options;
+
+        using var db = new AppDbContext(options);
+        db.Database.EnsureCreated();
     }
 
     public SqliteConnection Connection { get; }
 
-    public AppDbContext Db { get; }
+    public DbContextOptions<AppDbContext> Options { get; }
+
+    public IDbContextFactory<AppDbContext> Factory => new TestDbContextFactory(Options);
+
+    public AppDbContext Create() => new(Options);
+
+    public TestDatabase SeedAgents(params Agent[] agents)
+    {
+        using var db = Create();
+        db.Agents.AddRange(agents);
+        db.SaveChanges();
+        return this;
+    }
+
+    /// <summary>Serialises a workspace row exactly like the UI does.</summary>
+    public TestDatabase SeedWorkspace(string? rootPath, bool toolsEnabled = true)
+    {
+        using var db = Create();
+        db.WorkspaceSettings.Add(new WorkspaceSettings
+        {
+            Id = WorkspaceSettings.SingletonId,
+            RootPath = rootPath,
+            ToolsEnabled = toolsEnabled,
+            UpdatedAt = DateTime.UtcNow
+        });
+        db.SaveChanges();
+        return this;
+    }
+
+    public void Dispose() => Connection.Dispose();
+
+    private sealed class TestDbContextFactory : IDbContextFactory<AppDbContext>
+    {
+        private readonly DbContextOptions<AppDbContext> _options;
+
+        public TestDbContextFactory(DbContextOptions<AppDbContext> options) => _options = options;
+
+        public AppDbContext CreateDbContext() => new(_options);
+    }
 
     public static TestDatabase Create()
     {
@@ -28,41 +69,60 @@ internal sealed class TestDatabase : IDisposable
             .UseSqlite(connection)
             .Options;
 
-        var db = new AppDbContext(options);
-        db.Database.EnsureCreated();
-
-        return new TestDatabase(connection, db);
+        return new TestDatabase(connection, options);
     }
+}
 
-    public TestDatabase SeedAgents(params Agent[] agents)
+/// <summary>A throwaway folder that plays the role of the user's workspace.</summary>
+internal sealed class TempWorkspace : IDisposable
+{
+    public TempWorkspace()
     {
-        Db.Agents.AddRange(agents);
-        Db.SaveChanges();
-        return this;
+        Root = Path.Combine(Path.GetTempPath(), "aiceo-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Root);
     }
+
+    public string Root { get; }
+
+    public string Write(string relativePath, string content)
+    {
+        var path = Path.Combine(Root, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    public string Read(string relativePath) => File.ReadAllText(Path.Combine(Root, relativePath));
+
+    public bool Exists(string relativePath) => File.Exists(Path.Combine(Root, relativePath));
 
     public void Dispose()
     {
-        Db.Dispose();
-        Connection.Dispose();
+        try
+        {
+            Directory.Delete(Root, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Temp cleanup is best effort.
+        }
     }
 }
 
 /// <summary>
-/// Records every LLM call so the tests can assert ordering, isolation and concurrency.
+/// Records every LLM call and replies from a scripted list, so the tool loop, ordering and
+/// concurrency can be asserted without a network.
 /// </summary>
 internal sealed class FakeLlmGateway : ILlmGateway
 {
     private readonly object _gate = new();
     private readonly List<LlmCall> _calls = new();
+    private readonly Queue<Func<LlmCall, LlmReply>> _script = new();
     private int _active;
 
     public int MaxConcurrentCalls { get; private set; }
 
-    public Func<LlmCall, string> Responder { get; set; } =
-        call => call.SystemPrompt.Contains(AgentOrchestrator.PlanningContractMarker, StringComparison.Ordinal)
-            ? "[{\"role\":\"Researcher\",\"instructions\":\"Research the topic\"}]"
-            : $"output from {call.AgentName}";
+    public Func<LlmCall, LlmReply>? Responder { get; set; }
 
     public IReadOnlyList<LlmCall> Calls
     {
@@ -75,7 +135,34 @@ internal sealed class FakeLlmGateway : ILlmGateway
         }
     }
 
-    public async Task<string> CompleteAsync(LlmCall call, CancellationToken cancellationToken = default)
+    /// <summary>Queues one reply (used to script a multi-round tool conversation).</summary>
+    public FakeLlmGateway Then(Func<LlmCall, LlmReply> reply)
+    {
+        lock (_gate)
+        {
+            _script.Enqueue(reply);
+        }
+
+        return this;
+    }
+
+    public FakeLlmGateway ThenText(string text) => Then(_ => LlmReplyText(text));
+
+    public FakeLlmGateway ThenToolCalls(params LlmToolCallRequest[] calls)
+        => Then(_ => new LlmReply(null, calls, "ToolCalls"));
+
+    public FakeLlmGateway ThenPlan(string json)
+        => Then(call => call.Tools.Count == 0 && call.Messages.Any(message =>
+                message is LlmSystemMessage system
+                && system.Text.Contains(AgentOrchestrator.PlanningContractMarker, StringComparison.Ordinal))
+            ? LlmReplyText(json)
+            : Text($"agent reply for {call.AgentName}"));
+
+    public static LlmReply LlmReplyText(string text) => new(text, Array.Empty<LlmToolCallRequest>(), "Stop");
+
+    public static LlmReply Text(string text) => LlmReplyText(text);
+
+    public async Task<LlmReply> CompleteAsync(LlmCall call, CancellationToken cancellationToken = default)
     {
         var active = Interlocked.Increment(ref _active);
         MaxConcurrentCalls = Math.Max(MaxConcurrentCalls, active);
@@ -88,8 +175,28 @@ internal sealed class FakeLlmGateway : ILlmGateway
         try
         {
             // A real provider takes time; this delay makes accidental parallelism observable.
-            await Task.Delay(10, cancellationToken);
-            return Responder(call);
+            await Task.Delay(5, cancellationToken);
+
+            Func<LlmCall, LlmReply>? next = null;
+            lock (_gate)
+            {
+                if (_script.Count > 0)
+                {
+                    next = _script.Dequeue();
+                }
+            }
+
+            if (next is not null)
+            {
+                return next(call);
+            }
+
+            if (Responder is not null)
+            {
+                return Responder(call);
+            }
+
+            return LlmReplyText($"agent reply for {call.AgentName}");
         }
         finally
         {
@@ -114,13 +221,14 @@ internal static class TestAgents
         IsManager = true
     };
 
-    public static Agent Worker(string name, string role) => new()
+    public static Agent Worker(string name, string role, bool tools = false) => new()
     {
         Name = name,
         Role = role,
         SystemPrompt = $"You are {name} the {role}.",
         ModelId = "worker-model",
         Provider = LlmProvider.OmniRoute,
-        IsManager = false
+        IsManager = false,
+        CanUseTools = tools
     };
 }
