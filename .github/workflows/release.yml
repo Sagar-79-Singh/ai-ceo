@@ -57,8 +57,9 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "tests.log"
           dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj -c Release --logger "console;verbosity=normal" 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
-            $failures = (Select-String -Path $log -Pattern "\[FAIL\]|Error Message|error [A-Z]+[0-9]+" -Context 0,3 |
-                         Select-Object -First 12 | ForEach-Object { $_.Line.Trim() }) -join " | "
+            $failures = (Select-String -Path $log -Pattern "\[FAIL\]|Error Message|Assert\.|error [A-Z]+[0-9]+" -Context 0,4 |
+                         Select-Object -First 14 |
+                         ForEach-Object { ($_.Line + " " + ($_.Context.PostContext -join " ")).Trim() -replace "\s+", " " }) -join " | "
             if (-not $failures) { $failures = ((Get-Content $log -Tail 30) -join " | ") -replace "\r?\n", " " }
             Write-Host "::error title=tests-failed::$($failures.Substring(0, [Math]::Min(2500, $failures.Length)))"
             exit 1

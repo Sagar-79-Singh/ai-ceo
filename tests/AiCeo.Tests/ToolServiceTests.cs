@@ -172,12 +172,13 @@ public class ToolServiceTests
         using var _ = db;
         using var __ = workspace;
 
-        var command = OperatingSystem.IsWindows() ? "cmd /c echo built > out.txt" : "echo built > out.txt";
+        // A plain shell built-in, so the wrapper's own quoting cannot interfere.
+        var command = OperatingSystem.IsWindows() ? "echo built>out.txt" : "echo built > out.txt";
 
         var result = await tools.ExecuteAsync(ToolCatalog.RunCommand, $$"""{"command":"{{command}}"}""");
 
-        Assert.True(result.Ok);
-        Assert.True(workspace.Exists("out.txt"));
+        Assert.True(result.Ok, result.Content);
+        Assert.True(workspace.Exists("out.txt"), $"out.txt was not created. Tool output: {result.Content}");
     }
 
     [Fact]
@@ -187,12 +188,16 @@ public class ToolServiceTests
         using var _ = db;
         using var __ = workspace;
 
-        var outside = OperatingSystem.IsWindows() ? @"C:\Windows\System32\drivers\etc\hosts" : "/etc/passwd";
+        var outside = OperatingSystem.IsWindows() ? @"C:\Windows\win.ini" : "/etc/passwd";
 
-        var result = await tools.ExecuteAsync(ToolCatalog.RunCommand, $$"""{"command":"type {{outside}}"}""");
+        // The guard is the contract; assert it directly, then through the tool.
+        Assert.False(WorkspaceGuard.TryResolve(workspace.Root, outside, out _, out _));
 
-        Assert.False(result.Ok);
-        Assert.Contains("Blocked", result.Error!, StringComparison.OrdinalIgnoreCase);
+        var readCommand = OperatingSystem.IsWindows() ? "type" : "cat";
+        var result = await tools.ExecuteAsync(ToolCatalog.RunCommand, $$"""{"command":"{{readCommand}} {{outside}}"}""");
+
+        Assert.False(result.Ok, result.Content);
+        Assert.Contains("Blocked", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
