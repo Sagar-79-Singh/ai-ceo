@@ -196,7 +196,10 @@ public class ToolServiceTests
         Assert.NotNull(denial);
 
         var readCommand = OperatingSystem.IsWindows() ? "type" : "cat";
-        var result = await tools.ExecuteAsync(ToolCatalog.RunCommand, $$"""{"command":"{{readCommand}} {{outside}}"}""");
+
+        // Serialise properly: a raw Windows path inside JSON needs escaped backslashes.
+        var arguments = System.Text.Json.JsonSerializer.Serialize(new { command = $"{readCommand} {outside}" });
+        var result = await tools.ExecuteAsync(ToolCatalog.RunCommand, arguments);
 
         Assert.False(result.Ok, result.Content);
         Assert.Contains("Blocked", result.Error ?? string.Empty, StringComparison.OrdinalIgnoreCase);
