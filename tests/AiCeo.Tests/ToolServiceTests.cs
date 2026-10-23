@@ -26,8 +26,8 @@ public class ToolServiceTests
     public async Task ListFiles_shows_workspace_entries_relative_to_the_root()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         workspace.Write("README.md", "hello");
         Directory.CreateDirectory(Path.Combine(workspace.Root, "src"));
@@ -44,8 +44,8 @@ public class ToolServiceTests
     public async Task ReadFile_returns_content_from_inside_the_workspace()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         workspace.Write("notes.txt", "workspace content");
 
@@ -59,8 +59,8 @@ public class ToolServiceTests
     public async Task WriteFile_creates_folders_and_writes_to_disk()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         var result = await tools.ExecuteAsync(
             ToolCatalog.WriteFile,
@@ -75,8 +75,8 @@ public class ToolServiceTests
     public async Task ReadFile_outside_the_workspace_is_refused()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
         using var outside = new TempWorkspace();
 
         outside.Write("secret.txt", "nope");
@@ -93,8 +93,8 @@ public class ToolServiceTests
     public async Task WriteFile_outside_the_workspace_is_refused_and_writes_nothing()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
         using var outside = new TempWorkspace();
 
         var target = Path.Combine(outside.Root, "pwned.txt");
@@ -111,8 +111,8 @@ public class ToolServiceTests
     public async Task Traversal_out_of_the_workspace_is_refused()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         var result = await tools.ExecuteAsync(ToolCatalog.WriteFile, """{"filePath":"../escaped.txt","content":"x"}""");
 
@@ -125,8 +125,8 @@ public class ToolServiceTests
     public async Task Tools_are_disabled_when_no_workspace_is_selected()
     {
         var (tools, db, workspace) = Create(selectWorkspace: false);
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         var result = await tools.ExecuteAsync(ToolCatalog.ListFiles, """{"directoryPath":"."}""");
 
@@ -138,8 +138,8 @@ public class ToolServiceTests
     public async Task The_global_tools_switch_wins()
     {
         var (tools, db, workspace) = Create(toolsEnabled: false);
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         workspace.Write("a.txt", "a");
 
@@ -153,8 +153,8 @@ public class ToolServiceTests
     public async Task RunCommand_executes_in_the_workspace_and_captures_stdout()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         var command = OperatingSystem.IsWindows() ? "echo hello-from-tool" : "echo hello-from-tool";
 
@@ -169,8 +169,8 @@ public class ToolServiceTests
     public async Task RunCommand_can_create_a_file_in_the_workspace()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         // A plain shell built-in, so the wrapper's own quoting cannot interfere.
         var command = OperatingSystem.IsWindows() ? "echo built>out.txt" : "echo built > out.txt";
@@ -185,13 +185,15 @@ public class ToolServiceTests
     public async Task RunCommand_refuses_paths_outside_the_workspace()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         var outside = OperatingSystem.IsWindows() ? @"C:\Windows\win.ini" : "/etc/passwd";
 
         // The guard is the contract; assert it directly, then through the tool.
-        Assert.False(WorkspaceGuard.TryResolve(workspace.Root, outside, out _, out _));
+        Assert.False(WorkspaceGuard.TryResolve(workspace.Root, outside, out var deniedPath, out var denial));
+        Assert.Empty(deniedPath);
+        Assert.NotNull(denial);
 
         var readCommand = OperatingSystem.IsWindows() ? "type" : "cat";
         var result = await tools.ExecuteAsync(ToolCatalog.RunCommand, $$"""{"command":"{{readCommand}} {{outside}}"}""");
@@ -229,8 +231,8 @@ public class ToolServiceTests
     public async Task Unknown_tools_and_bad_json_are_reported_not_thrown()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         var unknown = await tools.ExecuteAsync("delete_everything", "{}");
         Assert.False(unknown.Ok);
@@ -245,8 +247,8 @@ public class ToolServiceTests
     public async Task Tool_names_are_normalised_across_model_styles()
     {
         var (tools, db, workspace) = Create();
-        using var _ = db;
-        using var __ = workspace;
+        using var databaseLease = db;
+        using var workspaceLease = workspace;
 
         workspace.Write("x.txt", "hi");
 
