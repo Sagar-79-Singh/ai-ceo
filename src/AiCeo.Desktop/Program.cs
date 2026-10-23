@@ -46,10 +46,8 @@ internal static class Program
 
             if (SmokeTestMode)
             {
-                var lifetime = new ClassicDesktopStyleApplicationLifetime
-                {
-                    ShutdownMode = ShutdownMode.OnMainWindowClose
-                };
+                // Default ShutdownMode is OnLastWindowClose, so closing the smoke window exits.
+                var lifetime = new ClassicDesktopStyleApplicationLifetime();
 
                 BuildAvaloniaApp().SetupWithLifetime(lifetime);
 
