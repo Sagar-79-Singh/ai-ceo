@@ -4,8 +4,9 @@ using AiCeo.Options;
 using AiCeo.Services;
 using AiCeo.Tools;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AiCeo.DependencyInjection;
 
@@ -19,25 +20,17 @@ public static class CoreServiceCollectionExtensions
     /// Adds the database, providers, tools and orchestrator.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="configuration">Configuration (may be <c>null</c>; defaults are used).</param>
     /// <param name="databasePath">Absolute SQLite file path.</param>
+    /// <param name="providerDefaults">Optional provider defaults; the built-in OmniRoute settings otherwise.</param>
     public static IServiceCollection AddAiCeoCore(
         this IServiceCollection services,
-        IConfiguration? configuration,
-        string databasePath)
+        string databasePath,
+        OmniRouteOptions? providerDefaults = null)
     {
-        services.AddHttpClient(LlmGateway.HttpClientName);
+        services.AddSingleton<IOptions<OmniRouteOptions>>(
+            Microsoft.Extensions.Options.Options.Create(providerDefaults ?? new OmniRouteOptions()));
 
-        if (configuration is not null)
-        {
-            services.Configure<OmniRouteOptions>(configuration.GetSection(OmniRouteOptions.SectionName));
-        }
-        else
-        {
-            services.Configure<OmniRouteOptions>(_ => { });
-        }
-
-        services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite($"Data Source={databasePath}"));
+        services.AddDbContextFactory<AppDbContext>(builder => builder.UseSqlite($"Data Source={databasePath}"));
 
         services.AddSingleton(new AppRuntimeInfo(
             databasePath,
@@ -59,7 +52,7 @@ public static class CoreServiceCollectionExtensions
     /// <summary>Creates the database, upgrades an older schema and seeds the default team.</summary>
     public static async Task InitializeDatabaseAsync(
         this IServiceProvider services,
-        Microsoft.Extensions.Logging.ILogger logger,
+        ILogger logger,
         CancellationToken cancellationToken = default)
     {
         var factory = services.GetRequiredService<IDbContextFactory<AppDbContext>>();

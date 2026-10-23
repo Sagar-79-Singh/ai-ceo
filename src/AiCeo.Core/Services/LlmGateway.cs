@@ -20,22 +20,15 @@ namespace AiCeo.Services;
 /// </summary>
 public sealed class LlmGateway : ILlmGateway
 {
-    public const string HttpClientName = "llm-probe";
-
     private readonly OmniRouteOptions _options;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<LlmGateway> _logger;
 
     // OpenAI clients are immutable and thread-safe; reusing them avoids a TLS handshake per call.
     private readonly ConcurrentDictionary<string, OpenAIClient> _clients = new(StringComparer.Ordinal);
 
-    public LlmGateway(
-        IOptions<OmniRouteOptions> options,
-        IHttpClientFactory httpClientFactory,
-        ILogger<LlmGateway> logger)
+    public LlmGateway(IOptions<OmniRouteOptions> options, ILogger<LlmGateway> logger)
     {
         _options = options.Value;
-        _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
@@ -121,8 +114,8 @@ public sealed class LlmGateway : ILlmGateway
 
         try
         {
-            using var http = _httpClientFactory.CreateClient(HttpClientName);
-            http.Timeout = TimeSpan.FromSeconds(6);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutSource.CancelAfter(TimeSpan.FromSeconds(6));
 
             using var request = new HttpRequestMessage(HttpMethod.Get, probe.BaseUrl.TrimEnd('/') + "/models");
             if (!string.IsNullOrWhiteSpace(probe.ApiKey))
@@ -130,7 +123,7 @@ public sealed class LlmGateway : ILlmGateway
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", probe.ApiKey);
             }
 
-            using var response = await http.SendAsync(request, cancellationToken);
+            using var response = await ProbeClient.SendAsync(request, timeoutSource.Token);
             if (response.IsSuccessStatusCode)
             {
                 return new ProviderHealth(true, $"{providerName} reachable", providerName, probe.BaseUrl, probe.ModelId);
@@ -148,6 +141,9 @@ public sealed class LlmGateway : ILlmGateway
             return new ProviderHealth(false, $"{providerName} unreachable", providerName, probe.BaseUrl, probe.ModelId);
         }
     }
+
+    /// <summary>One shared client for the 6-second reachability probe.</summary>
+    private static HttpClient ProbeClient { get; } = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     private ChatCompletionOptions BuildOptions(LlmCall call)
     {

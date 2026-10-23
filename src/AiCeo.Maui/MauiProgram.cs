@@ -25,7 +25,7 @@ public static class MauiProgram
         // unpackaged equivalent). AICEO_DB_PATH overrides it.
         var databasePath = DatabasePaths.ResolveFromEnvironment(FileSystem.AppDataDirectory);
 
-        builder.Services.AddAiCeoCore(configuration: null, databasePath);
+        builder.Services.AddAiCeoCore(databasePath);
         builder.Services.AddSingleton<IWorkspacePicker, LocalFolderPicker>();
 
         var app = builder.Build();
