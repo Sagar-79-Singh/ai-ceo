@@ -110,7 +110,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
 });
 
 // ---------------------------------------------------------------------------------------------
-// REST surface (docs/ARCHITECTURE.md): POST /api/task is the canonical entry point.
+// REST surface: POST /api/task is the canonical entry point for programmatic runs.
 // ---------------------------------------------------------------------------------------------
 var api = app.MapGroup("/api");
 
