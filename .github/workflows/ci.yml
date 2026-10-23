@@ -116,18 +116,33 @@ jobs:
             exit 1
           }
 
+      - name: Restore for packaging
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "msix-restore.log"
+          dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64 -p:WindowsPackageType=MSIX 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $tail = ((Get-Content $log -Tail 40) -join " | ") -replace "\r?\n", " "
+            Write-Host "::error title=msix-restore-failed::$tail"
+            exit 1
+          }
+
       - name: Build the MSIX installer
         shell: pwsh
         run: |
           $log = Join-Path $env:RUNNER_TEMP "msix.log"
-          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
+          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -f net10.0-windows10.0.19041.0 `
+            -r win-x64 `
             -p:WindowsPackageType=MSIX `
             -p:AppxPackageSigningEnabled=false `
+            -p:UapAppxPackageBuildMode=SideloadOnly `
             -p:GenerateAppxPackageOnBuild=true `
             -o ./publish/msix 2>&1 | Tee-Object -FilePath $log
-          if ($LASTEXITCODE -ne 0) {
-            $errors = (Select-String -Path $log -Pattern "error [A-Z]+[0-9]+|error MSB|error APPX" | Select-Object -First 8 | ForEach-Object { $_.Line.Trim() }) -join " | "
-            Write-Host "::error title=msix-failed::$($errors.Substring(0, [Math]::Min(1400, $errors.Length)))"
+          $code = $LASTEXITCODE
+          Write-Host "publish exit code: $code"
+          if ($code -ne 0) {
+            $tail = ((Get-Content $log -Tail 60) -join " | ") -replace "\r?\n", " "
+            Write-Host "::error title=msix-failed::exit=$code $($tail.Substring(0, [Math]::Min(3000, $tail.Length)))"
             exit 1
           }
 

@@ -32,7 +32,6 @@ public class WorkspaceGuardTests
     [InlineData("../escape.txt")]
     [InlineData("../../escape.txt")]
     [InlineData("src/../../escape.txt")]
-    [InlineData("..\\escape.txt")]
     [InlineData("./sub/../../escape.txt")]
     public void Parent_traversal_is_rejected(string candidate)
     {
@@ -40,6 +39,24 @@ public class WorkspaceGuardTests
 
         var exception = Assert.Throws<WorkspaceViolationException>(
             () => WorkspaceGuard.Resolve(workspace.Root, candidate));
+
+        Assert.Contains("outside the workspace", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Windows_style_traversal_is_rejected()
+    {
+        // On Unix a backslash is an ordinary filename character, so the traversal only exists on
+        // Windows — but the guard must refuse it there.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var workspace = new TempWorkspace();
+
+        var exception = Assert.Throws<WorkspaceViolationException>(
+            () => WorkspaceGuard.Resolve(workspace.Root, "..\\escape.txt"));
 
         Assert.Contains("outside the workspace", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
