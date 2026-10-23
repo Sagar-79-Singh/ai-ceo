@@ -439,7 +439,7 @@ public class OrchestratorTopologyTests
 
     private static List<TaskLog> TaskToolLogs(TestDatabase database)
     {
-        using var db = database.Create();
+        using var db = database.NewContext();
         return db.TaskLogs.ToList();
     }
 }

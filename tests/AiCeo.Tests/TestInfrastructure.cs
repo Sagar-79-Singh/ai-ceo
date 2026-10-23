@@ -24,11 +24,11 @@ internal sealed class TestDatabase : IDisposable
 
     public IDbContextFactory<AppDbContext> Factory => new TestDbContextFactory(Options);
 
-    public AppDbContext Create() => new(Options);
+    public AppDbContext NewContext() => new(Options);
 
     public TestDatabase SeedAgents(params Agent[] agents)
     {
-        using var db = Create();
+        using var db = NewContext();
         db.Agents.AddRange(agents);
         db.SaveChanges();
         return this;
@@ -37,7 +37,7 @@ internal sealed class TestDatabase : IDisposable
     /// <summary>Serialises a workspace row exactly like the UI does.</summary>
     public TestDatabase SeedWorkspace(string? rootPath, bool toolsEnabled = true)
     {
-        using var db = Create();
+        using var db = NewContext();
         db.WorkspaceSettings.Add(new WorkspaceSettings
         {
             Id = WorkspaceSettings.SingletonId,

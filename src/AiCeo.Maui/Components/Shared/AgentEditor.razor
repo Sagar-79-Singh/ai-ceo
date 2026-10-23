@@ -106,10 +106,10 @@
                     The CEO coordinates only — tool access always belongs to a worker, never to the manager.
                 </p>
             }
-            else if (!string.IsNullOrWhiteSpace(workspacePath))
+            else if (!string.IsNullOrWhiteSpace(WorkspacePath))
             {
                 <p class="hint" style="margin: 0;">
-                    Confined to <code>@workspacePath</code>. Paths outside that folder are refused.
+                    Confined to <code>@WorkspacePath</code>. Paths outside that folder are refused.
                 </p>
             }
             else if (form.CanUseTools)
