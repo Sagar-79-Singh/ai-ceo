@@ -136,8 +136,7 @@ jobs:
             -p:WindowsPackageType=MSIX `
             -p:AppxPackageSigningEnabled=false `
             -p:UapAppxPackageBuildMode=SideloadOnly `
-            -p:GenerateAppxPackageOnBuild=true `
-            -o ./publish/msix 2>&1 | Tee-Object -FilePath $log
+            -p:GenerateAppxPackageOnBuild=true 2>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           Write-Host "publish exit code: $code"
           if ($code -ne 0) {
@@ -149,9 +148,9 @@ jobs:
       - name: Verify the MSIX exists
         shell: pwsh
         run: |
-          $packages = Get-ChildItem -Path ./publish/msix -Recurse -Filter *.msix -ErrorAction SilentlyContinue
+          $packages = Get-ChildItem -Path src/AiCeo.Maui -Recurse -Filter *.msix -ErrorAction SilentlyContinue
           if (-not $packages) {
-            $packages = Get-ChildItem -Path src/AiCeo.Maui -Recurse -Filter *.msix -ErrorAction SilentlyContinue
+            $packages = Get-ChildItem -Path ./publish -Recurse -Filter *.msix -ErrorAction SilentlyContinue
           }
           if (-not $packages) {
             Write-Host "::error title=missing-msix::the MSIX installer was not produced"
@@ -165,7 +164,7 @@ jobs:
         with:
           name: msix-ci
           path: |
-            publish/msix/**/*.msix
             src/AiCeo.Maui/**/*.msix
+            publish/**/*.msix
           if-no-files-found: error
           retention-days: 7
