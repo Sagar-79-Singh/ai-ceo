@@ -282,6 +282,12 @@ jobs:
             (OmniRoute / OpenAI / Gemini / custom), **Select Workspace Folder**, and the
             workspace-confined `list_files` / `read_file` / `write_file` / `run_command` tool loop.
 
+            ### Windows 7 / 8 note
+            The app no longer depends on the Windows App SDK or the MAUI runtime, but .NET 10 — bundled
+            inside these executables — officially supports Windows 10 1809 and newer only. On Windows
+            7/8.1 the process fails before any application code runs, so no `crash.log` is produced.
+            `AiCeo-win-x86.exe` is the right build for 32-bit Windows 10 machines.
+
             ### Verify the download
             `SHA256SUMS.txt` (and a `.sha256` per file) is attached to the release.
           files: |
