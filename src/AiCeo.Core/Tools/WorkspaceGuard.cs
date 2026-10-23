@@ -151,7 +151,7 @@ public static class WorkspaceGuard
         {
             try
             {
-                var info = Directory.Exists(current)
+                FileSystemInfo? info = Directory.Exists(current)
                     ? new DirectoryInfo(current)
                     : File.Exists(current)
                         ? new FileInfo(current)

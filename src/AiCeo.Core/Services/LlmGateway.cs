@@ -74,7 +74,7 @@ public sealed class LlmGateway : ILlmGateway
             return new LlmReply(
                 string.IsNullOrWhiteSpace(text) ? null : text.Trim(),
                 toolCalls,
-                completion.FinishReason?.ToString() ?? "Stop");
+                completion.FinishReason.ToString());
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
