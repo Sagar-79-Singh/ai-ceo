@@ -1,8 +1,8 @@
 # AI CEO Orchestrator
 
-A **Windows desktop** AI orchestrator written in **C# / .NET 10**. It opens in its own native
-window — no browser, no local web server — and runs a strict star topology of agents that can
-read, write and build inside a folder **you** choose.
+A **cross-platform desktop** AI orchestrator written in **C# / .NET 10** with **Avalonia UI**. It
+opens in its own native window — no browser, no local web server, no installer — and runs a strict
+star topology of agents that can read, write and build inside a folder **you** choose.
 
 ```
 You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  ──▶  CEO  ──▶  You
@@ -11,34 +11,57 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.3
+## What's new in v1.0.4
 
 | Area | Change |
 | --- | --- |
-| **Desktop app** | .NET **MAUI Blazor Hybrid** (`net10.0-windows10.0.19041.0`). The Blazor UI renders inside a `BlazorWebView` in a WinUI window. The Kestrel web host, `Program.cs` and the minimal-API endpoints are gone. |
-| **Installer** | `release.yml` builds a per-user **`.exe` installer** with Inno Setup, plus a portable `.zip` and an alternative `.msix`, all with SHA-256 checksums, on `windows-latest`, then attaches them to the GitHub Release. |
-| **Local workspace** | A **Select Workspace Folder** button in the sidebar opens the native OS folder picker and stores the chosen path in SQLite (single row, `WorkspaceSettings`). |
-| **Tool calling** | Workers marked *tools* get four function-calling tools: `list_files`, `read_file`, `write_file`, `run_command`. |
-| **Security guardrail** | **Every** file path and every terminal path token is validated against the workspace root before anything touches the disk. Anything outside is refused. |
-| **Agentic loop** | A tool-enabled worker iterates (inspect → write → build → read errors → fix) for up to 8 rounds / 24 tool calls, then reports a plain-text result to the CEO, which writes the final answer. |
+| **Cross-platform UI** | **.NET MAUI is gone.** The whole window is now **Avalonia UI 11** on plain `net10.0`, so it runs on Windows, Linux and macOS from one project. No Windows App SDK, no MAUI runtime — which is what made v1.0.3 crash on machines that were missing those dependencies. |
+| **Linux + macOS** | `linux-x64`, `linux-arm64`, `osx-x64` and `osx-arm64` builds are published for the first time. |
+| **Crash logging** | `Main` is wrapped in a global `try/catch`; any startup failure appends the full stack trace — plus OS, runtime, version and process path — to **`crash.log`** next to the executable, and the window itself explains where the log is. |
+| **Single-file executables** | Every target is published self-contained, single-file: one `.exe` for Windows, one `AiCeo` binary inside a `.tar.gz` for Linux/macOS. No `.zip`, no `.msix`, no installer. |
+| **Icon** | `Assets/aiceo.ico` is wired to `ApplicationIcon`, and `Assets/aiceo.png` is the window/taskbar icon. |
+| **Unchanged** | The core stays exactly as it was: star topology, sequential delegation, multi-provider LLMs, workspace folder + guardrail, agentic tool loop. |
+
+### Older releases
+- **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
+- **v1.0.2** — multi-provider LLM layer and health badges.
 
 ---
 
 ## Install
 
-1. Open the **Releases** page and download `AI-CEO-Orchestrator-<version>-win-x64-setup.exe`.
-2. Run it. It installs per-user (no administrator rights), with Start-menu and optional desktop
-   shortcuts. The build is not code-signed, so SmartScreen may warn: **More info → Run anyway**.
-3. Launch **AI CEO Orchestrator** from the Start menu.
-4. In the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
+Download one file from the **Releases** page and run it.
 
-Prefer no installer? Download the `-portable.zip`, unzip it anywhere and run `AiCeo.Maui.exe`.
+| Platform | File | How to run |
+| --- | --- | --- |
+| **Windows x64** | `AiCeo-win-x64.exe` | Double-click. No installer, no runtime to install. |
+| **Windows x86** | `AiCeo-win-x86.exe` | For 32-bit Windows. |
+| **Windows ARM64** | `AiCeo-win-arm64.exe` | Surface / Snapdragon PCs. |
+| **Linux x64 / ARM64** | `AiCeo-linux-*.tar.gz` | `tar -xzf AiCeo-linux-x64.tar.gz && ./AiCeo` |
+| **macOS Intel / Apple Silicon** | `AiCeo-osx-*.tar.gz` | `tar -xzf AiCeo-osx-arm64.tar.gz && ./AiCeo` |
 
-The release also carries a `.msix` package. It is **not** self-contained (it depends on the
-Windows App Runtime 1.7, which Windows installs on demand), so the setup `.exe` remains the
-supported path — it bundles the runtime and needs no admin rights.
+Then, in the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
-**Requirements:** Windows 10 1809 (build 17763) or newer, x64.
+The binaries are self-contained (the .NET runtime is inside), so nothing else has to be installed.
+They are not code-signed: on Windows choose **More info → Run anyway** if SmartScreen complains; on
+macOS use right-click → **Open** the first time; on Linux `chmod +x AiCeo` if your tar extractor
+dropped the bit.
+
+**Requirements:** Windows 10/11 (x64, x86 or ARM64), a modern glibc Linux (x64 or ARM64), or macOS
+13+ (Intel or Apple Silicon).
+
+### Where your data lives
+
+Nothing is written next to the executable — it may sit in `~/Downloads` or on a USB stick.
+
+| OS | Database | App log |
+| --- | --- | --- |
+| Windows | `%APPDATA%\AiCeoOrchestrator\aiceo.db` | `%APPDATA%\AiCeoOrchestrator\logs\aiceo.log` |
+| Linux | `~/.local/share/AiCeoOrchestrator/aiceo.db` | `…/logs/aiceo.log` |
+| macOS | `~/Library/Application Support/AiCeoOrchestrator/aiceo.db` | `…/logs/aiceo.log` |
+
+`AICEO_DB_PATH` overrides the database location. A startup failure writes `crash.log` beside the
+executable (falling back to the temp directory when that folder is read-only).
 
 ---
 
@@ -127,21 +150,21 @@ src/AiCeo.Core/            portable class library (no UI)
   Data/                    AppDbContext, DbSeeder, SchemaUpgrader, DatabasePaths
   Services/                AgentOrchestrator, LlmGateway, AgentDirectory, WorkspaceService, …
   Tools/                   WorkspaceGuard, CommandGuard, ToolCatalog, ToolService, ToolResult
-src/AiCeo.Maui/            .NET MAUI Blazor Hybrid desktop head (Windows)
-  MainPage.xaml            the BlazorWebView that hosts the UI
-  App.xaml(.cs)            Window: 1440×940 native window
-  MauiProgram.cs           DI + database bootstrap
-  Services/                LocalFolderPicker (native folder picker)
-  Components/              Main.razor (router), Pages/Home.razor, Shared/AgentEditor.razor, …
-  wwwroot/                 index.html, css/app.css, js/app.js
-installer/inno-setup/      AiCeo.iss — the per-user setup .exe definition
+src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
+  Program.cs               entry point: global try/catch + crash.log
+  App.axaml(.cs)           theme, DI bootstrap, startup-failure window
+  Views/MainWindow.axaml   sidebar (agents, workspace) + execution feed + composer
+  ViewModels/              MainViewModel, AgentEditorViewModel, AgentCardViewModel, feed items
+  AvaloniaWorkspacePicker  native folder picker through IStorageProvider
+  Assets/                  aiceo.ico (ApplicationIcon) and aiceo.png (window icon)
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider resolution
 ```
 
 ### Database
 
-SQLite, created on first launch in the app's private data folder (under `%LOCALAPPDATA%`).
-Override with the `AICEO_DB_PATH` environment variable.
+SQLite, created on first launch in the per-user data folder (`%APPDATA%\AiCeoOrchestrator` on
+Windows, `~/.local/share/AiCeoOrchestrator` on Linux, `~/Library/Application Support/AiCeoOrchestrator`
+on macOS). Override with the `AICEO_DB_PATH` environment variable.
 
 `SchemaUpgrader` runs on every start and is idempotent:
 
@@ -154,35 +177,41 @@ Existing agents, tasks and logs are preserved.
 
 ## Build from source
 
-```powershell
-# prerequisites: .NET 10 SDK
-dotnet workload install maui-windows
+```bash
+# prerequisites: the .NET 10 SDK (no workload needed — Avalonia is plain NuGet)
+dotnet restore src/AiCeo.Desktop/AiCeo.Desktop.csproj
 
-dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64
-dotnet build   src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64
+# run it
+dotnet run --project src/AiCeo.Desktop/AiCeo.Desktop.csproj
 
-# tests (portable core, any OS)
+# tests (the portable core)
 dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj
 
-# the app as a folder, then the installer around it
-dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
-  -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:SelfContained=true `
-  -o ./artifacts/portable
-
-ISCC.exe /DAppVersion=1.0.3 /DSourceDir=artifacts\portable /DOutputDir=artifacts\out `
-  installer\inno-setup\AiCeo.iss
+# the single-file executable users download
+dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
+  -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
-MAUI cannot cross-compile to Windows from Linux or macOS: the desktop head and the installer are
-built on `windows-latest`, which is exactly what CI does.
+Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
+publishing to Linux/macOS from any host works because Avalonia is a plain NuGet dependency; only the
+final executable has to match the target OS.
+
+### Verifying a build without a GUI
+
+Every published binary accepts `--self-test`. It opens the database, prints the resolved paths and
+exercises the workspace guardrail (relative path allowed, `..` and absolute escapes refused), then
+exits with `0`. CI runs exactly that on the real single-file binaries, so a build that cannot start
+never reaches a release.
 
 ### CI / release
 
-- `ci.yml` — core library + unit tests on Linux, plus the real Windows desktop build, the
-  publish, and the Inno Setup installer on `windows-latest`; and a grep that fails the build if
-  `Task.WhenAll`, `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
-- `release.yml` — on a `v*` tag: MAUI workload, unit tests, self-contained publish, setup `.exe`,
-  portable zip, MSIX, SHA-256 checksums, and a GitHub Release with install instructions.
+- `ci.yml` — core library + unit tests on Linux; a real Linux single-file publish that is **run**
+  (`--self-test`); a Windows single-file publish whose `.exe` is also run; and a grep that fails the
+  build if `Task.WhenAll`, `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
+- `release.yml` — on a `v*` tag: publishes all seven RIDs as self-contained single files (Windows →
+  `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can
+  execute natively, then creates the **v1.0.4** release with all assets plus `SHA256SUMS.txt`.
 
 ---
 
@@ -204,6 +233,8 @@ Seeded on first run (edit or delete any of them in the sidebar):
 
 - **C# only.** No Python, no Node.js, no LangChain/CrewAI — the orchestration, the plan parser and
   the tool loop are ~600 lines of straight C#.
+- **No heavyweight UI runtime.** Avalonia targets plain `net10.0` with the .NET runtime inside the
+  single file, so there is nothing else to install and nothing that can be missing at startup.
 - **One chokepoint.** All path decisions live in `WorkspaceGuard`; all command decisions live in
   `CommandGuard`; all tool dispatch lives in `ToolService`. Nothing else opens a file or a process.
 - **Bounded.** Tool rounds, tool calls, file sizes, command output, command time and list sizes all
