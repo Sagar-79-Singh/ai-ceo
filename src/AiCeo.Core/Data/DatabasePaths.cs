@@ -1,43 +1,16 @@
 namespace AiCeo.Data;
 
 /// <summary>
-/// Resolves the SQLite file location. The published app is a single .exe, which may live in a
-/// read-only folder, so user data defaults to <c>%LOCALAPPDATA%</c>.
+/// Resolves the SQLite file location for the desktop app: <c>AICEO_DB_PATH</c> wins, otherwise the
+/// database lives in the app's private data folder (which is always writable).
 /// </summary>
 public static class DatabasePaths
 {
     public const string EnvironmentVariable = "AICEO_DB_PATH";
 
-    public static string Resolve(IConfiguration configuration, string contentRootPath)
-    {
-        var configured = configuration["Database:Path"];
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            configured = Environment.GetEnvironmentVariable(EnvironmentVariable);
-        }
-
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var directory = string.IsNullOrWhiteSpace(localAppData)
-                ? Path.Combine(contentRootPath, "App_Data")
-                : Path.Combine(localAppData, "AiCeoOrchestrator");
-
-            return EnsureDirectory(Path.Combine(directory, "aiceo.db"));
-        }
-
-        var path = configured.Trim();
-        if (!Path.IsPathRooted(path))
-        {
-            path = Path.Combine(contentRootPath, path);
-        }
-
-        return EnsureDirectory(path);
-    }
-
     /// <summary>
-    /// Desktop-friendly resolution: <c>AICEO_DB_PATH</c> wins, otherwise the file lives in the
-    /// app's private data folder (no IConfiguration needed).
+    /// Resolves the database path for the given fallback folder (the app's data directory),
+    /// creating the directory when needed.
     /// </summary>
     public static string ResolveFromEnvironment(string fallbackDirectory)
     {
