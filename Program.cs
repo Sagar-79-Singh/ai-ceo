@@ -3,6 +3,7 @@ using AiCeo.Data;
 using AiCeo.Models;
 using AiCeo.Options;
 using AiCeo.Services;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -24,9 +25,13 @@ if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URL
 }
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+
+// Enums (LlmProvider) travel as names ("Gemini"), never as magic numbers.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
-builder.Services.AddHttpClient(OmniRouteChatService.HttpClientName);
+builder.Services.AddHttpClient(LlmGateway.HttpClientName);
 builder.Services.Configure<OmniRouteOptions>(
     builder.Configuration.GetSection(OmniRouteOptions.SectionName));
 
@@ -36,8 +41,10 @@ builder.Services.AddSingleton(new AppRuntimeInfo(
     databasePath,
     typeof(Agent).Assembly.GetName().Version?.ToString(3) ?? "1.0.0"));
 
-builder.Services.AddScoped<OmniRouteChatService>();
+// The gateway caches OpenAI clients per endpoint+key, so it is a singleton.
+builder.Services.AddSingleton<ILlmGateway, LlmGateway>();
 builder.Services.AddScoped<AgentDirectory>();
+builder.Services.AddScoped<AgentHealthService>();
 builder.Services.AddScoped<AgentOrchestrator>();
 
 var app = builder.Build();
@@ -46,7 +53,10 @@ var omniRoute = app.Services.GetRequiredService<IOptions<OmniRouteOptions>>().Va
 app.Logger.LogInformation("AI CEO Orchestrator v{Version}", typeof(Agent).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
 app.Logger.LogInformation("Content root: {ContentRoot}", app.Environment.ContentRootPath);
 app.Logger.LogInformation("SQLite database: {DatabasePath}", databasePath);
-app.Logger.LogInformation("OmniRoute endpoint: {Endpoint}", omniRoute.ResolveEndpoint());
+app.Logger.LogInformation("Default OmniRoute endpoint: {Endpoint}", omniRoute.ResolveEndpoint());
+app.Logger.LogInformation(
+    "Providers: {Providers}",
+    string.Join(", ", LlmProviderCatalog.All.Select(info => $"{info.DisplayName} ({info.DefaultBaseUrl})")));
 
 // Create the SQLite database (Code-First) and seed the default CEO + workers.
 using (var scope = app.Services.CreateScope())
@@ -100,12 +110,24 @@ app.Lifetime.ApplicationStarted.Register(() =>
 });
 
 // ---------------------------------------------------------------------------------------------
-// REST surface (docs/ARCHITECTURE.md): POST /api/task is the canonical entry point.
+// REST surface: POST /api/task is the canonical entry point for programmatic runs.
 // ---------------------------------------------------------------------------------------------
 var api = app.MapGroup("/api");
 
-api.MapGet("/health", async (OmniRouteChatService llm, CancellationToken cancellationToken) =>
-    Results.Ok(await llm.CheckHealthAsync(cancellationToken)));
+api.MapGet("/health", async (AgentHealthService health, CancellationToken cancellationToken) =>
+    Results.Ok(await health.CheckManagerAsync(cancellationToken)));
+
+// Provider catalogue for the agent modal (display names, defaults, env vars).
+api.MapGet("/providers", () => Results.Ok(LlmProviderCatalog.All.Select(info => new
+{
+    provider = info.Provider.ToString(),
+    info.DisplayName,
+    info.DefaultBaseUrl,
+    info.DefaultModel,
+    info.ApiKeyEnvironmentVariable,
+    info.Hint,
+    info.RequiresApiKey
+})));
 
 // Support endpoint: tells you exactly which paths the running instance is serving from.
 api.MapGet("/diagnostics", (IWebHostEnvironment environment, AppRuntimeInfo runtime) => Results.Ok(new
@@ -115,11 +137,12 @@ api.MapGet("/diagnostics", (IWebHostEnvironment environment, AppRuntimeInfo runt
     ContentRoot = environment.ContentRootPath,
     WebRoot = environment.WebRootPath,
     environment.EnvironmentName,
+    Providers = LlmProviderCatalog.All.Select(info => info.Provider.ToString()),
     EmbeddedFrameworkAssets = frameworkAssets.Paths.OrderBy(path => path, StringComparer.Ordinal)
 }));
 
 api.MapGet("/agents", async (AgentDirectory directory, CancellationToken cancellationToken) =>
-    Results.Ok(await directory.ListAsync(cancellationToken)));
+    Results.Ok(await directory.ListViewsAsync(cancellationToken)));
 
 api.MapPost("/agents", async (
     AgentFormModel form,
@@ -129,7 +152,7 @@ api.MapPost("/agents", async (
     try
     {
         var agent = await directory.CreateAsync(form, cancellationToken);
-        return Results.Created($"/api/agents/{agent.Id}", agent);
+        return Results.Created($"/api/agents/{agent.Id}", directory.ToView(agent));
     }
     catch (ArgumentException exception)
     {
@@ -146,7 +169,7 @@ api.MapPut("/agents/{id:guid}", async (
     try
     {
         var agent = await directory.UpdateAsync(id, form, cancellationToken);
-        return agent is null ? Results.NotFound() : Results.Ok(agent);
+        return agent is null ? Results.NotFound() : Results.Ok(directory.ToView(agent));
     }
     catch (ArgumentException exception)
     {
@@ -165,6 +188,15 @@ api.MapPost("/agents/{id:guid}/manager", async (
     AgentDirectory directory,
     CancellationToken cancellationToken) =>
     await directory.MakeManagerAsync(id, cancellationToken) is null ? Results.NotFound() : Results.Ok());
+
+api.MapGet("/agents/{id:guid}/health", async (
+    Guid id,
+    AgentHealthService health,
+    CancellationToken cancellationToken) =>
+{
+    var result = await health.CheckAsync(id, cancellationToken);
+    return result.Endpoint == "—" ? Results.NotFound(result) : Results.Ok(result);
+});
 
 api.MapGet("/tasks", async (AppDbContext db, CancellationToken cancellationToken) =>
 {

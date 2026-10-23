@@ -8,11 +8,19 @@
     <AssemblyName>AiCeo</AssemblyName>
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator powered by a local OmniRoute gateway.</Description>
-    <Version>1.0.0</Version>
+    <Version>1.0.2</Version>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
+
+  <!-- The test project lives under tests/; keep it out of the web app's default globs. -->
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+    <Content Remove="tests/**" />
+    <None Remove="tests/**" />
+    <EmbeddedResource Remove="tests/**" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
