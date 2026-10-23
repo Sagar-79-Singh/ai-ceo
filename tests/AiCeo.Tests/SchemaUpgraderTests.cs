@@ -58,7 +58,7 @@ public class SchemaUpgraderTests
         await SchemaUpgrader.UpgradeAsync(legacy.Db, NullLogger.Instance);
 
         var columns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "Agents");
-        Assert.Single(columns.Where(column => column.Equals("Provider", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(columns, column => column.Equals("Provider", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(6, columns.Count);
     }
 

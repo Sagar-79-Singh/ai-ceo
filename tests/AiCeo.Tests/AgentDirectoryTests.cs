@@ -1,7 +1,7 @@
 using AiCeo.Models;
 using AiCeo.Options;
 using AiCeo.Services;
-using Microsoft.Extensions.Options;
+using MsOptions = Microsoft.Extensions.Options.Options;
 using Xunit;
 
 namespace AiCeo.Tests;
@@ -9,7 +9,7 @@ namespace AiCeo.Tests;
 public class AgentDirectoryTests
 {
     private static AgentDirectory Create(TestDatabase database)
-        => new(database.Db, Options.Create(new OmniRouteOptions()));
+        => new(database.Db, MsOptions.Create(new OmniRouteOptions()));
 
     private static AgentFormModel Form(LlmProvider provider = LlmProvider.OmniRoute, string? apiKey = "sk-secret-1234567890") => new()
     {
@@ -124,7 +124,7 @@ public class AgentDirectoryTests
         await directory.MakeManagerAsync(second.Id);
 
         var views = await directory.ListViewsAsync();
-        Assert.Single(views.Where(view => view.IsManager));
+        Assert.Single(views, view => view.IsManager);
         Assert.Equal(second.Id, views.Single(view => view.IsManager).Id);
         Assert.NotEqual(first.Id, views.Single(view => view.IsManager).Id);
     }
