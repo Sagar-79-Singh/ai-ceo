@@ -50,6 +50,11 @@ dropped the bit.
 **Requirements:** Windows 10/11 (x64, x86 or ARM64), a modern glibc Linux (x64 or ARM64), or macOS
 13+ (Intel or Apple Silicon).
 
+> **Windows 7 / 8 / 8.1:** the app itself has no Windows-specific dependencies any more (that was the
+> MAUI crash), but .NET 10 — the runtime baked into the executable — officially supports Windows 10
+> 1809 and newer only. On Windows 7/8 the process will fail before our code runs, so `crash.log`
+> cannot be written. Use the `win-x86` build on old 32-bit Windows 10 machines.
+
 ### Where your data lives
 
 Nothing is written next to the executable — it may sit in `~/Downloads` or on a USB stick.
