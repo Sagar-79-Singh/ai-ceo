@@ -3,8 +3,8 @@ name: CI
 # v1.0.3 is a .NET MAUI Blazor Hybrid desktop app. MAUI only builds for Windows here, so the
 # pipeline is:
 #   1. core + tests on Linux (fast, catches the guardrail/topology logic),
-#   2. the real Windows desktop head built and packaged on windows-latest (the only OS that can
-#      compile WinUI/MAUI), which also proves the MSIX installer can be produced.
+#   2. the real Windows desktop head on windows-latest, published unpackaged and wrapped into an
+#      Inno Setup installer (an MSIX is also attempted, but the .exe installer is the contract).
 on:
   push:
     branches:
@@ -79,7 +79,7 @@ jobs:
           fi
 
   desktop-windows:
-    name: Windows desktop head (MAUI) + MSIX
+    name: Windows desktop head (MAUI) + installer
     runs-on: windows-latest
 
     steps:
@@ -116,55 +116,93 @@ jobs:
             exit 1
           }
 
-      - name: Restore for packaging
+      - name: Publish the unpackaged app
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "msix-restore.log"
-          dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64 -p:WindowsPackageType=MSIX 2>&1 | Tee-Object -FilePath $log
+          $log = Join-Path $env:RUNNER_TEMP "maui-publish.log"
+          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
+            -p:WindowsPackageType=None `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:SelfContained=true `
+            -o ./artifacts/portable 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $tail = ((Get-Content $log -Tail 50) -join " | ") -replace "\r?\n", " "
+            Write-Host "::error title=publish-failed::exit=$code $($tail.Substring(0, [Math]::Min(2500, $tail.Length)))"
+            exit 1
+          }
+
+      - name: Verify the app executable
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path ./artifacts/portable -Filter "AiCeo.Maui.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) {
+            Write-Host "::error title=missing-exe::the publish output has no AiCeo.Maui.exe"
+            Get-ChildItem ./artifacts/portable | Select-Object Name
+            exit 1
+          }
+          Write-Host "app: $($exe.FullName) ($([Math]::Round($exe.Length / 1MB, 1)) MB)"
+          Write-Host "files: $((Get-ChildItem ./artifacts/portable -Recurse -File).Count)"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the setup installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            $iscc = (Get-ChildItem "C:\Program Files*\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          }
+          if (-not $iscc) {
+            Write-Host "::error title=missing-iscc::Inno Setup's ISCC.exe was not found"
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path ./artifacts/out | Out-Null
+
+          $log = Join-Path $env:RUNNER_TEMP "inno.log"
+          & $iscc "/DAppVersion=1.0.3" "/DSourceDir=$(Resolve-Path ./artifacts/portable)" "/DOutputDir=$(Resolve-Path ./artifacts/out)" ./installer/inno-setup/AiCeo.iss 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
             $tail = ((Get-Content $log -Tail 40) -join " | ") -replace "\r?\n", " "
-            Write-Host "::error title=msix-restore-failed::$tail"
+            Write-Host "::error title=inno-failed::$($tail.Substring(0, [Math]::Min(2500, $tail.Length)))"
             exit 1
           }
 
-      - name: Build the MSIX installer
+      # Best effort: the WinUI-packaged MSIX is a bonus, the .exe installer above is the contract.
+      - name: Try to build an MSIX (best effort)
+        continue-on-error: true
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "msix.log"
-          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -f net10.0-windows10.0.19041.0 `
-            -r win-x64 `
+          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
             -p:WindowsPackageType=MSIX `
+            -p:WindowsAppSDKSelfContained=false `
             -p:AppxPackageSigningEnabled=false `
-            -p:UapAppxPackageBuildMode=SideloadOnly `
-            -p:GenerateAppxPackageOnBuild=true 2>&1 | Tee-Object -FilePath $log
-          $code = $LASTEXITCODE
-          Write-Host "publish exit code: $code"
-          if ($code -ne 0) {
-            $tail = ((Get-Content $log -Tail 60) -join " | ") -replace "\r?\n", " "
-            Write-Host "::error title=msix-failed::exit=$code $($tail.Substring(0, [Math]::Min(3000, $tail.Length)))"
-            exit 1
+            -p:UapAppxPackageBuildMode=SideloadOnly
+          $msix = Get-ChildItem -Path src/AiCeo.Maui -Recurse -Filter *.msix -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msix) {
+            Copy-Item $msix.FullName "./artifacts/out/AI-CEO-Orchestrator-1.0.3-win-x64.msix" -Force
+            Write-Host "msix: $($msix.FullName)"
+          } else {
+            Write-Host "no .msix produced; the Inno Setup installer is the release artifact"
           }
 
-      - name: Verify the MSIX exists
+      - name: Verify the installer exists
         shell: pwsh
         run: |
-          $packages = Get-ChildItem -Path src/AiCeo.Maui -Recurse -Filter *.msix -ErrorAction SilentlyContinue
-          if (-not $packages) {
-            $packages = Get-ChildItem -Path ./publish -Recurse -Filter *.msix -ErrorAction SilentlyContinue
-          }
-          if (-not $packages) {
-            Write-Host "::error title=missing-msix::the MSIX installer was not produced"
-            Get-ChildItem -Path ./publish -Recurse | Select-Object FullName
+          $setup = Get-ChildItem -Path ./artifacts/out -Filter "*setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            Write-Host "::error title=missing-installer::no setup .exe was produced"
+            Get-ChildItem ./artifacts -Recurse | Select-Object FullName
             exit 1
           }
-          $packages | ForEach-Object { Write-Host "built $($_.FullName) ($([Math]::Round($_.Length / 1MB, 1)) MB)" }
+          Write-Host "installer: $($setup.Name) ($([Math]::Round($setup.Length / 1MB, 1)) MB)"
+          Get-ChildItem ./artifacts/out | Select-Object Name, Length
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:
-          name: msix-ci
-          path: |
-            src/AiCeo.Maui/**/*.msix
-            publish/**/*.msix
+          name: desktop-windows
+          path: artifacts/out/*
           if-no-files-found: error
           retention-days: 7

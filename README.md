@@ -16,7 +16,7 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 | Area | Change |
 | --- | --- |
 | **Desktop app** | .NET **MAUI Blazor Hybrid** (`net10.0-windows10.0.19041.0`). The Blazor UI renders inside a `BlazorWebView` in a WinUI window. The Kestrel web host, `Program.cs` and the minimal-API endpoints are gone. |
-| **Installer** | `release.yml` builds a Windows **`.msix`** package (plus a portable `.zip`) on `windows-latest` and attaches both, with SHA-256 checksums, to the GitHub Release. |
+| **Installer** | `release.yml` builds a per-user **`.exe` installer** with Inno Setup (plus a portable `.zip`, and a best-effort `.msix`) on `windows-latest`, and attaches everything with SHA-256 checksums to the GitHub Release. |
 | **Local workspace** | A **Select Workspace Folder** button in the sidebar opens the native OS folder picker and stores the chosen path in SQLite (single row, `WorkspaceSettings`). |
 | **Tool calling** | Workers marked *tools* get four function-calling tools: `list_files`, `read_file`, `write_file`, `run_command`. |
 | **Security guardrail** | **Every** file path and every terminal path token is validated against the workspace root before anything touches the disk. Anything outside is refused. |
@@ -26,13 +26,14 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ## Install
 
-1. Open the **Releases** page and download `AI-CEO-Orchestrator-<version>-win-x64.msix`.
-2. Double-click it → **Install**. The build is not code-signed, so Windows may show a SmartScreen
-   warning: **More info → Install anyway**.
+1. Open the **Releases** page and download `AI-CEO-Orchestrator-<version>-win-x64-setup.exe`.
+2. Run it. It installs per-user (no administrator rights), with Start-menu and optional desktop
+   shortcuts. The build is not code-signed, so SmartScreen may warn: **More info → Run anyway**.
 3. Launch **AI CEO Orchestrator** from the Start menu.
 4. In the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
 Prefer no installer? Download the `-portable.zip`, unzip it anywhere and run `AiCeo.Maui.exe`.
+When the MSIX packs on the runner it is attached too, but the setup `.exe` is the supported path.
 
 **Requirements:** Windows 10 1809 (build 17763) or newer, x64.
 
@@ -130,13 +131,13 @@ src/AiCeo.Maui/            .NET MAUI Blazor Hybrid desktop head (Windows)
   Services/                LocalFolderPicker (native folder picker)
   Components/              Main.razor (router), Pages/Home.razor, Shared/AgentEditor.razor, …
   wwwroot/                 index.html, css/app.css, js/app.js
+installer/inno-setup/      AiCeo.iss — the per-user setup .exe definition
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider resolution
 ```
 
 ### Database
 
-SQLite, created on first launch in the app's private data folder
-(`%LOCALAPPDATA%\Packages\com.aiceo.orchestrator\LocalState\aiceo.db` for the MSIX build).
+SQLite, created on first launch in the app's private data folder (under `%LOCALAPPDATA%`).
 Override with the `AICEO_DB_PATH` environment variable.
 
 `SchemaUpgrader` runs on every start and is idempotent:
@@ -160,22 +161,26 @@ dotnet build   src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64
 # tests (portable core, any OS)
 dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj
 
-# the installer
+# the app as a folder, then the installer around it
 dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
-  -p:WindowsPackageType=MSIX -p:AppxPackageSigningEnabled=false `
-  -p:GenerateAppxPackageOnBuild=true -o ./artifacts/msix
+  -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:SelfContained=true `
+  -o ./artifacts/portable
+
+ISCC.exe /DAppVersion=1.0.3 /DSourceDir=artifacts\portable /DOutputDir=artifacts\out `
+  installer\inno-setup\AiCeo.iss
 ```
 
-MAUI cannot cross-compile to Windows from Linux or macOS: the desktop head and the MSIX are built on
-`windows-latest`, which is exactly what CI does.
+MAUI cannot cross-compile to Windows from Linux or macOS: the desktop head and the installer are
+built on `windows-latest`, which is exactly what CI does.
 
 ### CI / release
 
-- `ci.yml` — core library + unit tests on Linux, plus the real Windows desktop build and MSIX
-  packaging on `windows-latest`, and a grep that fails the build if `Task.WhenAll`,
-  `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
-- `release.yml` — on a `v*` tag: MAUI workload, MSIX + portable zip, SHA-256 checksums, GitHub
-  Release with install instructions.
+- `ci.yml` — core library + unit tests on Linux, plus the real Windows desktop build, the
+  publish, and the Inno Setup installer on `windows-latest`; and a grep that fails the build if
+  `Task.WhenAll`, `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
+- `release.yml` — on a `v*` tag: MAUI workload, unit tests, self-contained publish, setup `.exe`,
+  portable zip, best-effort MSIX, SHA-256 checksums, and a GitHub Release with install
+  instructions.
 
 ---
 
