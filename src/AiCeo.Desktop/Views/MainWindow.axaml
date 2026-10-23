@@ -1,0 +1,447 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AiCeo.Desktop.Views.MainWindow"
+        Title="AI CEO Orchestrator"
+        Width="1440"
+        Height="940"
+        MinWidth="1020"
+        MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        Background="#070A10">
+
+    <Grid ColumnDefinitions="368,*">
+
+        <!-- ============================================================ SIDEBAR -->
+        <Border Grid.Column="0" Background="#0B111A" BorderBrush="#161F2E" BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="Auto,*,Auto">
+
+                <StackPanel Grid.Row="0" Spacing="12" Margin="16,16,16,10">
+
+                    <!-- brand -->
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Border Width="40" Height="40" CornerRadius="12" Background="#123A33">
+                            <TextBlock Text="AI" FontWeight="Bold" FontSize="15" Foreground="#5EE0B0"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="AI CEO" FontSize="17" FontWeight="SemiBold" Foreground="#EAF2FB" />
+                            <TextBlock Text="{Binding VersionLabel}" Classes="subtitle" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- provider health -->
+                    <Button Classes="ghost" Command="{Binding RefreshHealthCommand}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            ToolTip.Tip="{Binding ProviderTooltip}" Padding="10,7">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Ellipse Width="8" Height="8" Fill="{Binding ProviderDotBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding ProviderText}" FontSize="11.5" Foreground="#9FB2C7"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- workspace -->
+                    <Border Classes="panel">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="WORKSPACE" Classes="label" />
+                                <TextBlock Grid.Column="1" Text="{Binding WorkspaceStatusText}" Classes="tiny" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding WorkspacePath}" Classes="mono" Foreground="#D6E2F0"
+                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="54" />
+
+                            <TextBlock Text="{Binding WorkspaceProblem}" Foreground="#FFC46B" FontSize="11"
+                                       TextWrapping="Wrap" IsVisible="{Binding HasWorkspaceProblem}" />
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="primary" Content="Select Workspace Folder"
+                                        Command="{Binding SelectWorkspaceCommand}"
+                                        IsEnabled="{Binding IsNotRunning}" />
+                                <Button Classes="ghost" Content="Clear"
+                                        Command="{Binding ClearWorkspaceCommand}"
+                                        IsVisible="{Binding HasWorkspace}"
+                                        IsEnabled="{Binding IsNotRunning}" />
+                            </StackPanel>
+
+                            <CheckBox Content="Allow agents to use files &amp; terminal"
+                                      IsChecked="{Binding ToolsEnabled, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsNotRunning}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                        <TextBlock Text="{Binding AgentsHeader}" Classes="label" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="ghost small" Content="+ New agent"
+                                Command="{Binding NewAgentCommand}" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- agent bench -->
+                <ScrollViewer Grid.Row="1" Margin="16,0,16,0" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Agents}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Classes="agentcard" Margin="0,0,0,8">
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel Spacing="3">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5"
+                                                               Foreground="#EAF2FB" TextTrimming="CharacterEllipsis" />
+                                                    <Border Classes="badge" IsVisible="{Binding IsManager}">
+                                                        <TextBlock Text="CEO" FontSize="9" FontWeight="Bold" Foreground="#5EE0B0" />
+                                                    </Border>
+                                                    <Border Classes="badge" Background="#1B2436" IsVisible="{Binding CanUseTools}">
+                                                        <TextBlock Text="tools" FontSize="9" FontWeight="Bold" Foreground="#9AA8FF" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Role}" Classes="tiny" />
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="1">
+                                                <Button Classes="icon" Content="★" Command="{Binding MakeCeoCommand}"
+                                                        IsVisible="{Binding CanBecomeCeo}" ToolTip.Tip="Make this agent the CEO" />
+                                                <Button Classes="icon" Content="✎" Command="{Binding EditCommand}"
+                                                        ToolTip.Tip="Edit agent" />
+                                                <Button Classes="icon" Content="✕" Command="{Binding DeleteCommand}"
+                                                        ToolTip.Tip="Delete agent" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding ProviderDisplayName}" FontSize="10" Foreground="#5EE0B0" />
+                                            <TextBlock Text="{Binding ModelId}" Classes="tiny" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <TextBlock Text="{Binding KeyText}" FontSize="10" Foreground="#55657A" />
+
+                                        <Border IsVisible="{Binding IsConfirmingDelete}" Background="#2A1417"
+                                                BorderBrush="#5A2A31" BorderThickness="1" CornerRadius="8" Padding="8,6">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding DeleteQuestion}" FontSize="11" Foreground="#FFB3B3"
+                                                           VerticalAlignment="Center" />
+                                                <Button Classes="small ghost" Content="Keep" Command="{Binding CancelDeleteCommand}" />
+                                                <Button Classes="small danger" Content="Delete" Command="{Binding ConfirmDeleteCommand}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="2" Margin="16,10,16,14" Spacing="3">
+                    <TextBlock Text="{Binding FooterText}" FontSize="9.5" Foreground="#48586C"
+                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FooterText}" />
+                    <TextBlock Text=".NET 10 · Avalonia · strict star topology" FontSize="9.5" Foreground="#48586C" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ============================================================ MAIN PANE -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*,Auto">
+
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="22,18,22,10">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="Execution feed" Classes="title" />
+                    <TextBlock Text="Strict star topology · sequential delegation · workspace-confined tools"
+                               Classes="subtitle" />
+                </StackPanel>
+                <Border Grid.Column="1" Classes="panel" Padding="10,6" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding FlowText}" FontSize="11" Foreground="#8EA3BD" />
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="1" Margin="22,0,22,8" CornerRadius="10" Padding="10,7"
+                    Background="{Binding BannerBackground}" BorderBrush="{Binding BannerBorderBrush}"
+                    BorderThickness="1" IsVisible="{Binding HasBanner}">
+                <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" FontSize="11.5" Foreground="#CFE0EF" />
+            </Border>
+
+            <Border Grid.Row="2" Margin="22,0,22,0" Background="#080C13"
+                    BorderBrush="#151E2C" BorderThickness="1" CornerRadius="14">
+                <Grid>
+                    <ScrollViewer x:Name="FeedScroll" Padding="18" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Spacing="10">
+
+                            <!-- the user's ask -->
+                            <Border IsVisible="{Binding HasPrompt}" Background="#14243A" BorderBrush="#20354F"
+                                    BorderThickness="1" CornerRadius="12" Padding="12"
+                                    HorizontalAlignment="Right" MaxWidth="720">
+                                <SelectableTextBlock Text="{Binding CurrentPrompt}" TextWrapping="Wrap"
+                                                     FontSize="12.5" Foreground="#E3EDF9" />
+                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding Feed}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,0,0,4">
+
+                                            <!-- CEO plan -->
+                                            <Border Classes="card" IsVisible="{Binding ShowPlan}">
+                                                <StackPanel Spacing="8">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Ellipse Width="7" Height="7" Fill="#5EE0B0" VerticalAlignment="Center" />
+                                                        <TextBlock Text="CEO plan" FontWeight="SemiBold" FontSize="12" Foreground="#EAF2FB" />
+                                                        <TextBlock Text="{Binding AgentName}" Classes="tiny" VerticalAlignment="Center" />
+                                                    </StackPanel>
+
+                                                    <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid ColumnDefinitions="26,*" Margin="0,3">
+                                                                    <Border Width="20" Height="20" CornerRadius="10" Background="#17222F"
+                                                                            VerticalAlignment="Top">
+                                                                        <TextBlock Text="{Binding Index}" FontSize="10" Foreground="#8EA3BD"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                    </Border>
+                                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                                        <TextBlock Text="{Binding Role}" FontSize="11"
+                                                                                   FontWeight="SemiBold" Foreground="#9AA8FF" />
+                                                                        <SelectableTextBlock Text="{Binding Instructions}" FontSize="12"
+                                                                                             TextWrapping="Wrap" Foreground="#C9D6E6" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+
+                                                    <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding ShowPlanRaw}"
+                                                                         FontSize="11.5" TextWrapping="Wrap" Foreground="#8EA3BD" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- delegation -->
+                                            <Border IsVisible="{Binding ShowDelegation}" Padding="2,4">
+                                                <Grid ColumnDefinitions="18,*">
+                                                    <Ellipse Width="7" Height="7" Fill="{Binding PendingDotBrush}"
+                                                             VerticalAlignment="Top" Margin="0,6,0,0" />
+                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                        <TextBlock Text="{Binding DelegationTitle}" FontSize="11" Foreground="#8EA3BD" />
+                                                        <SelectableTextBlock Text="{Binding Text}" FontSize="12"
+                                                                             TextWrapping="Wrap" Foreground="#C9D6E6" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+
+                                            <!-- tool call / tool result -->
+                                            <Border IsVisible="{Binding ShowTool}" Background="#0D1522" BorderBrush="#22304A"
+                                                    BorderThickness="1" CornerRadius="10" Padding="10">
+                                                <StackPanel Spacing="6">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="⚙" FontSize="11" Foreground="#9AA8FF" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding ToolName}" Classes="mono" Foreground="#9AA8FF"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding ToolStateText}" FontSize="10" Foreground="#647A94"
+                                                                   VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding ShowToolArgs}"
+                                                                         FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"
+                                                                         Foreground="#8EA3BD" />
+                                                    <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding ShowToolOutput}"
+                                                                         FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"
+                                                                         Foreground="{Binding ToolOutputBrush}" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- worker result -->
+                                            <Border Classes="card" IsVisible="{Binding ShowResult}">
+                                                <StackPanel Spacing="6">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="✓" Foreground="#5EE0B0" FontSize="11" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding AgentName}" FontWeight="SemiBold" FontSize="12"
+                                                                   Foreground="#EAF2FB" />
+                                                        <TextBlock Text="worker result" FontSize="10" Foreground="#647A94"
+                                                                   VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                                         FontSize="12.5" Foreground="#CBD8E8" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- error -->
+                                            <Border IsVisible="{Binding ShowError}" Background="#1E1316" BorderBrush="#3A1E24"
+                                                    BorderThickness="1" CornerRadius="10" Padding="10">
+                                                <Grid ColumnDefinitions="18,*">
+                                                    <TextBlock Text="⚠" Foreground="#FF9A9A" FontSize="11" VerticalAlignment="Top" />
+                                                    <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                                                                         FontSize="11.5" Foreground="#FFB3B3" />
+                                                </Grid>
+                                            </Border>
+
+                                            <!-- anything else -->
+                                            <Border IsVisible="{Binding ShowNote}" Padding="2,4">
+                                                <Grid ColumnDefinitions="18,*">
+                                                    <Ellipse Width="6" Height="6" Fill="#55657A" VerticalAlignment="Top"
+                                                             Margin="0,6,0,0" />
+                                                    <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
+                                                                         FontSize="11.5" Foreground="#8EA3BD" />
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- final answer -->
+                            <Border IsVisible="{Binding HasFinalOutput}" Background="#0E1B1A" BorderBrush="#1D4A44"
+                                    BorderThickness="1" CornerRadius="12" Padding="14">
+                                <StackPanel Spacing="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Ellipse Width="7" Height="7" Fill="#5EE0B0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Final answer" FontWeight="SemiBold" FontSize="12" Foreground="#EAF2FB" />
+                                        <TextBlock Text="{Binding CeoName}" Classes="tiny" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <SelectableTextBlock Text="{Binding FinalOutput}" TextWrapping="Wrap"
+                                                         FontSize="12.5" Foreground="#D5E5E2" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- running indicator -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsRunning}" Margin="2,2,0,8">
+                                <Ellipse Width="7" Height="7" Fill="#FFC46B" VerticalAlignment="Center" />
+                                <TextBlock Text="orchestrating…" FontSize="11" Foreground="#8EA3BD" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- empty state -->
+                    <StackPanel IsVisible="{Binding ShowEmptyState}" VerticalAlignment="Center"
+                                HorizontalAlignment="Center" MaxWidth="520" Spacing="10">
+                        <Border Width="52" Height="52" CornerRadius="16" Background="#123A33"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="◎" FontSize="24" Foreground="#5EE0B0"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="Brief your CEO" FontSize="18" FontWeight="SemiBold" Foreground="#EAF2FB"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock TextWrapping="Wrap" TextAlignment="Center" Classes="subtitle"
+                                   Text="You talk to the CEO only. It plans the work, delegates to one worker at a time, then writes the final answer here. Workers tagged 'tools' can edit files in your workspace and run builds." />
+                        <Border Background="#0D1522" BorderBrush="#1D2838" BorderThickness="1"
+                                CornerRadius="10" Padding="12,8" Margin="0,6,0,0">
+                            <TextBlock Classes="tiny" TextWrapping="Wrap" TextAlignment="Center"
+                                       Text="Try: “write a hello-world script into the workspace and run it” or “inspect the workspace and summarise what this project does”." />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- composer -->
+            <Border Grid.Row="3" Margin="22,14,22,18" Background="#0D1420" BorderBrush="#1B2635"
+                    BorderThickness="1" CornerRadius="14" Padding="12">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox x:Name="ComposerBox"
+                                 Text="{Binding Prompt, Mode=TwoWay}"
+                                 Watermark="Tell your CEO what to achieve…"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MinHeight="64"
+                                 MaxHeight="150"
+                                 VerticalContentAlignment="Top"
+                                 KeyDown="OnComposerKeyDown" />
+                        <Button Grid.Column="1" Classes="primary" Content="Send" Margin="10,0,0,0"
+                                VerticalAlignment="Bottom" MinWidth="86" MinHeight="36"
+                                Command="{Binding SendCommand}" IsVisible="{Binding IsNotRunning}" />
+                        <Button Grid.Column="1" Classes="danger" Content="Stop" Margin="10,0,0,0"
+                                VerticalAlignment="Bottom" MinWidth="86" MinHeight="36"
+                                Command="{Binding StopCommand}" IsVisible="{Binding IsRunning}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Tool-enabled workers can only touch files inside the selected workspace folder."
+                                   Classes="tiny" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="1" Text="Ctrl + Enter to send" Classes="tiny" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ============================================================ AGENT EDITOR OVERLAY -->
+        <Border Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsEditorOpen}" Background="#C4000000">
+            <Border Background="#0E1622" BorderBrush="#23303F" BorderThickness="1" CornerRadius="16"
+                    Padding="20" Width="640" MaxHeight="800" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="12" DataContext="{Binding Editor}">
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="#EAF2FB" />
+                                <TextBlock Text="{Binding Subtitle}" Classes="tiny" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="icon" Content="✕" Command="{Binding CancelCommand}"
+                                    VerticalAlignment="Top" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,*">
+                            <StackPanel Spacing="4" Margin="0,0,5,0">
+                                <TextBlock Text="Name" Classes="label" />
+                                <TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="Atlas" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4" Margin="5,0,0,0">
+                                <TextBlock Text="Role" Classes="label" />
+                                <TextBox Text="{Binding Role, Mode=TwoWay}" Watermark="Researcher" />
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="System prompt" Classes="label" />
+                            <TextBox Text="{Binding SystemPrompt, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="86" MaxHeight="180" VerticalContentAlignment="Top"
+                                     Watermark="Describe how this agent thinks and how it reports back." />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Provider" Classes="label" />
+                            <ComboBox ItemsSource="{Binding Providers}"
+                                      SelectedItem="{Binding SelectedProvider, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Text="{Binding ProviderHint}" Classes="tiny" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Base URL" Classes="label" />
+                            <TextBox Text="{Binding BaseUrl, Mode=TwoWay}" Watermark="{Binding BaseUrlPlaceholder}" />
+                            <TextBlock Text="Leave blank to use the provider default."
+                                       Classes="tiny" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="API key" Classes="label" />
+                            <TextBox Text="{Binding ApiKey, Mode=TwoWay}" PasswordChar="*"
+                                     Watermark="{Binding ApiKeyPlaceholder}" />
+                            <CheckBox Content="{Binding ClearKeyLabel}" IsChecked="{Binding ClearApiKey, Mode=TwoWay}"
+                                      IsVisible="{Binding ShowClearKey}" />
+                            <TextBlock Text="Stored locally in SQLite. The key is never shown again after saving."
+                                       Classes="tiny" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Model ID" Classes="label" />
+                            <TextBox Text="{Binding ModelId, Mode=TwoWay}" Watermark="{Binding BaseUrlPlaceholder}" />
+                        </StackPanel>
+
+                        <CheckBox Content="Allow this worker to use workspace tools (files + terminal)"
+                                  IsChecked="{Binding CanUseTools, Mode=TwoWay}" IsEnabled="{Binding IsNotCeo}" />
+                        <TextBlock Text="{Binding ToolsHint}" Classes="tiny" TextWrapping="Wrap" />
+
+                        <TextBlock Text="{Binding ValidationError}" Foreground="#FF9A9A" FontSize="11.5"
+                                   TextWrapping="Wrap" IsVisible="{Binding HasValidationError}" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+                            <Button Classes="ghost" Content="Cancel" Command="{Binding CancelCommand}" />
+                            <Button Classes="primary" Content="{Binding SubmitText}"
+                                    Command="{Binding SaveCommand}" IsEnabled="{Binding IsNotBusy}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Border>
+    </Grid>
+</Window>
