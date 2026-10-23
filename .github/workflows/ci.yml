@@ -149,6 +149,27 @@ jobs:
             exit 1
           fi
 
+          echo "ui smoke test (headless X server)"
+          if command -v xvfb-run > /dev/null 2>&1; then
+            xvfb-run -a "$ROOT/AiCeo" --smoke-ui 2>&1 | tee "$RUNNER_TEMP/uismoke.log"
+            UI_CODE=${PIPESTATUS[0]}
+          else
+            sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+            xvfb-run -a "$ROOT/AiCeo" --smoke-ui 2>&1 | tee "$RUNNER_TEMP/uismoke.log"
+            UI_CODE=${PIPESTATUS[0]}
+          fi
+
+          echo "ui smoke exit code: $UI_CODE"
+          if [ "$UI_CODE" -ne 0 ]; then
+            echo "::error title=ui-smoke-failed::the Avalonia window could not be created"
+            [ -f "$ROOT/crash.log" ] && tail -60 "$ROOT/crash.log"
+            exit 1
+          fi
+          if ! grep -q "UI SMOKE OK" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=ui-smoke-report::UI SMOKE OK was not reported"
+            exit 1
+          fi
+
           # The app must have created its database somewhere writable.
           if [ ! -f "$AICEO_DB_PATH" ]; then
             export AICEO_DB_PATH="$HOME/.local/share/AiCeoOrchestrator/aiceo.db"
