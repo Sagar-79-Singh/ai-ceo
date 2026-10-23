@@ -56,7 +56,7 @@ public class TaskPlanParserTests
         Assert.False(TaskPlanParser.TryParse("""{"role":"Researcher"}""", out _));
         Assert.False(TaskPlanParser.TryParse("", out _));
         Assert.False(TaskPlanParser.TryParse(null, out _));
-        Assert.False(TaskPlanParser.TryParse("""[{"role":"X","instructions":"""", out _));
+        Assert.False(TaskPlanParser.TryParse("[{\"role\":\"X\",\"instructions\":\"", out _));
     }
 
     [Fact]
