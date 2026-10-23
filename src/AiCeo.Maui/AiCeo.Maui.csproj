@@ -57,8 +57,4 @@
     <MauiIcon Include="Resources\AppIcon\appicon.png" Color="#080B11" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Remove="wwwroot\**" />
-  </ItemGroup>
-
 </Project>
