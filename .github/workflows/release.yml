@@ -245,6 +245,7 @@ jobs:
             ### Requirements
             Windows 10 1809 (build 17763) or newer, x64.
           files: |
+            assets/*setup.exe
             assets/*.msix
             assets/*.zip
             assets/*.sha256
