@@ -3,6 +3,7 @@ using AiCeo.Data;
 using AiCeo.Models;
 using AiCeo.Options;
 using AiCeo.Services;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -24,6 +25,10 @@ if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URL
 }
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+
+// Enums (LlmProvider) travel as names ("Gemini"), never as magic numbers.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
 builder.Services.AddHttpClient(LlmGateway.HttpClientName);
