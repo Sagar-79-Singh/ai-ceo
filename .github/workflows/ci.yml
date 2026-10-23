@@ -1,10 +1,10 @@
 name: CI
 
-# v1.0.3 is a .NET MAUI Blazor Hybrid desktop app. MAUI only builds for Windows here, so the
-# pipeline is:
-#   1. core + tests on Linux (fast, catches the guardrail/topology logic),
-#   2. the real Windows desktop head on windows-latest, published unpackaged and wrapped into an
-#      Inno Setup installer (an MSIX is also attempted, but the .exe installer is the contract).
+# v1.0.4 is a cross-platform Avalonia desktop app, so the pipeline does:
+#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema),
+#   2. the desktop head built and published as a single file on Linux (real executable, booted
+#      headlessly through --self-test),
+#   3. the same on Windows, producing the standalone .exe users download.
 on:
   push:
     branches:
@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          if ! dotnet restore src/AiCeo.Core/AiCeo.Core.csproj 2>&1 | tee "$RUNNER_TEMP/restore.log"; then
+          if ! dotnet restore tests/AiCeo.Tests/AiCeo.Tests.csproj 2>&1 | tee "$RUNNER_TEMP/restore.log"; then
             MSG=$(grep -E "error [A-Z]+[0-9]+|NU[0-9]{4}" "$RUNNER_TEMP/restore.log" | head -8 | tr '\n' '|')
             echo "::error title=restore-failed::${MSG:0:1800}"
             exit 1
@@ -78,8 +78,85 @@ jobs:
             exit 1
           fi
 
+  desktop-linux:
+    name: Desktop (Linux x64, single file)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore src/AiCeo.Desktop/AiCeo.Desktop.csproj -r linux-x64
+
+      - name: Publish (single file, self-contained)
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
+                -c Release -r linux-x64 --self-contained true \
+                -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+                -p:DebugType=none -p:DebugSymbols=false 2>&1 | tee "$RUNNER_TEMP/publish.log"; then
+            MSG=$(grep -E "error [A-Z]+[0-9]+|error MSB|error NU" "$RUNNER_TEMP/publish.log" | head -8 | tr '\n' '|')
+            echo "::error title=publish-failed::${MSG:0:1800}"
+            exit 1
+          fi
+
+      - name: Verify it is a single file
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="src/AiCeo.Desktop/bin/Release/net10.0/linux-x64/publish"
+          ls -la "$ROOT"
+
+          if [ ! -f "$ROOT/AiCeo" ]; then
+            echo "::error title=missing-binary::the publish output has no AiCeo executable"
+            exit 1
+          fi
+
+          COUNT=$(find "$ROOT" -maxdepth 1 -type f | wc -l)
+          echo "top-level files: $COUNT"
+          if [ "$COUNT" -gt 2 ]; then
+            echo "::error title=not-single-file::the publish output has more than the executable (and maybe a log)"
+            exit 1
+          fi
+
+      - name: Run the published binary (--self-test)
+        shell: bash
+        run: |
+          set +e
+          ROOT="src/AiCeo.Desktop/bin/Release/net10.0/linux-x64/publish"
+          export AICEO_DB_PATH="$RUNNER_TEMP/smoke/aiceo.db"
+          mkdir -p "$RUNNER_TEMP/smoke"
+
+          "$ROOT/AiCeo" --self-test 2>&1 | tee "$RUNNER_TEMP/selftest.log"
+          CODE=${PIPESTATUS[0]}
+          echo "exit code: $CODE"
+
+          if [ "$CODE" -ne 0 ]; then
+            echo "::error title=selftest-failed::the single-file binary did not start"
+            [ -f "$ROOT/crash.log" ] && tail -40 "$ROOT/crash.log"
+            exit 1
+          fi
+
+          if ! grep -q "SELF-TEST OK" "$RUNNER_TEMP/selftest.log"; then
+            echo "::error title=selftest-report::SELF-TEST OK was not reported"
+            exit 1
+          fi
+
+          # The app must have created its database somewhere writable.
+          if [ ! -f "$AICEO_DB_PATH" ]; then
+            export AICEO_DB_PATH="$HOME/.local/share/AiCeoOrchestrator/aiceo.db"
+          fi
+          echo "database: $(ls -la "$(dirname "$AICEO_DB_PATH")" | head -5)"
+
   desktop-windows:
-    name: Windows desktop head (MAUI) + installer
+    name: Desktop (Windows x64, standalone .exe)
     runs-on: windows-latest
 
     steps:
@@ -91,138 +168,81 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install the MAUI workload
-        run: dotnet workload install maui-windows --skip-sign-check
-
       - name: Restore
+        run: dotnet restore src/AiCeo.Desktop/AiCeo.Desktop.csproj -r win-x64
+
+      - name: Publish (single file, self-contained)
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "maui-restore.log"
-          dotnet restore src/AiCeo.Maui/AiCeo.Maui.csproj -r win-x64 2>&1 | Tee-Object -FilePath $log
+          $log = Join-Path $env:RUNNER_TEMP "publish.log"
+          dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj -c Release -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=none -p:DebugSymbols=false 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
-            $errors = (Select-String -Path $log -Pattern "error [A-Z]+[0-9]+|NU[0-9]{4}" | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() }) -join " | "
-            Write-Host "::error title=maui-restore-failed::$($errors.Substring(0, [Math]::Min(1800, $errors.Length)))"
+            $errors = (Select-String -Path $log -Pattern "error [A-Z]+[0-9]+|error MSB|error NU" | Select-Object -First 8 | ForEach-Object { $_.Line.Trim() }) -join " | "
+            Write-Host "::error title=publish-failed::$($errors.Substring(0, [Math]::Min(1800, $errors.Length)))"
             exit 1
           }
 
-      - name: Build the desktop app
+      - name: Verify the single .exe
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "maui-build.log"
-          dotnet build src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 --no-restore 2>&1 | Tee-Object -FilePath $log
-          if ($LASTEXITCODE -ne 0) {
-            $errors = (Select-String -Path $log -Pattern "error [A-Z]+[0-9]+|error MSB" | Select-Object -First 8 | ForEach-Object { $_.Line.Trim() }) -join " | "
-            Write-Host "::error title=maui-build-failed::$($errors.Substring(0, [Math]::Min(1400, $errors.Length)))"
+          $root = "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish"
+          Get-ChildItem $root | Select-Object Name, Length
+
+          $exe = Join-Path $root "AiCeo.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Host "::error title=missing-exe::the publish output has no AiCeo.exe"
             exit 1
           }
 
-      - name: Publish the unpackaged app
+          $files = Get-ChildItem $root -File
+          if ($files.Count -gt 2) {
+            Write-Host "::error title=not-single-file::expected one .exe, found $($files.Count) files"
+            exit 1
+          }
+
+          $sizeMb = [Math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "standalone executable: AiCeo.exe ($sizeMb MB)"
+
+          if ((Get-Item $exe).Length -lt 1MB) {
+            Write-Host "::error title=tiny-exe::the executable is too small to be self-contained"
+            exit 1
+          }
+
+      - name: Run the published exe (--self-test)
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "maui-publish.log"
-          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
-            -p:WindowsPackageType=None `
-            -p:WindowsAppSDKSelfContained=true `
-            -p:SelfContained=true `
-            -o ./artifacts/portable 2>&1 | Tee-Object -FilePath $log
+          $root = "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish"
+          $env:AICEO_DB_PATH = Join-Path $env:RUNNER_TEMP "smoke/aiceo.db"
+          New-Item -ItemType Directory -Force -Path (Split-Path $env:AICEO_DB_PATH) | Out-Null
+
+          $log = Join-Path $env:RUNNER_TEMP "selftest.log"
+          & (Join-Path $root "AiCeo.exe") --self-test *>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
+          Write-Host "self-test exit code: $code"
+
           if ($code -ne 0) {
-            $tail = ((Get-Content $log -Tail 50) -join " | ") -replace "\r?\n", " "
-            Write-Host "::error title=publish-failed::exit=$code $($tail.Substring(0, [Math]::Min(2500, $tail.Length)))"
+            $crash = Join-Path $root "crash.log"
+            if (Test-Path $crash) { Get-Content $crash -Tail 40 }
+            Write-Host "::error title=selftest-failed::the standalone .exe did not start"
             exit 1
           }
 
-      - name: Verify the app executable
-        shell: pwsh
-        run: |
-          $files = Get-ChildItem -Path ./artifacts/portable -Recurse -File -ErrorAction SilentlyContinue
-          Write-Host "publish output: $($files.Count) files"
-          Write-Host "top level: $((Get-ChildItem ./artifacts/portable | Select-Object -First 25 -ExpandProperty Name) -join ', ')"
-
-          $exe = $files | Where-Object { $_.Extension -eq ".exe" -and $_.BaseName -like "AiCeo*" } | Select-Object -First 1
-          if (-not $exe) {
-            $exes = ($files | Where-Object { $_.Extension -eq ".exe" } | Select-Object -First 20 -ExpandProperty Name) -join ", "
-            Write-Host "::error title=missing-exe::no AiCeo*.exe in the publish output (exes: $exes)"
-            exit 1
-          }
-          Write-Host "app: $($exe.FullName) ($([Math]::Round($exe.Length / 1MB, 1)) MB)"
-
-          # The BlazorWebView resolves its host page from the publish output; without it the window
-          # would open blank.
-          foreach ($asset in @("wwwroot\index.html", "wwwroot\css\app.css", "wwwroot\js\app.js")) {
-            if (-not (Test-Path (Join-Path "./artifacts/portable" $asset))) {
-              $tree = ($files | Select-Object -First 40 -ExpandProperty FullName) -join ", "
-              Write-Host "::error title=missing-assets::$asset is not in the publish output (files: $tree)"
+          if (-not (Select-String -Path $log -Pattern "SELF-TEST OK" -Quiet)) {
+            $fallback = Join-Path $root "self-test.log"
+            if (-not ((Test-Path $fallback) -and (Select-String -Path $fallback -Pattern "SELF-TEST OK" -Quiet))) {
+              Write-Host "::error title=selftest-report::SELF-TEST OK was not reported"
               exit 1
             }
           }
-          Write-Host "blazor host page + assets are in the publish output"
 
-          # The installer script expects exactly this name.
-          if ($exe.Name -ne "AiCeo.Maui.exe") {
-            Copy-Item $exe.FullName (Join-Path $exe.Directory "AiCeo.Maui.exe") -Force
-            Write-Host "normalised the app host name to AiCeo.Maui.exe"
-          }
-
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
-
-      - name: Build the setup installer
-        shell: pwsh
-        run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            $iscc = (Get-ChildItem "C:\Program Files*\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          }
-          if (-not $iscc) {
-            Write-Host "::error title=missing-iscc::Inno Setup's ISCC.exe was not found"
-            exit 1
-          }
-
-          New-Item -ItemType Directory -Force -Path ./artifacts/out | Out-Null
-
-          $log = Join-Path $env:RUNNER_TEMP "inno.log"
-          & $iscc "/DAppVersion=1.0.3" "/DSourceDir=$(Resolve-Path ./artifacts/portable)" "/DOutputDir=$(Resolve-Path ./artifacts/out)" ./installer/inno-setup/AiCeo.iss 2>&1 | Tee-Object -FilePath $log
-          if ($LASTEXITCODE -ne 0) {
-            $tail = ((Get-Content $log -Tail 40) -join " | ") -replace "\r?\n", " "
-            Write-Host "::error title=inno-failed::$($tail.Substring(0, [Math]::Min(2500, $tail.Length)))"
-            exit 1
-          }
-
-      # Best effort: the WinUI-packaged MSIX is a bonus, the .exe installer above is the contract.
-      - name: Try to build an MSIX (best effort)
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          dotnet publish src/AiCeo.Maui/AiCeo.Maui.csproj -c Release -r win-x64 `
-            -p:WindowsPackageType=MSIX `
-            -p:WindowsAppSDKSelfContained=false `
-            -p:AppxPackageSigningEnabled=false `
-            -p:UapAppxPackageBuildMode=SideloadOnly
-          $msix = Get-ChildItem -Path src/AiCeo.Maui -Recurse -Filter *.msix -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($msix) {
-            Copy-Item $msix.FullName "./artifacts/out/AI-CEO-Orchestrator-1.0.3-win-x64.msix" -Force
-            Write-Host "msix: $($msix.FullName)"
-          } else {
-            Write-Host "no .msix produced; the Inno Setup installer is the release artifact"
-          }
-
-      - name: Verify the installer exists
-        shell: pwsh
-        run: |
-          $setup = Get-ChildItem -Path ./artifacts/out -Filter "*setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $setup) {
-            Write-Host "::error title=missing-installer::no setup .exe was produced"
-            Get-ChildItem ./artifacts -Recurse | Select-Object FullName
-            exit 1
-          }
-          Write-Host "installer: $($setup.Name) ($([Math]::Round($setup.Length / 1MB, 1)) MB)"
-          Get-ChildItem ./artifacts/out | Select-Object Name, Length
-
-      - name: Upload the installer
+      - name: Upload the standalone exe
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-windows
-          path: artifacts/out/*
+          name: AiCeo-win-x64.exe
+          path: src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe
           if-no-files-found: error
           retention-days: 7
