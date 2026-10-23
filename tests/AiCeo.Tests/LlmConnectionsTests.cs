@@ -30,7 +30,7 @@ public class LlmConnectionsTests
     [Fact]
     public void Custom_requires_a_base_url()
     {
-        var agent = AgentFor(LlmProvider.Custom);
+        var agent = AgentFor(LlmProvider.Custom, modelId: "llama3.1");
 
         var exception = Assert.Throws<LlmException>(() => LlmConnections.Resolve(agent, new OmniRouteOptions()));
         Assert.Contains("base URL", exception.Message, StringComparison.OrdinalIgnoreCase);

@@ -251,6 +251,11 @@
             return "The Custom provider requires a Base URL.";
         }
 
+        if (form.Provider == LlmProvider.Custom && string.IsNullOrWhiteSpace(form.ModelId))
+        {
+            return "The Custom provider requires a Model ID.";
+        }
+
         if (!string.IsNullOrWhiteSpace(form.BaseUrl)
             && !LlmConnections.TryCreateEndpoint(form.BaseUrl.Trim(), out _))
         {
