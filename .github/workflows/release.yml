@@ -54,7 +54,15 @@ jobs:
       - name: Unit tests
         shell: pwsh
         run: |
-          dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj -c Release --logger "console;verbosity=minimal"
+          $log = Join-Path $env:RUNNER_TEMP "tests.log"
+          dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj -c Release --logger "console;verbosity=normal" 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $failures = (Select-String -Path $log -Pattern "\[FAIL\]|Error Message|error [A-Z]+[0-9]+" -Context 0,3 |
+                         Select-Object -First 12 | ForEach-Object { $_.Line.Trim() }) -join " | "
+            if (-not $failures) { $failures = ((Get-Content $log -Tail 30) -join " | ") -replace "\r?\n", " " }
+            Write-Host "::error title=tests-failed::$($failures.Substring(0, [Math]::Min(2500, $failures.Length)))"
+            exit 1
+          }
 
       # ---- 1. The portable (self-contained) app ----------------------------------------------
       - name: Publish the unpackaged app
