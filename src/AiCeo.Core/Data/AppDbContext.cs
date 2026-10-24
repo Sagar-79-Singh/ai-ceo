@@ -17,6 +17,8 @@ public class AppDbContext : DbContext
 
     public DbSet<WorkspaceSettings> WorkspaceSettings { get; set; } = null!;
 
+    public DbSet<UserSettings> UserSettings { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -45,6 +47,17 @@ public class AppDbContext : DbContext
             entity.ToTable("WorkspaceSettings");
             entity.HasKey(row => row.Id);
             entity.Property(row => row.RootPath).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<UserSettings>(entity =>
+        {
+            entity.ToTable("UserSettings");
+            entity.HasKey(row => row.Id);
+
+            // Stored as text so the SQLite file stays readable and ALTER TABLE defaults are simple.
+            entity.Property(row => row.Theme).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(row => row.AccentColor).HasConversion<string>().HasMaxLength(16).IsRequired();
+            entity.Property(row => row.FontSize).HasConversion<string>().HasMaxLength(16).IsRequired();
         });
 
         modelBuilder.Entity<TaskItem>(entity =>

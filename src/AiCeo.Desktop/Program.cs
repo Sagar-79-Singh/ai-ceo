@@ -53,6 +53,14 @@ internal static class Program
 
                 lifetime.Start(args);
 
+                // The window closes itself; the app sets a non-zero exit code if any assertion
+                // inside the smoke run failed (missing settings panel, theme not repainted, …).
+                if (Environment.ExitCode != 0)
+                {
+                    Console.WriteLine($"UI SMOKE FAILED (exit code {Environment.ExitCode})");
+                    return Environment.ExitCode;
+                }
+
                 Console.WriteLine("UI SMOKE OK");
                 return 0;
             }

@@ -24,3 +24,6 @@ logs/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Installer output (Inno Setup compiles into dist/installer)
+dist/
