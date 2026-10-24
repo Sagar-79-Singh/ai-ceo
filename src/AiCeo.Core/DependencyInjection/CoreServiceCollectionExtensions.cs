@@ -35,7 +35,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton(new AppRuntimeInfo(
             databasePath,
             typeof(CoreServiceCollectionExtensions).Assembly
-                .GetName().Version?.ToString(3) ?? "1.0.5"));
+                .GetName().Version?.ToString(3) ?? "1.0.6"));
 
         // The gateway caches OpenAI clients per endpoint+key, so it is a singleton.
         services.AddSingleton<ILlmGateway, LlmGateway>();

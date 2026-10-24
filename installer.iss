@@ -1,10 +1,10 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — custom Inno Setup script (v1.0.5)
+;  AI CEO Orchestrator — custom Inno Setup script (v1.0.6)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=1.0.5 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
+;      ISCC.exe /DAppVersion=1.0.6 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
 ;
 ;  The release workflow downloads Inno Setup through Chocolatey, drops the published
 ;  AiCeo-win-x64.exe into dist\ and compiles this file; the resulting Setup.exe is attached to
@@ -24,7 +24,7 @@
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.0.5"
+  #define AppVersion "1.0.6"
 #endif
 
 ; The published single-file executable handed to the compiler.
@@ -284,7 +284,7 @@ begin
   WelcomeNote := TNewStaticText.Create(WizardForm);
   WelcomeNote.Parent := WizardForm.WelcomePage;
   WelcomeNote.AutoSize := False;
-  WelcomeNote.Caption := 'AI CEO  ·  v1.0.5  ·  native desktop  ·  strictly one worker at a time';
+  WelcomeNote.Caption := 'AI CEO  ·  v1.0.6  ·  native desktop  ·  strictly one worker at a time';
   WelcomeNote.Font.Color := TextMuted;
   WelcomeNote.Font.Size := 8;
   WelcomeNote.SetBounds(0, WizardForm.WelcomeLabel2.Top + WizardForm.WelcomeLabel2.Height + 12, 420, 30);

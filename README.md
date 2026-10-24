@@ -1,10 +1,11 @@
 # AI CEO Orchestrator
 
-A **cross-platform desktop** AI orchestrator written in **C# / .NET 10** with **Avalonia UI**. It
-opens in its own native window — no browser, no local web server — and runs a strict star topology
-of agents that can read, write and build inside a folder **you** choose. Windows users can grab the
-optional `Setup.exe`, and the whole UI can be re-themed (dark / light / system, five accent colours,
-three text sizes) from the **Settings** gear in the corner.
+A **cross-platform desktop** AI orchestrator written in **C# / .NET 10**, with an **Avalonia** shell
+that hosts the **Nexus** interface: a live HTML/WebGL console rendered by the platform's own web
+engine inside the app window — no browser tab, no local web server, no Node.js. It runs a strict star
+topology of agents that can read, write and build inside a folder **you** choose. Windows users can
+grab the optional `Setup.exe`, and the whole console can be re-themed (dark / light / system, five
+accent colours, three text sizes) from the settings modal.
 
 ```
 You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  ──▶  CEO  ──▶  You
@@ -13,22 +14,23 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.5
+## What's new in v1.0.6 — Nexus
 
 | Area | Change |
 | --- | --- |
-| **Custom installer** | `installer.iss` in the repository root compiles the published Windows executable into `AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe`. Inno Setup's **modern** wizard style is repainted in the app's own dark palette (`#1E1E2E`) with custom artwork, rewritten welcome/finished copy and a slim accent progress bar with a live percentage. It creates **desktop + Start-menu shortcuts** and installs per-user (no UAC, admin override available). |
-| **Settings page** | A gear button in the top-right corner opens the settings panel: **Theme** (Dark / Light / System default, which follows the OS live), **Accent colour** (Green, Blue, Purple, Amber, Rose) and **Text size** (Small / Medium / Large slider with a live preview). |
-| **Persisted preferences** | Choices live in a new `UserSettings` table in the local SQLite database; the schema upgrades itself on first launch. They are applied at startup through Avalonia dynamic resources — the same `--color-*` / `--font-*` token contract as the old `wwwroot/css/app.css`, mirrored in a generated `src/AiCeo.Desktop/Assets/theme.css`. |
-| **Version** | `1.0.5` in both `.csproj` files, the assembly/file version and the installer metadata. |
-| **Unchanged** | Strict star topology, sequential delegation, multi-provider LLMs, masked API keys, workspace guardrail and the agentic tool loop. |
+| **Nexus interface** | The stock Avalonia layout is replaced by the Nexus console: obsidian shell, swarm matrix on the left, execution feed in the middle with the gyroscope emblem, the breadcrumb `You → CEO → workers → CEO → You` and the neural-wave telemetry strip, and the glowing console dock across the bottom. |
+| **Embedded HTML surface** | The page is rendered by the platform web engine through `Avalonia.Controls.WebView` 11.4.1 — Edge WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux — inside the same native window. |
+| **Offline by design** | Tailwind (precompiled, ~120 KB) and the Font Awesome subset are bundled inside the executable and extracted next to the database on first launch. Nothing is fetched from a CDN, so the interface renders identically with the network unplugged; the Google Fonts link is a progressive enhancement over the system stack. |
+| **Holographic shader** | The animated WebGL core (ring filaments, noise aura, grid, vignette) runs on a canvas behind the feed at 60 fps and follows the mouse. |
+| **Wiring** | *Select Workspace* opens the native folder picker and updates the sidebar chip; *Dispatch Swarm* sends the directive to the CEO through the unchanged orchestrator; the swarm matrix can deploy, edit, delete and promote agents; the feed streams the real plan, delegations, tool calls and final answer. |
+| **Settings modal** | Theme (Dark / Light / System), five accent colours and three text sizes, applied instantly in the page and in the Avalonia shell, persisted in the `UserSettings` table. |
+| **Graceful fallback** | On a machine without a usable web engine the app opens the previous Avalonia interface and offers a one-click switch, so orchestration, agents and the sandbox never depend on the renderer. |
+| **Installer** | `AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe` is rebuilt from `installer.iss` with the same dark modern wizard, refreshed for this version. |
+| **Version** | `1.0.6` in both `.csproj` files, the assembly/file version and the installer metadata. |
 
 ### Older releases
+- **v1.0.5** — custom dark Inno Setup installer, settings page (theme / accent / text size) persisted in `UserSettings`.
 - **v1.0.4** — Avalonia UI replaces MAUI; Linux/macOS builds; single-file executables; `crash.log`.
-- **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
-- **v1.0.2** — multi-provider LLM layer and health badges.
-
-### Older releases
 - **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
 - **v1.0.2** — multi-provider LLM layer and health badges.
 
@@ -40,7 +42,7 @@ Download one file from the **Releases** page and run it.
 
 | Platform | File | How to run |
 | --- | --- | --- |
-| **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe` | Double-click the installer. Per-user, no admin prompt, Start-menu + desktop shortcuts, clean uninstall. |
+| **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe` | Double-click the installer. Per-user, no admin prompt, Start-menu + desktop shortcuts, clean uninstall. |
 | **Windows x64 (portable)** | `AiCeo-win-x64.exe` | Double-click. No installer, no runtime to install. |
 | **Windows x86** | `AiCeo-win-x86.exe` | For 32-bit Windows. |
 | **Windows ARM64** | `AiCeo-win-arm64.exe` | Surface / Snapdragon PCs. |
@@ -168,10 +170,13 @@ src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
   Program.cs               entry point: global try/catch + crash.log
   App.axaml(.cs)           token-based styles, DI bootstrap, startup-failure window
   Theme/ThemeManager.cs    writes a ThemePalette into the application resources
-  Views/MainWindow.axaml   sidebar (agents, workspace) + feed + composer + settings overlay
+  Views/NexusWindow.axaml  the v1.0.6 window: hosts the embedded HTML surface
+  Views/MainWindow.axaml   the previous native shell (fallback, and CI smoke tests)
+  Nexus/                   NexusAssets (extracts the page), NexusPresenter (state + commands),
+                           NexusAvailability (is a web engine usable?), NexusState (the JSON contract)
   ViewModels/              MainViewModel, SettingsViewModel, AgentEditorViewModel, cards, feed items
   AvaloniaWorkspacePicker  native folder picker through IStorageProvider
-  Assets/                  aiceo.ico (ApplicationIcon), aiceo.png (window icon), theme.css (token mirror)
+  Assets/                  nexus.html + nexus.css (the Nexus console), aiceo.ico, aiceo.png, theme.css
 installer.iss              Inno Setup script (root) → AI-CEO-Orchestrator-<version>-win-x64-Setup.exe
 installer/                 wizard-large.bmp / wizard-small.bmp artwork for the installer
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
@@ -212,7 +217,7 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 
 # the Windows installer (needs Inno Setup 6 on Windows: choco install innosetup)
 mkdir -p dist && cp src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe dist/AiCeo-win-x64.exe
-ISCC.exe installer.iss        # → dist\installer\AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe
+ISCC.exe installer.iss        # → dist\installer\AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
@@ -229,11 +234,18 @@ Every colour and font size in the UI is a *dynamic resource* keyed by a token na
 the same tokens as `--color-*` / `--font-*` custom properties, and `Assets/theme.css` is that output
 for dark and light (a unit test keeps it in sync).
 
+The Nexus surface consumes the same choices through a second contract: `NexusPresenter` renders the
+view model as one JSON snapshot (`window.nexusReceive(…)`), and the page answers with commands
+(`dispatch`, `selectWorkspace`, `settings`, `saveAgent`, …) over `window.chrome.webview.postMessage`.
+Theme, accent and text size are CSS custom properties on `<html>`, so a change is a repaint, not a
+reload. `AICEO_UI=classic` forces the native shell; `AICEO_UI=nexus` forces the web surface.
+
 ### Verifying a build without a GUI
 
 Every published binary accepts `--self-test`. It opens the database, prints the resolved paths and
 exercises the workspace guardrail (relative path allowed, `..` and absolute escapes refused), then
-exits with `0`. CI runs exactly that on the real single-file binaries, so a build that cannot start
+exits with `0`. `--smoke-ui` additionally checks that the bundled Nexus page and stylesheet are
+present and that they can be extracted to disk. CI runs exactly that on the real single-file binaries, so a build that cannot start
 never reaches a release.
 
 ### CI / release
@@ -246,7 +258,7 @@ never reaches a release.
 - `release.yml` — on a `v*` tag: publishes all seven RIDs as self-contained single files (Windows →
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), builds `Setup.exe` with Inno Setup
   (installed through Chocolatey) on a Windows runner, smoke-tests every binary it can execute
-  natively, then creates the **v1.0.5** release with all assets plus `SHA256SUMS.txt`.
+  natively, then creates the **v1.0.6** release with all assets plus `SHA256SUMS.txt`.
 
 ---
 

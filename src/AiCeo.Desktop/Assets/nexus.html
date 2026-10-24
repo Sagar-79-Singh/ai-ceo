@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html class="dark h-full" lang="en">
+<head>
+<meta charset="utf-8" />
+<meta content="width=device-width, initial-scale=1.0" name="viewport" />
+<title>AI CEO NEXUS</title>
+<link rel="stylesheet" href="nexus.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* Fallback surface: keeps the shell readable if the CDN is unreachable. */
+  :root {
+    --obsidian-950-rgb: 7 8 11;
+    --obsidian-900-rgb: 12 13 18;
+    --obsidian-850-rgb: 17 19 26;
+    --obsidian-800-rgb: 22 25 34;
+    --obsidian-750-rgb: 29 33 45;
+    --obsidian-700-rgb: 38 43 58;
+    --obsidian-600-rgb: 52 59 79;
+    --slate-100-rgb: 241 245 249;
+    --slate-200-rgb: 226 232 240;
+    --slate-300-rgb: 203 213 225;
+    --slate-400-rgb: 148 163 184;
+    --slate-500-rgb: 100 116 139;
+    --slate-600-rgb: 71 85 105;
+    --slate-700-rgb: 51 65 85;
+    --slate-800-rgb: 30 41 59;
+    --mint-300-rgb: 110 231 183;
+    --mint-400-rgb: 52 211 153;
+    --mint-500-rgb: 16 185 129;
+    --mint-600-rgb: 5 150 105;
+    --emerald-400-rgb: 52 211 153;
+    --emerald-500-rgb: 16 185 129;
+    --emerald-950-rgb: 2 44 34;
+    --cyan-300-rgb: 103 232 249;
+    --cyan-400-rgb: 34 211 238;
+    --cyan-500-rgb: 6 182 212;
+    --amber-300-rgb: 252 211 77;
+    --amber-400-rgb: 251 191 36;
+    --amber-500-rgb: 245 158 11;
+    --amber-600-rgb: 180 83 9;
+    --ui-scale: 1;
+  }
+
+  /* Light theme: the same token names, repointed. Every Tailwind colour in this page reads them. */
+  html[data-theme="light"] {
+    --obsidian-950-rgb: 244 246 250;
+    --obsidian-900-rgb: 255 255 255;
+    --obsidian-850-rgb: 248 250 253;
+    --obsidian-800-rgb: 241 245 249;
+    --obsidian-750-rgb: 226 232 240;
+    --obsidian-700-rgb: 203 213 225;
+    --obsidian-600-rgb: 148 163 184;
+    --slate-100-rgb: 15 23 42;
+    --slate-200-rgb: 30 41 59;
+    --slate-300-rgb: 51 65 85;
+    --slate-400-rgb: 71 85 105;
+    --slate-500-rgb: 100 116 139;
+    --slate-600-rgb: 148 163 184;
+    --slate-700-rgb: 203 213 225;
+    --slate-800-rgb: 226 232 240;
+    --mint-300-rgb: 4 120 87;
+    --mint-400-rgb: 5 150 105;
+    --mint-500-rgb: 4 120 87;
+    --mint-600-rgb: 4 120 87;
+    --emerald-400-rgb: 5 150 105;
+    --emerald-500-rgb: 4 120 87;
+    --emerald-950-rgb: 209 250 229;
+    --cyan-300-rgb: 14 116 144;
+    --cyan-400-rgb: 8 145 178;
+    --cyan-500-rgb: 14 116 144;
+    --amber-300-rgb: 180 83 9;
+    --amber-400-rgb: 217 119 6;
+    --amber-500-rgb: 180 83 9;
+    --amber-600-rgb: 146 64 14;
+  }
+
+  /* Accent presets: only the mint/emerald family moves, everything else stays coherent. */
+  html[data-accent="cyan"] { --mint-300-rgb: 103 232 249; --mint-400-rgb: 34 211 238; --mint-500-rgb: 6 182 212; --mint-600-rgb: 8 145 178; --emerald-400-rgb: 34 211 238; --emerald-500-rgb: 6 182 212; }
+  html[data-accent="violet"] { --mint-300-rgb: 196 181 253; --mint-400-rgb: 167 139 250; --mint-500-rgb: 139 92 246; --mint-600-rgb: 124 58 237; --emerald-400-rgb: 167 139 250; --emerald-500-rgb: 139 92 246; }
+  html[data-accent="amber"] { --mint-300-rgb: 252 211 77; --mint-400-rgb: 251 191 36; --mint-500-rgb: 245 158 11; --mint-600-rgb: 217 119 6; --emerald-400-rgb: 251 191 36; --emerald-500-rgb: 245 158 11; }
+  html[data-accent="rose"] { --mint-300-rgb: 253 164 175; --mint-400-rgb: 251 113 133; --mint-500-rgb: 244 63 94; --mint-600-rgb: 225 29 72; --emerald-400-rgb: 251 113 133; --emerald-500-rgb: 244 63 94; }
+
+  html, body { height: 100%; }
+  body { background: rgb(var(--obsidian-950-rgb)); color: rgb(var(--slate-200-rgb)); zoom: var(--ui-scale); }
+
+  .bg-grid-pattern {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  html[data-theme="light"] .bg-grid-pattern {
+    background-image: radial-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: rgba(12, 13, 18, 0.7); }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--obsidian-700-rgb)); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--mint-400-rgb)); }
+
+  @keyframes pulse-ring { 0% { transform: scale(0.92); opacity: 0.4; } 50% { transform: scale(1.08); opacity: 0.85; } 100% { transform: scale(0.92); opacity: 0.4; } }
+  @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes spin-reverse-slow { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+  @keyframes wave-bounce { 0%, 100% { height: 4px; } 50% { height: 18px; } }
+  .animate-pulse-ring { animation: pulse-ring 3.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  .animate-spin-slow { animation: spin-slow 24s linear infinite; }
+  .animate-spin-reverse { animation: spin-reverse-slow 16s linear infinite; }
+
+  .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+  .wave-bar:nth-child(3) { animation-delay: 0.25s; }
+  .wave-bar:nth-child(4) { animation-delay: 0.15s; }
+  .wave-bar:nth-child(5) { animation-delay: 0.3s; }
+  .wave-bar:nth-child(6) { animation-delay: 0.05s; }
+  .wave-bar:nth-child(7) { animation-delay: 0.22s; }
+  .wave-bar:nth-child(8) { animation-delay: 0.18s; }
+  .wave-bar:nth-child(9) { animation-delay: 0.35s; }
+  .wave-bar:nth-child(10) { animation-delay: 0.12s; }
+  .wave-bar:nth-child(11) { animation-delay: 0.28s; }
+  .wave-bar:nth-child(12) { animation-delay: 0.08s; }
+
+  .text-glow { text-shadow: 0 0 20px rgba(78, 222, 163, 0.45), 0 0 40px rgba(6, 182, 212, 0.25); }
+  .cyber-cut { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+  .nx-hidden { display: none !important; }
+  .nx-scroll { overflow-y: auto; }
+  textarea { scrollbar-width: thin; }
+</style>
+</head>
+<body class="text-slate-200 font-sans h-screen flex flex-col overflow-hidden antialiased selection:bg-mint-500/25 selection:text-mint-400">
+
+<!-- ============================================================== TITLE BAR -->
+<header class="h-10 w-full bg-obsidian-900 border-b border-obsidian-750/90 flex items-center justify-between px-3 select-none text-xs text-slate-400 z-50 backdrop-blur-md">
+  <div class="flex items-center space-x-2.5">
+    <div class="flex items-center space-x-1.5 mr-2">
+      <span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
+      <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
+      <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
+    </div>
+    <div class="flex items-center space-x-2 text-slate-300">
+      <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
+      <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
+        AI CEO NEXUS
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.6</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="hidden lg:flex items-center space-x-3 font-mono text-[10.5px]">
+    <div class="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-obsidian-850 border border-obsidian-700/80 text-slate-300 shadow-inner">
+      <span class="text-slate-400">You</span>
+      <span class="text-mint-400">⇄</span>
+      <span class="px-1.5 py-0.5 rounded bg-mint-500/20 text-mint-300 border border-mint-500/40 font-bold flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-mint-400 animate-ping"></span>
+        <span id="nx-ceo-top">Atlas Core</span>
+      </span>
+      <span class="text-cyan-400">⇄</span>
+      <span id="nx-worker-count" class="text-cyan-300 font-semibold">[0 Swarm Nodes]</span>
+    </div>
+    <span class="text-slate-700">|</span>
+    <div class="flex items-center space-x-2 text-slate-400">
+      <span class="flex items-center gap-1"><i class="fa-solid fa-wifi text-[9px] text-mint-400"></i> Provider: <span id="nx-provider-short" class="text-mint-300 font-medium">checking…</span></span>
+      <span class="text-slate-700">·</span>
+      <span class="flex items-center gap-1"><i class="fa-solid fa-circle-nodes text-[9px] text-amber-400"></i> Swarm: <span id="nx-swarm-status" class="text-emerald-400 font-medium">idle</span></span>
+      <span class="text-slate-700">·</span>
+      <span class="flex items-center gap-1" title="Workspace-confined tools"><i class="fa-solid fa-shield-halved text-[9px] text-emerald-400"></i> <span class="text-slate-300">sandbox enforced</span></span>
+    </div>
+  </div>
+
+  <div class="flex items-center space-x-2.5 text-slate-400 text-xs">
+    <button id="nx-refresh" class="hover:text-mint-400 transition px-2 py-1 rounded bg-obsidian-850 hover:bg-obsidian-800 border border-obsidian-750 flex items-center gap-1.5 text-[11px] font-mono" title="Re-check the provider">
+      <i class="fa-solid fa-chart-line text-[10px] text-mint-400"></i>
+      <span class="hidden sm:inline">Telemetry</span>
+    </button>
+    <button id="nx-settings-open" class="hover:text-slate-200 transition p-1.5 rounded bg-obsidian-850 hover:bg-obsidian-800 border border-obsidian-750" title="Settings">
+      <i class="fa-solid fa-sliders text-[11px]"></i>
+    </button>
+    <div class="h-3 w-px bg-obsidian-700"></div>
+    <span id="nx-clock" class="text-[11px] font-mono text-slate-300 bg-obsidian-850 px-2 py-0.5 rounded border border-obsidian-800">--:--:--</span>
+  </div>
+</header>
+
+<!-- ============================================================== SHELL -->
+<div class="flex-1 flex overflow-hidden">
+
+  <!-- ---------------------------------------------------------- SIDEBAR -->
+  <aside class="w-80 md:w-88 xl:w-96 bg-obsidian-900 border-r border-obsidian-750/90 flex flex-col shrink-0 select-none relative z-20">
+    <div class="p-4 border-b border-obsidian-750/80 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-mint-500/25 via-emerald-950 to-obsidian-900 border border-mint-500/50 shadow-glow-emerald">
+            <span class="font-black text-sm text-mint-400 font-mono tracking-tighter">AI</span>
+            <span class="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint-400 opacity-80"></span>
+              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-mint-400"></span>
+            </span>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h1 class="text-sm font-semibold tracking-wide text-slate-100 font-mono">AI CEO NEXUS</h1>
+              <span class="text-[9px] font-mono px-1.5 py-0.5 bg-emerald-500/15 text-mint-400 border border-emerald-500/30 rounded font-bold">ACTIVE</span>
+            </div>
+            <p class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5">
+              <span>Topology: star-orchestrator</span>
+              <span class="text-slate-600">·</span>
+              <span class="text-cyan-400">sequential</span>
+            </p>
+          </div>
+        </div>
+        <button class="text-slate-400 hover:text-mint-400 transition p-1.5 hover:bg-obsidian-800 rounded-lg border border-transparent hover:border-obsidian-700" title="Refresh provider health">
+          <i class="fa-solid fa-arrows-rotate text-xs"></i>
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between px-3 py-2 bg-obsidian-850/95 rounded-lg border border-obsidian-700/80 text-xs shadow-inner">
+        <div class="flex items-center space-x-2.5">
+          <span class="relative flex h-2 w-2">
+            <span id="nx-provider-dot-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span id="nx-provider-dot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+          </span>
+          <span id="nx-provider-text" class="font-mono text-slate-300 font-medium text-[11px]">provider · checking</span>
+        </div>
+        <div class="flex items-center space-x-1.5 font-mono text-[10px] text-slate-400">
+          <span id="nx-provider-state" class="text-mint-400 font-semibold px-1 rounded bg-mint-500/10 border border-mint-500/20">…</span>
+          <span class="text-slate-600">|</span>
+          <span class="text-cyan-400 font-semibold">star</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-1 nx-scroll px-3.5 py-3 space-y-3.5">
+      <!-- workspace -->
+      <div class="bg-obsidian-850/70 rounded-xl p-3 border border-obsidian-750/90 space-y-2.5 backdrop-blur-sm shadow-sm">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-mono text-[10px] uppercase tracking-wider text-slate-300 font-semibold flex items-center gap-1.5">
+            <i class="fa-regular fa-folder-open text-mint-400"></i> WORKSPACE SANDBOX
+          </span>
+          <span id="nx-workspace-status" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-mint-400 border border-emerald-500/30 font-semibold">NOT SET</span>
+        </div>
+
+        <div class="bg-obsidian-950/90 px-2.5 py-2 rounded-lg border border-obsidian-750 flex items-center justify-between group shadow-inner">
+          <span id="nx-workspace-path" class="font-mono text-xs text-mint-300/90 truncate select-all flex items-center gap-1.5">
+            <i class="fa-solid fa-terminal text-[10px] text-slate-500"></i> no folder selected
+          </span>
+          <button id="nx-copy-path" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-white transition text-[11px] p-0.5" title="Copy path">
+            <i class="fa-regular fa-copy"></i>
+          </button>
+        </div>
+
+        <p id="nx-workspace-problem" class="nx-hidden text-[10.5px] text-amber-400 font-mono leading-snug"></p>
+
+        <div class="grid grid-cols-5 gap-2 pt-0.5">
+          <button id="nx-select-workspace" class="col-span-3 bg-gradient-to-r from-mint-500 to-emerald-500 hover:from-mint-400 hover:to-emerald-400 text-obsidian-950 font-semibold text-xs py-1.5 px-2.5 rounded-lg transition flex items-center justify-center space-x-1.5 shadow-sm font-sans active:scale-95">
+            <i class="fa-solid fa-folder-tree text-[11px]"></i>
+            <span>Select Workspace</span>
+          </button>
+          <button id="nx-clear-workspace" class="col-span-2 bg-obsidian-750/80 hover:bg-obsidian-700 text-slate-300 hover:text-white text-xs py-1.5 px-2.5 rounded-lg transition border border-obsidian-700 font-sans active:scale-95 text-center">
+            Clear
+          </button>
+        </div>
+
+        <label class="flex items-start space-x-2.5 pt-1 cursor-pointer select-none group">
+          <input id="nx-tools" class="mt-0.5 rounded border-obsidian-600 bg-obsidian-800 text-mint-500 focus:ring-mint-500/30 focus:ring-offset-obsidian-900 transition" type="checkbox" checked />
+          <span class="text-[11px] leading-tight text-slate-300 group-hover:text-slate-100 transition">
+            Allow agents to use files &amp; terminal
+            <span class="block text-[10px] text-slate-500 mt-0.5 font-mono">Sandboxed strictly to chosen workspace</span>
+          </span>
+        </label>
+      </div>
+
+      <!-- swarm matrix -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between pt-1">
+          <div class="flex items-center space-x-2">
+            <span class="text-[11px] font-mono uppercase tracking-wider text-slate-300 font-semibold flex items-center gap-1.5">
+              <i class="fa-solid fa-diagram-project text-mint-400 text-[11px]"></i>
+              SWARM MATRIX
+            </span>
+            <span id="nx-agent-count" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-obsidian-800 text-cyan-300 border border-obsidian-700">0 nodes</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <button id="nx-new-agent" class="text-[10px] font-mono text-mint-400 hover:text-mint-300 flex items-center space-x-1 transition px-2 py-0.5 rounded-md bg-mint-500/10 hover:bg-mint-500/20 border border-mint-500/30">
+              <i class="fa-solid fa-plus text-[9px]"></i>
+              <span>Deploy</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="nx-agent-list" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <footer class="p-2.5 bg-obsidian-950 border-t border-obsidian-750/80 text-[10px] font-mono text-slate-500 flex items-center justify-between truncate">
+      <span id="nx-footer" class="truncate" title="sqlite">sqlite: aiceo.db</span>
+      <span class="text-emerald-400 flex items-center gap-1 shrink-0 ml-2 font-mono font-medium">
+        <i class="fa-solid fa-lock text-[9px]"></i> LOCAL
+      </span>
+    </footer>
+  </aside>
+
+  <!-- ---------------------------------------------------------- MAIN -->
+  <main class="flex-1 flex flex-col bg-obsidian-950 relative overflow-hidden bg-grid-pattern">
+    <div class="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+      <div class="absolute inset-0 w-full h-full opacity-65 pointer-events-none" style="display:block;">
+        <canvas id="shader-canvas-ANIMATION_5" style="display:block;width:100%;height:100%"></canvas>
+      </div>
+      <div class="absolute inset-0 pointer-events-none" style="background: radial-gradient(circle at 50% 48%, rgba(7,8,11,0.2) 0%, rgba(7,8,11,0.78) 60%, rgba(7,8,11,0.96) 100%);"></div>
+    </div>
+
+    <!-- execution header -->
+    <header class="h-14 px-6 border-b border-obsidian-750/80 flex items-center justify-between bg-obsidian-900/70 backdrop-blur-md z-10 shrink-0">
+      <div>
+        <div class="flex items-center space-x-2">
+          <h2 class="text-sm font-semibold text-slate-100 tracking-tight font-mono">EXECUTION FEED // NEXUS-01</h2>
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-mint-500/15 text-mint-300 border border-mint-500/30 flex items-center gap-1.5 shadow-sm">
+            <span class="w-1.5 h-1.5 rounded-full bg-mint-400 animate-ping"></span>
+            Strict Star Topology
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400 hidden sm:block font-mono">
+          Strict star delegation · sovereign CEO routing · workspace-confined tool sandboxing
+        </p>
+      </div>
+
+      <div id="nx-flow" class="flex items-center space-x-1.5 px-3 py-1.5 bg-obsidian-850/90 backdrop-blur-md rounded-xl border border-obsidian-750 text-xs font-mono shadow-sm">
+        <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold text-[11px] border border-slate-700">You</span>
+        <i class="fa-solid fa-arrow-right text-[10px] text-mint-400"></i>
+        <span class="px-2 py-0.5 rounded bg-mint-500/20 text-mint-300 border border-mint-500/40 font-semibold text-[11px] flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-mint-400 animate-ping"></span>
+          <span id="nx-flow-ceo">CEO</span>
+        </span>
+        <i class="fa-solid fa-arrow-right text-[10px] text-cyan-400"></i>
+        <span class="text-cyan-300 text-[11px] px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 font-medium">workers</span>
+        <i class="fa-solid fa-arrow-right text-[10px] text-cyan-400"></i>
+        <span class="text-mint-300 text-[11px] font-semibold">synthesis</span>
+        <i class="fa-solid fa-arrow-right text-[10px] text-mint-400"></i>
+        <span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold text-[11px] border border-slate-700">You</span>
+      </div>
+    </header>
+
+    <!-- banner -->
+    <div id="nx-banner" class="nx-hidden mx-6 mt-3 px-3 py-2 rounded-lg border text-[11.5px] font-mono z-10"></div>
+
+    <!-- stage -->
+    <section id="nx-stage" class="flex-1 nx-scroll px-6 py-6 flex flex-col z-10 relative">
+      <div id="nx-hero" class="max-w-2xl w-full mx-auto my-auto text-center space-y-6">
+        <div class="relative w-32 h-32 mx-auto flex items-center justify-center">
+          <div class="absolute -inset-4 rounded-full bg-gradient-to-tr from-mint-500/20 via-cyan-500/10 to-amber-500/20 blur-xl animate-pulse-ring"></div>
+          <div class="absolute inset-0 rounded-full border border-mint-500/30 animate-spin-slow">
+            <span class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 w-2 h-2 rounded-full bg-mint-400 shadow-[0_0_8px_#34d399]"></span>
+            <span class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1 w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          </div>
+          <div class="absolute inset-2 rounded-full border border-dashed border-cyan-400/40 animate-spin-reverse">
+            <span class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </div>
+          <div class="absolute inset-4 rounded-full border border-emerald-500/40"></div>
+          <div class="relative w-16 h-16 rounded-2xl bg-gradient-to-b from-obsidian-850 via-obsidian-900 to-obsidian-950 border border-mint-400/70 shadow-glow-emerald flex flex-col items-center justify-center backdrop-blur-xl">
+            <div class="relative flex items-center justify-center">
+              <div class="w-8 h-8 rounded-full border-2 border-mint-400/80 flex items-center justify-center shadow-[0_0_12px_rgba(78,222,163,0.6)]">
+                <div class="w-3 h-3 rounded-full bg-gradient-to-tr from-mint-400 to-cyan-300 shadow-[0_0_10px_#10b981] animate-ping"></div>
+              </div>
+              <div class="absolute w-10 h-0.5 bg-mint-400/40 pointer-events-none"></div>
+              <div class="absolute h-10 w-0.5 bg-mint-400/40 pointer-events-none"></div>
+            </div>
+          </div>
+          <div class="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center space-x-2">
+            <span id="nx-hero-status" class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-obsidian-900/90 text-mint-300 border border-mint-500/40 shadow-sm flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-mint-400 animate-pulse"></span>
+              ORCHESTRATOR LINK: ACTIVE
+            </span>
+          </div>
+        </div>
+
+        <div class="space-y-3 pt-4">
+          <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-gradient-to-r from-obsidian-850 via-obsidian-800 to-obsidian-850 border border-mint-500/30 text-[10.5px] font-mono text-slate-300 shadow-sm">
+            <span class="w-2 h-2 rounded-full bg-gradient-to-r from-emerald-400 to-amber-400 animate-pulse"></span>
+            <span class="tracking-wider text-slate-200 font-semibold">STAR TOPOLOGY × SINGLE-WORKER DELEGATION</span>
+          </div>
+          <h3 class="text-3xl sm:text-4xl font-medium tracking-tight text-white font-sans">
+            Brief your <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-amber-400 font-serif italic text-glow">CEO</span>
+          </h3>
+          <p class="text-sm text-slate-300 leading-relaxed max-w-lg mx-auto font-sans font-normal">
+            You talk to the CEO only. It plans the work, delegates to one worker at a time, then synthesizes the final answer. Workers tagged
+            <code class="px-1.5 py-0.5 rounded text-xs font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold">'tools'</code>
+            can edit files in your workspace and run builds.
+          </p>
+
+          <div class="flex items-center justify-center space-x-1 pt-1 opacity-85">
+            <span class="text-[9.5px] font-mono text-slate-500 uppercase tracking-widest mr-2">Neural Telemetry:</span>
+            <div class="flex items-center space-x-1 h-5 px-2 py-1 bg-obsidian-900/80 rounded-md border border-obsidian-750">
+              <span class="wave-bar w-1 bg-mint-400 rounded-full animate-[wave-bounce_1.2s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-mint-400 rounded-full animate-[wave-bounce_1.4s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-cyan-400 rounded-full animate-[wave-bounce_1.1s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-cyan-400 rounded-full animate-[wave-bounce_1.5s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-emerald-400 rounded-full animate-[wave-bounce_1.3s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-amber-400 rounded-full animate-[wave-bounce_1.6s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-amber-400 rounded-full animate-[wave-bounce_1.2s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-cyan-400 rounded-full animate-[wave-bounce_1.4s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-mint-400 rounded-full animate-[wave-bounce_1.1s_ease-in-out_infinite]"></span>
+              <span class="wave-bar w-1 bg-mint-400 rounded-full animate-[wave-bounce_1.3s_ease-in-out_infinite]"></span>
+            </div>
+            <span class="text-[9.5px] font-mono text-mint-400 ml-1">SYNCED</span>
+          </div>
+        </div>
+
+        <div class="pt-2 grid grid-cols-1 gap-2.5 text-left max-w-xl mx-auto w-full">
+          <button data-prompt="write a hello-world script into the workspace and run it"
+                  class="nx-quick group p-3 rounded-xl bg-obsidian-900/80 hover:bg-obsidian-850/90 border border-mint-500/20 hover:border-mint-400/60 transition-all duration-200 flex items-center justify-between text-xs text-slate-300 hover:text-white shadow-sm backdrop-blur-md">
+            <div class="flex items-center space-x-3">
+              <span class="px-2 py-1 rounded-md bg-mint-500/10 border border-mint-500/30 text-mint-400 font-mono text-[10px] font-bold">$ exec</span>
+              <span class="font-mono text-slate-200 text-[12px]">"write a hello-world script into the workspace and run it"</span>
+            </div>
+            <i class="fa-solid fa-arrow-turn-down -rotate-90 text-slate-500 group-hover:text-mint-400 transition"></i>
+          </button>
+          <button data-prompt="inspect the workspace and summarise what this project does"
+                  class="nx-quick group p-3 rounded-xl bg-obsidian-900/80 hover:bg-obsidian-850/90 border border-cyan-500/20 hover:border-cyan-400/60 transition-all duration-200 flex items-center justify-between text-xs text-slate-300 hover:text-white shadow-sm backdrop-blur-md">
+            <div class="flex items-center space-x-3">
+              <span class="px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 font-mono text-[10px] font-bold">$ scan</span>
+              <span class="font-mono text-slate-200 text-[12px]">"inspect the workspace and summarise what this project does"</span>
+            </div>
+            <i class="fa-solid fa-arrow-turn-down -rotate-90 text-slate-500 group-hover:text-cyan-400 transition"></i>
+          </button>
+          <button data-prompt="refactor the API clients and add unit tests, then run the build"
+                  class="nx-quick group p-3 rounded-xl bg-obsidian-900/80 hover:bg-obsidian-850/90 border border-amber-500/20 hover:border-amber-400/60 transition-all duration-200 flex items-center justify-between text-xs text-slate-300 hover:text-white shadow-sm backdrop-blur-md">
+            <div class="flex items-center space-x-3">
+              <span class="px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono text-[10px] font-bold">$ swarm</span>
+              <span class="font-mono text-slate-200 text-[12px]">"refactor the API clients and add unit tests, then run the build"</span>
+            </div>
+            <i class="fa-solid fa-arrow-turn-down -rotate-90 text-slate-500 group-hover:text-amber-400 transition"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="nx-feed-wrap" class="nx-hidden max-w-3xl w-full mx-auto space-y-3">
+        <div id="nx-prompt-bubble" class="nx-hidden bg-obsidian-850 border border-mint-500/30 rounded-xl px-4 py-3 text-[12.5px] text-slate-200 font-sans whitespace-pre-wrap ml-auto max-w-2xl"></div>
+        <div id="nx-feed" class="space-y-2.5"></div>
+        <div id="nx-final" class="nx-hidden rounded-xl border border-mint-500/40 bg-emerald-500/5 px-4 py-3"></div>
+      </div>
+    </section>
+
+    <!-- console dock -->
+    <footer class="p-4 md:p-5 bg-gradient-to-t from-obsidian-950 via-obsidian-950/95 to-transparent shrink-0 z-20">
+      <div class="max-w-3xl mx-auto">
+        <div class="bg-obsidian-900/90 backdrop-blur-2xl border-2 border-mint-500/30 focus-within:border-mint-400 focus-within:shadow-[0_0_30px_rgba(16,185,129,0.35)] rounded-2xl p-3.5 shadow-glass-dock transition duration-200 relative overflow-hidden">
+          <div class="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-mint-400/60 to-transparent"></div>
+
+          <div class="relative">
+            <textarea id="nx-prompt" rows="2" placeholder="Direct your CEO: orchestrate builds, delegate tasks, supervise the swarm..."
+                      class="w-full bg-transparent border-none text-slate-100 placeholder-slate-500 text-sm focus:ring-0 focus:outline-none resize-none leading-relaxed font-sans pr-4"></textarea>
+          </div>
+
+          <div class="flex items-center justify-between pt-2.5 border-t border-obsidian-750/80 mt-1">
+            <div class="flex items-center space-x-2">
+              <button id="nx-ceo-badge" class="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-obsidian-850 hover:bg-obsidian-800 text-slate-200 text-xs border border-mint-500/40 hover:border-mint-400 font-mono transition shadow-sm" title="The agent every prompt is routed to">
+                <span class="w-2 h-2 rounded-full bg-mint-400 shadow-[0_0_8px_#34d399] animate-pulse"></span>
+                <span id="nx-ceo-name" class="font-semibold text-mint-300">CEO</span>
+                <span class="text-slate-500">·</span>
+                <span id="nx-ceo-model" class="text-slate-300 text-[11px]">model</span>
+              </button>
+              <button class="hidden sm:inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/40 text-emerald-300 text-xs border border-emerald-500/40" title="Strict sandbox barrier active">
+                <i class="fa-solid fa-shield-halved text-[10.5px] text-emerald-400"></i>
+                <span class="text-[11px] font-mono font-medium">Sandboxed</span>
+              </button>
+              <button id="nx-attach" class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-obsidian-850/80 hover:bg-obsidian-800 text-slate-300 hover:text-white text-xs border border-obsidian-700/80 transition" title="Active workspace context">
+                <i class="fa-solid fa-paperclip text-[11px] text-mint-400"></i>
+                <span id="nx-attach-path" class="text-[11px] font-mono hidden md:inline">—</span>
+              </button>
+            </div>
+
+            <div class="flex items-center space-x-3">
+              <span class="text-[10px] font-mono text-slate-500 hidden sm:inline select-none">
+                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Ctrl</kbd> +
+                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Enter</kbd>
+              </span>
+              <button id="nx-dispatch" class="bg-gradient-to-r from-mint-500 via-emerald-400 to-teal-400 hover:from-mint-400 hover:to-teal-300 text-obsidian-950 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-all active:scale-95 shadow-glow-emerald tracking-wide">
+                <span id="nx-dispatch-label">Dispatch Swarm</span>
+                <i id="nx-dispatch-icon" class="fa-solid fa-arrow-right text-[11px]"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-center space-x-2 pt-2.5 text-[11px] text-slate-400 font-mono">
+          <i class="fa-solid fa-shield-cat text-[10px] text-mint-400"></i>
+          <span id="nx-sandbox-note">Strict sandbox active: worker nodes cannot execute or modify files outside the selected workspace.</span>
+        </div>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<!-- ============================================================== SETTINGS MODAL -->
+<div id="nx-settings" class="nx-hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+  <div class="w-full max-w-lg bg-obsidian-900 border border-obsidian-700 rounded-2xl shadow-2xl p-5 space-y-5">
+    <div class="flex items-start justify-between">
+      <div>
+        <h3 class="text-base font-semibold text-slate-100 font-mono">Settings</h3>
+        <p class="text-[11px] text-slate-400 font-mono">Painted instantly · remembered in SQLite</p>
+      </div>
+      <button id="nx-settings-close" class="p-1.5 rounded-lg text-slate-400 hover:text-white bg-obsidian-850 border border-obsidian-750">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+
+    <div class="space-y-2">
+      <p class="text-[10px] font-mono uppercase tracking-wider text-slate-400">Theme</p>
+      <div class="grid grid-cols-3 gap-2" id="nx-theme-options">
+        <button data-theme-option="Dark" class="nx-theme-card text-left px-3 py-2 rounded-xl border border-obsidian-700 bg-obsidian-850 hover:border-mint-500/50 transition">
+          <span class="block text-xs font-semibold text-slate-100">Dark</span>
+          <span class="block text-[10px] text-slate-500 font-mono">obsidian shell</span>
+        </button>
+        <button data-theme-option="Light" class="nx-theme-card text-left px-3 py-2 rounded-xl border border-obsidian-700 bg-obsidian-850 hover:border-mint-500/50 transition">
+          <span class="block text-xs font-semibold text-slate-100">Light</span>
+          <span class="block text-[10px] text-slate-500 font-mono">paper shell</span>
+        </button>
+        <button data-theme-option="System" class="nx-theme-card text-left px-3 py-2 rounded-xl border border-obsidian-700 bg-obsidian-850 hover:border-mint-500/50 transition">
+          <span class="block text-xs font-semibold text-slate-100">System</span>
+          <span class="block text-[10px] text-slate-500 font-mono">follow the OS</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <p class="text-[10px] font-mono uppercase tracking-wider text-slate-400">Accent colour</p>
+      <div class="flex items-center space-x-3" id="nx-accent-options">
+        <button data-accent-option="Green" title="Green" class="nx-swatch w-9 h-9 rounded-full border-2 flex items-center justify-center" style="background:#10b981;border-color:transparent;color:#04140f"></button>
+        <button data-accent-option="Blue" title="Blue" class="nx-swatch w-9 h-9 rounded-full border-2 flex items-center justify-center" style="background:#3b82f6;border-color:transparent;color:#04140f"></button>
+        <button data-accent-option="Purple" title="Purple" class="nx-swatch w-9 h-9 rounded-full border-2 flex items-center justify-center" style="background:#8b5cf6;border-color:transparent;color:#04140f"></button>
+        <button data-accent-option="Amber" title="Amber" class="nx-swatch w-9 h-9 rounded-full border-2 flex items-center justify-center" style="background:#f59e0b;border-color:transparent;color:#04140f"></button>
+        <button data-accent-option="Rose" title="Rose" class="nx-swatch w-9 h-9 rounded-full border-2 flex items-center justify-center" style="background:#f43f5e;border-color:transparent;color:#04140f"></button>
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <p class="text-[10px] font-mono uppercase tracking-wider text-slate-400">Text size</p>
+        <span id="nx-font-label" class="text-[10px] font-mono text-mint-400">Medium · 1.00×</span>
+      </div>
+      <input id="nx-font-slider" type="range" min="0" max="2" step="1" value="1"
+             class="w-full accent-emerald-500" />
+      <div class="flex justify-between text-[10px] font-mono text-slate-500">
+        <span>Small</span><span>Medium</span><span>Large</span>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-mint-500/30 bg-mint-500/10 px-3 py-2 text-[11px] font-mono text-mint-300" id="nx-settings-summary">
+      Dark · Green accent · Medium text
+    </div>
+
+    <div class="flex items-center justify-between pt-1">
+      <button id="nx-settings-reset" class="px-3 py-1.5 rounded-lg bg-obsidian-850 border border-obsidian-750 text-slate-300 text-xs font-mono hover:text-white">Reset to defaults</button>
+      <button id="nx-settings-done" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-mint-500 to-emerald-500 text-obsidian-950 text-xs font-bold">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================== AGENT MODAL -->
+<div id="nx-agent-modal" class="nx-hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+  <div class="w-full max-w-xl bg-obsidian-900 border border-obsidian-700 rounded-2xl shadow-2xl p-5 space-y-4 max-h-[90vh] nx-scroll">
+    <div class="flex items-start justify-between">
+      <div>
+        <h3 id="nx-agent-title" class="text-base font-semibold text-slate-100 font-mono">Deploy agent</h3>
+        <p id="nx-agent-subtitle" class="text-[11px] text-slate-400 font-mono">One more node in the star</p>
+      </div>
+      <button id="nx-agent-close" class="p-1.5 rounded-lg text-slate-400 hover:text-white bg-obsidian-850 border border-obsidian-750">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <label class="space-y-1"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Name</span>
+        <input id="nx-agent-name" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="Atlas" /></label>
+      <label class="space-y-1"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Role</span>
+        <input id="nx-agent-role" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="Chief Executive Orchestrator" /></label>
+    </div>
+
+    <label class="space-y-1 block"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">System prompt</span>
+      <textarea id="nx-agent-prompt" rows="4" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2 font-mono" placeholder="How does this agent think and report back?"></textarea></label>
+
+    <div class="grid grid-cols-2 gap-3">
+      <label class="space-y-1"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Provider</span>
+        <select id="nx-agent-provider" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2"></select></label>
+      <label class="space-y-1"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Model ID</span>
+        <input id="nx-agent-model" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="gh/gpt-5.4-nano" /></label>
+    </div>
+
+    <label class="space-y-1 block"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Base URL (blank = provider default)</span>
+      <input id="nx-agent-baseurl" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="http://localhost:20128/v1" /></label>
+
+    <label class="space-y-1 block"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">API key (blank = keep stored key)</span>
+      <input id="nx-agent-key" type="password" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="stored locally in SQLite" /></label>
+
+    <label class="flex items-start space-x-2.5 cursor-pointer select-none">
+      <input id="nx-agent-tools" type="checkbox" class="mt-0.5 rounded border-obsidian-600 bg-obsidian-800 text-mint-500 focus:ring-mint-500/30" />
+      <span class="text-[11px] text-slate-300">Allow this worker to use workspace tools (files + terminal)</span>
+    </label>
+
+    <p id="nx-agent-error" class="nx-hidden text-[11px] text-rose-400 font-mono"></p>
+
+    <div class="flex items-center justify-end space-x-2 pt-1">
+      <button id="nx-agent-cancel" class="px-3 py-1.5 rounded-lg bg-obsidian-850 border border-obsidian-750 text-slate-300 text-xs font-mono">Cancel</button>
+      <button id="nx-agent-save" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-mint-500 to-emerald-500 text-obsidian-950 text-xs font-bold">Save agent</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================================
+   Nexus bridge.  C# pushes state with window.nexusReceive(state).  The page posts
+   commands back through chrome.webview.postMessage (falls back to invokeCSharpAction).
+   ===================================================================================== */
+(function () {
+  'use strict';
+
+  var state = null;
+  var editingId = null;
+  var pendingDelete = null;
+
+  function post(payload) {
+    try {
+      var text = JSON.stringify(payload);
+      if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+        window.chrome.webview.postMessage(text);
+      } else if (typeof window.invokeCSharpAction === 'function') {
+        window.invokeCSharpAction(text);
+      }
+    } catch (error) { /* host went away */ }
+  }
+
+  function el(id) { return document.getElementById(id); }
+  function show(node, visible) { if (node) node.classList.toggle('nx-hidden', !visible); }
+  function text(id, value) { var node = el(id); if (node) node.textContent = value == null ? '' : String(value); }
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ------------------------------------------------------------------ clock */
+  function tickClock() {
+    var now = new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    text('nx-clock', now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' +
+      pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds()));
+  }
+
+  /* ------------------------------------------------------------------ theme */
+  var accents = {
+    Green: { attr: 'green', label: 'Green' },
+    Blue: { attr: 'cyan', label: 'Blue' },
+    Purple: { attr: 'violet', label: 'Purple' },
+    Amber: { attr: 'amber', label: 'Amber' },
+    Rose: { attr: 'rose', label: 'Rose' }
+  };
+  var scales = { Small: 0.9, Medium: 1.0, Large: 1.15 };
+
+  function resolveTheme(theme) {
+    if (theme === 'Light') return 'light';
+    if (theme === 'Dark') return 'dark';
+    var prefersDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : true;
+    return prefersDark ? 'dark' : 'light';
+  }
+
+  function applySettings(settings) {
+    if (!settings) return;
+    var theme = settings.theme || 'System';
+    var accent = settings.accent || 'Green';
+    var size = settings.fontSize || 'Medium';
+
+    document.documentElement.setAttribute('data-theme', resolveTheme(theme));
+    document.documentElement.setAttribute('data-accent', (accents[accent] || accents.Green).attr);
+    document.documentElement.style.setProperty('--ui-scale', String(scales[size] || 1));
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nx-theme-card'), function (card) {
+      var selected = card.getAttribute('data-theme-option') === theme;
+      card.style.borderColor = selected ? 'rgb(16 185 129)' : '';
+      card.style.boxShadow = selected ? '0 0 0 1px rgba(16,185,129,0.5)' : '';
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nx-swatch'), function (swatch) {
+      var selected = swatch.getAttribute('data-accent-option') === accent;
+      swatch.style.borderColor = selected ? 'rgb(226 232 240)' : 'transparent';
+      swatch.textContent = selected ? '✓' : '';
+    });
+
+    var slider = el('nx-font-slider');
+    if (slider) slider.value = String(['Small', 'Medium', 'Large'].indexOf(size) < 0 ? 1 : ['Small', 'Medium', 'Large'].indexOf(size));
+    text('nx-font-label', size + ' · ' + (scales[size] || 1).toFixed(2) + '×');
+    text('nx-settings-summary', (theme === 'System' ? 'System' : theme) + ' · ' + accent + ' accent · ' + size + ' text');
+  }
+
+  function pushSettings(theme, accent, size) {
+    applySettings({ theme: theme, accent: accent, fontSize: size });
+    post({ type: 'settings', theme: theme, accent: accent, fontSize: size });
+  }
+
+  /* ------------------------------------------------------------------ rendering */
+  function renderProvider(s) {
+    var provider = s.provider || {};
+    text('nx-provider-text', provider.text || 'provider');
+    text('nx-provider-state', provider.online ? 'ONLINE' : 'OFFLINE');
+    var dot = el('nx-provider-dot'), ping = el('nx-provider-dot-ping');
+    var colour = provider.online ? '#34d399' : '#fb7185';
+    if (dot) { dot.style.background = colour; dot.style.boxShadow = '0 0 8px ' + colour; }
+    if (ping) ping.style.background = colour;
+    text('nx-swarm-status', s.running ? 'orchestrating' : 'idle');
+  }
+
+  function renderWorkspace(s) {
+    var workspace = s.workspace || {};
+    var path = workspace.path || '';
+    text('nx-workspace-path', path || 'no folder selected');
+    var pathNode = el('nx-workspace-path');
+    if (pathNode) pathNode.title = path || 'no folder selected';
+    text('nx-attach-path', path ? path : 'no workspace');
+    text('nx-workspace-status', workspace.configured ? (workspace.status === 'ready' ? 'READY · ENFORCED' : 'MISSING') : 'NOT SET');
+
+    var problem = el('nx-workspace-problem');
+    if (problem) {
+      problem.textContent = workspace.problem || '';
+      show(problem, !!workspace.problem);
+    }
+
+    var tools = el('nx-tools');
+    if (tools && tools.checked !== !!s.toolsEnabled) tools.checked = !!s.toolsEnabled;
+
+    text('nx-sandbox-note', path
+      ? 'Strict sandbox active: worker nodes cannot execute or modify files outside ' + path
+      : 'Strict sandbox active: pick a workspace folder before enabling file and terminal tools.');
+  }
+
+  function renderAgents(s) {
+    var list = el('nx-agent-list');
+    if (!list) return;
+
+    var agents = s.agents || [];
+    text('nx-agent-count', agents.length + (agents.length === 1 ? ' node' : ' nodes'));
+    text('nx-worker-count', '[' + Math.max(0, agents.length - 1) + ' Swarm Nodes]');
+
+    var ceo = agents.filter(function (a) { return a.isCeo; })[0];
+    text('nx-ceo-top', ceo ? ceo.name + ' Core' : 'CEO');
+    text('nx-ceo-name', ceo ? ceo.name : 'CEO');
+    text('nx-flow-ceo', ceo ? ceo.name : 'CEO');
+    text('nx-ceo-model', ceo ? (ceo.model || '') : '');
+
+    var palette = ['#f59e0b', '#38bdf8', '#a78bfa', '#34d399', '#fb7185'];
+    var html = agents.map(function (agent, index) {
+      var accent = agent.isCeo ? '#34d399' : palette[index % palette.length];
+      var tail = agent.isCeo
+        ? '<span class="text-emerald-400/90 font-medium">PRIMARY HUB</span>'
+        : '<span class="text-slate-500">' + (agent.canUseTools ? 'tools armed' : 'standby') + '</span>';
+
+      return '' +
+        '<div class="relative rounded-xl p-2.5 border transition group ' +
+          (agent.isCeo
+            ? 'bg-gradient-to-r from-obsidian-850 via-obsidian-850 to-emerald-950/20 border-2 border-mint-500/40 shadow-glow-emerald'
+            : 'bg-obsidian-850/60 hover:bg-obsidian-850 border-obsidian-750/90') + '">' +
+          (agent.isCeo ? '<div class="absolute -left-1 top-4 w-1.5 h-8 bg-mint-400 rounded-r-full shadow-[0_0_12px_#34d399]"></div>' : '') +
+          '<div class="flex items-start justify-between">' +
+            '<div class="flex items-start space-x-2.5">' +
+              '<div class="relative mt-0.5"><div class="w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs" ' +
+                'style="background:rgba(255,255,255,0.04);border:1px solid ' + accent + '66;color:' + accent + '">' +
+                escapeHtml(agent.initials || '??') + '</div>' +
+                '<span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-obsidian-900" style="background:' + accent + '"></span>' +
+              '</div>' +
+              '<div>' +
+                '<div class="flex items-center space-x-1.5">' +
+                  '<span class="text-xs font-medium text-slate-100">' + escapeHtml(agent.name) + '</span>' +
+                  (agent.isCeo
+                    ? '<span class="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-mint-400 text-obsidian-950 tracking-wider">CEO HUB</span>'
+                    : '') +
+                  (agent.canUseTools ? '<span class="px-1 py-0.5 rounded text-[8px] font-mono bg-obsidian-750 text-slate-300">tools</span>' : '') +
+                '</div>' +
+                '<p class="text-[10.5px] text-slate-400">' + escapeHtml(agent.role) + '</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex items-center space-x-1 opacity-60 group-hover:opacity-100 transition">' +
+              (agent.isCeo ? '' : '<button data-make-ceo="' + agent.id + '" class="p-1 text-slate-400 hover:text-mint-400" title="Make this the CEO"><i class="fa-solid fa-star text-[10px]"></i></button>') +
+              '<button data-edit-agent="' + agent.id + '" class="p-1 text-slate-400 hover:text-slate-200" title="Edit agent"><i class="fa-regular fa-pen-to-square text-[10px]"></i></button>' +
+              '<button data-delete-agent="' + agent.id + '" class="p-1 text-slate-400 hover:text-rose-400" title="Delete agent"><i class="fa-solid fa-trash text-[10px]"></i></button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="mt-1.5 pt-1.5 border-t border-obsidian-750/50 flex items-center justify-between text-[9.5px] font-mono">' +
+            '<span class="text-slate-300/90 truncate flex items-center gap-1"><i class="fa-solid fa-bolt text-[9px] text-mint-400"></i>' +
+              escapeHtml(agent.providerDisplay || agent.provider) + ' · ' + escapeHtml(agent.model) + '</span>' + tail +
+          '</div>' +
+        '</div>';
+    }).join('');
+
+    list.innerHTML = html ||
+      '<p class="text-[11px] text-slate-500 font-mono px-1">No agents yet — press Deploy.</p>';
+
+    Array.prototype.forEach.call(list.querySelectorAll('[data-edit-agent]'), function (button) {
+      button.addEventListener('click', function () { openAgentModal(button.getAttribute('data-edit-agent')); });
+    });
+    Array.prototype.forEach.call(list.querySelectorAll('[data-delete-agent]'), function (button) {
+      button.addEventListener('click', function () {
+        var id = button.getAttribute('data-delete-agent');
+        if (pendingDelete === id) { post({ type: 'deleteAgent', id: id }); pendingDelete = null; return; }
+        pendingDelete = id;
+        button.innerHTML = '<span class="text-[9px] font-mono text-rose-400">confirm?</span>';
+      });
+    });
+    Array.prototype.forEach.call(list.querySelectorAll('[data-make-ceo]'), function (button) {
+      button.addEventListener('click', function () { post({ type: 'makeCeo', id: button.getAttribute('data-make-ceo') }); });
+    });
+  }
+
+  function feedItemHtml(item) {
+    var kind = item.kind || 'note';
+    var header = '';
+    var body = '';
+
+    if (kind === 'plan') {
+      var steps = (item.steps || []).map(function (step) {
+        return '<div class="flex items-start space-x-2 mt-1.5">' +
+          '<span class="w-5 h-5 shrink-0 rounded-full bg-obsidian-750 text-[9px] font-mono text-slate-300 flex items-center justify-center">' + step.index + '</span>' +
+          '<div><p class="text-[11px] font-semibold text-cyan-300">' + escapeHtml(step.role) + '</p>' +
+          '<p class="text-[11.5px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(step.instructions) + '</p></div></div>';
+      }).join('');
+      header = '<div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-mint-400"></span>' +
+        '<span class="text-[11.5px] font-semibold text-slate-100">CEO plan</span>' +
+        '<span class="text-[10px] font-mono text-slate-500">' + escapeHtml(item.agent) + '</span></div>';
+      body = steps + (item.text ? '<pre class="mt-2 text-[11px] font-mono text-slate-400 whitespace-pre-wrap">' + escapeHtml(item.text) + '</pre>' : '');
+      return '<div class="rounded-xl border border-obsidian-750 bg-obsidian-900/80 px-3.5 py-2.5 backdrop-blur-sm">' + header + body + '</div>';
+    }
+
+    if (kind === 'delegation') {
+      return '<div class="flex items-start space-x-2 px-1">' +
+        '<span class="mt-1.5 w-1.5 h-1.5 rounded-full ' + (item.pending ? 'bg-amber-400' : 'bg-mint-400') + '"></span>' +
+        '<div><p class="text-[10.5px] font-mono text-slate-500">' + escapeHtml(item.title) + '</p>' +
+        '<p class="text-[11.5px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div></div>';
+    }
+
+    if (kind === 'tool') {
+      var colour = item.failed ? 'text-rose-400 border-rose-500/40' : 'text-cyan-300 border-cyan-500/30';
+      return '<div class="rounded-xl border ' + colour + ' bg-obsidian-900/80 px-3.5 py-2.5 backdrop-blur-sm">' +
+        '<div class="flex items-center space-x-2 text-[10.5px] font-mono">' +
+        '<i class="fa-solid fa-gear text-[10px]"></i><span>' + escapeHtml(item.tool) + '</span>' +
+        '<span class="text-slate-500">' + escapeHtml(item.title) + '</span></div>' +
+        '<pre class="mt-1.5 text-[11px] font-mono ' + (item.failed ? 'text-rose-300' : 'text-slate-300') + ' whitespace-pre-wrap">' + escapeHtml(item.text) + '</pre></div>';
+    }
+
+    if (kind === 'result') {
+      return '<div class="rounded-xl border border-obsidian-750 bg-obsidian-900/80 px-3.5 py-2.5 backdrop-blur-sm">' +
+        '<div class="flex items-center space-x-2"><i class="fa-solid fa-check text-mint-400 text-[10px]"></i>' +
+        '<span class="text-[11.5px] font-semibold text-slate-100">' + escapeHtml(item.agent) + '</span>' +
+        '<span class="text-[10px] font-mono text-slate-500">worker result</span></div>' +
+        '<p class="mt-1.5 text-[12px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
+    }
+
+    if (kind === 'error') {
+      return '<div class="rounded-xl border border-rose-500/40 bg-rose-500/5 px-3.5 py-2.5">' +
+        '<div class="flex items-start space-x-2"><i class="fa-solid fa-triangle-exclamation text-rose-400 text-[10px] mt-0.5"></i>' +
+        '<p class="text-[11.5px] text-rose-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div></div>';
+    }
+
+    return '<div class="flex items-start space-x-2 px-1"><span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-600"></span>' +
+      '<p class="text-[11.5px] text-slate-400 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
+  }
+
+  function renderFeed(s) {
+    var feed = s.feed || [];
+    var hasFeed = feed.length > 0;
+
+    show(el('nx-hero'), !hasFeed);
+    show(el('nx-feed-wrap'), hasFeed);
+
+    var bubble = el('nx-prompt-bubble');
+    if (s.currentPrompt) { bubble.textContent = s.currentPrompt; show(bubble, true); } else { show(bubble, false); }
+
+    var list = el('nx-feed');
+    if (list) list.innerHTML = feed.map(feedItemHtml).join('');
+
+    var final = el('nx-final');
+    if (s.finalOutput) {
+      final.innerHTML = '<div class="flex items-center space-x-2 mb-1.5">' +
+        '<span class="w-1.5 h-1.5 rounded-full bg-mint-400"></span>' +
+        '<span class="text-[11.5px] font-semibold text-slate-100">Final answer</span>' +
+        '<span class="text-[10px] font-mono text-slate-500">' + escapeHtml(s.ceoName) + '</span></div>' +
+        '<p class="text-[12px] text-slate-200 whitespace-pre-wrap">' + escapeHtml(s.finalOutput) + '</p>';
+      show(final, true);
+    } else { show(final, false); }
+
+    text('nx-hero-status', s.running ? 'ORCHESTRATING…' : 'ORCHESTRATOR LINK: ACTIVE');
+    var stage = el('nx-stage');
+    if (stage) stage.scrollTop = stage.scrollHeight;
+  }
+
+  function renderComposer(s) {
+    var dispatch = el('nx-dispatch');
+    text('nx-dispatch-label', s.running ? 'Stop swarm' : 'Dispatch Swarm');
+    var icon = el('nx-dispatch-icon');
+    if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
+    if (dispatch) dispatch.classList.toggle('opacity-60', false);
+    text('nx-version', s.version ? 'v' + s.version : 'v1.0.6');
+    text('nx-footer', s.footer || 'sqlite: aiceo.db');
+    var banner = el('nx-banner');
+    if (banner) {
+      if (s.banner && s.banner.text) {
+        banner.textContent = s.banner.text;
+        banner.className = 'mx-6 mt-3 px-3 py-2 rounded-lg border text-[11.5px] font-mono z-10 ' +
+          (s.banner.isError ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200');
+        show(banner, true);
+      } else { show(banner, false); }
+    }
+  }
+
+  function renderAll(s) {
+    applySettings(s.settings);
+    renderProvider(s);
+    renderWorkspace(s);
+    renderAgents(s);
+    renderFeed(s);
+    renderComposer(s);
+  }
+
+  /* ------------------------------------------------------------------ agent modal */
+  function openAgentModal(id) {
+    var modal = el('nx-agent-modal');
+    var agent = null;
+    if (id && state && state.agents) {
+      agent = state.agents.filter(function (a) { return a.id === id; })[0] || null;
+    }
+    editingId = agent ? agent.id : null;
+
+    text('nx-agent-title', agent ? 'Edit ' + agent.name : 'Deploy agent');
+    text('nx-agent-subtitle', agent ? (agent.isCeo ? 'The CEO keeps the star together' : 'One more node in the star') : 'One more node in the star');
+
+    el('nx-agent-name').value = agent ? agent.name : '';
+    el('nx-agent-role').value = agent ? agent.role : '';
+    el('nx-agent-prompt').value = agent ? (agent.systemPrompt || '') : '';
+    el('nx-agent-model').value = agent ? (agent.model || '') : '';
+    el('nx-agent-baseurl').value = agent ? (agent.baseUrl || '') : '';
+    el('nx-agent-key').value = '';
+    el('nx-agent-tools').checked = agent ? !!agent.canUseTools : true;
+    el('nx-agent-tools').disabled = !!(agent && agent.isCeo);
+
+    var select = el('nx-agent-provider');
+    select.innerHTML = (state && state.providers ? state.providers : []).map(function (provider) {
+      return '<option value="' + provider.value + '">' + escapeHtml(provider.displayName) + '</option>';
+    }).join('');
+    if (agent && agent.provider) select.value = agent.provider;
+
+    show(el('nx-agent-error'), false);
+    show(modal, true);
+    el('nx-agent-name').focus();
+  }
+
+  function closeAgentModal() { show(el('nx-agent-modal'), false); editingId = null; }
+
+  function saveAgent() {
+    var name = el('nx-agent-name').value.trim();
+    var role = el('nx-agent-role').value.trim();
+    if (!name || !role) {
+      var error = el('nx-agent-error');
+      error.textContent = 'Name and role are required.';
+      show(error, true);
+      return;
+    }
+
+    post({
+      type: 'saveAgent',
+      id: editingId,
+      name: name,
+      role: role,
+      systemPrompt: el('nx-agent-prompt').value,
+      provider: el('nx-agent-provider').value,
+      modelId: el('nx-agent-model').value,
+      baseUrl: el('nx-agent-baseurl').value,
+      apiKey: el('nx-agent-key').value,
+      canUseTools: el('nx-agent-tools').checked
+    });
+    closeAgentModal();
+  }
+
+  /* ------------------------------------------------------------------ wiring */
+  function dispatchPrompt() {
+    if (!state) return;
+    if (state.running) { post({ type: 'stop' }); return; }
+    var prompt = el('nx-prompt').value.trim();
+    if (!prompt) { post({ type: 'toast', text: 'Type a directive for the CEO first.', isError: true }); return; }
+    el('nx-prompt').value = '';
+    post({ type: 'dispatch', prompt: prompt });
+  }
+
+  function wire() {
+    el('nx-select-workspace').addEventListener('click', function () { post({ type: 'selectWorkspace' }); });
+    el('nx-clear-workspace').addEventListener('click', function () { post({ type: 'clearWorkspace' }); });
+    el('nx-refresh').addEventListener('click', function () { post({ type: 'refreshHealth' }); });
+    el('nx-attach').addEventListener('click', function () { post({ type: 'selectWorkspace' }); });
+    el('nx-copy-path').addEventListener('click', function () {
+      var path = state && state.workspace ? state.workspace.path : '';
+      if (path && navigator.clipboard) navigator.clipboard.writeText(path);
+    });
+    el('nx-tools').addEventListener('change', function (event) { post({ type: 'setTools', enabled: event.target.checked }); });
+    el('nx-new-agent').addEventListener('click', function () { openAgentModal(null); });
+    el('nx-dispatch').addEventListener('click', dispatchPrompt);
+    el('nx-agent-save').addEventListener('click', saveAgent);
+    el('nx-agent-cancel').addEventListener('click', closeAgentModal);
+    el('nx-agent-close').addEventListener('click', closeAgentModal);
+
+    el('nx-prompt').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); dispatchPrompt(); }
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nx-quick'), function (card) {
+      card.addEventListener('click', function () {
+        el('nx-prompt').value = card.getAttribute('data-prompt') || '';
+        el('nx-prompt').focus();
+      });
+    });
+
+    el('nx-settings-open').addEventListener('click', function () { show(el('nx-settings'), true); });
+    el('nx-settings-close').addEventListener('click', function () { show(el('nx-settings'), false); });
+    el('nx-settings-done').addEventListener('click', function () { show(el('nx-settings'), false); });
+    el('nx-settings-reset').addEventListener('click', function () { pushSettings('System', 'Green', 'Medium'); });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nx-theme-card'), function (card) {
+      card.addEventListener('click', function () {
+        var current = state && state.settings ? state.settings : { accent: 'Green', fontSize: 'Medium' };
+        pushSettings(card.getAttribute('data-theme-option'), current.accent, current.fontSize);
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nx-swatch'), function (swatch) {
+      swatch.addEventListener('click', function () {
+        var current = state && state.settings ? state.settings : { theme: 'System', fontSize: 'Medium' };
+        pushSettings(current.theme, swatch.getAttribute('data-accent-option'), current.fontSize);
+      });
+    });
+
+    el('nx-font-slider').addEventListener('input', function (event) {
+      var size = ['Small', 'Medium', 'Large'][Number(event.target.value)] || 'Medium';
+      var current = state && state.settings ? state.settings : { theme: 'System', accent: 'Green' };
+      pushSettings(current.theme, current.accent, size);
+    });
+
+    tickClock();
+    window.setInterval(tickClock, 1000);
+    post({ type: 'ready' });
+  }
+
+  window.nexusReceive = function (incoming) {
+    try {
+      state = typeof incoming === 'string' ? JSON.parse(incoming) : incoming;
+      renderAll(state);
+    } catch (error) {
+      console.error('nexusReceive', error);
+    }
+  };
+
+  window.nexusToast = function (message, isError) {
+    var banner = el('nx-banner');
+    if (!banner) return;
+    banner.textContent = message;
+    banner.className = 'mx-6 mt-3 px-3 py-2 rounded-lg border text-[11.5px] font-mono z-10 ' +
+      (isError ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200');
+    show(banner, true);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    wire();
+  }
+})();
+</script>
+
+<!-- ============================================================== WEBGL SHADER -->
+<script>
+(function () {
+  const canvas = document.getElementById('shader-canvas-ANIMATION_5');
+
+  function syncSize() {
+    const w = canvas.clientWidth || 1280;
+    const h = canvas.clientHeight || 720;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(syncSize).observe(canvas);
+  }
+  syncSize();
+
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if (!gl) return;
+
+  const vs = `attribute vec2 a_position;
+varying vec2 v_texCoord;
+void main() {
+  v_texCoord = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+
+  const fs = `precision highp float;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+
+vec3 hash(vec3 p) {
+    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+             dot(p, vec3(269.5, 183.3, 246.1)),
+             dot(p, vec3(113.5, 271.9, 124.6)));
+    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+}
+
+float noise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(dot(hash(i + vec3(0.0,0.0,0.0)), f - vec3(0.0,0.0,0.0)),
+                       dot(hash(i + vec3(1.0,0.0,0.0)), f - vec3(1.0,0.0,0.0)), u.x),
+                   mix(dot(hash(i + vec3(0.0,1.0,0.0)), f - vec3(0.0,1.0,0.0)),
+                       dot(hash(i + vec3(1.0,1.0,0.0)), f - vec3(1.0,1.0,0.0)), u.x), u.y),
+               mix(mix(dot(hash(i + vec3(0.0,0.0,1.0)), f - vec3(0.0,0.0,1.0)),
+                       dot(hash(i + vec3(1.0,0.0,1.0)), f - vec3(1.0,0.0,1.0)), u.x),
+                   mix(dot(hash(i + vec3(0.0,1.0,1.0)), f - vec3(0.0,1.0,1.0)),
+                       dot(hash(i + vec3(1.0,1.0,1.0)), f - vec3(1.0,1.0,1.0)), u.x), u.y), u.z);
+}
+
+void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.x, u_resolution.y);
+    float t = u_time * 0.4;
+
+    vec2 gridUV = fract(uv * 18.0) - 0.5;
+    float gridLine = smoothstep(0.48, 0.5, abs(gridUV.x)) + smoothstep(0.48, 0.5, abs(gridUV.y));
+
+    float dist = length(uv);
+    float angle = atan(uv.y, uv.x);
+
+    float ring1 = sin(dist * 28.0 - t * 4.0 + sin(angle * 6.0));
+    float ringGlow = smoothstep(0.85, 0.98, ring1) * exp(-dist * 2.8);
+
+    float filaments = sin(angle * 8.0 + sin(dist * 12.0 - t * 2.5)) * 0.5 + 0.5;
+    filaments *= exp(-dist * 3.5);
+
+    float n = noise(vec3(uv * 3.5, t * 0.5));
+    float nAura = smoothstep(0.1, 0.7, n) * exp(-dist * 2.0);
+
+    vec3 bg = vec3(0.05, 0.055, 0.08) * (1.0 - dist * 0.6);
+    vec3 emerald = vec3(0.063, 0.725, 0.505);
+    vec3 cyan = vec3(0.024, 0.714, 0.831);
+    vec3 amber = vec3(0.851, 0.467, 0.024);
+
+    float core = 0.04 / (dist + 0.03);
+
+    vec3 col = bg;
+    col += gridLine * vec3(0.03, 0.08, 0.08) * exp(-dist * 1.5);
+    col += ringGlow * emerald * 1.8;
+    col += filaments * cyan * 1.4;
+    col += nAura * mix(cyan, emerald, sin(t + dist)*0.5+0.5) * 0.9;
+    col += core * emerald * 0.7 + (core * 0.3) * amber;
+
+    col *= clamp(1.4 - dist * 1.1, 0.0, 1.0);
+
+    gl_FragColor = vec4(col, 1.0);
+}`;
+
+  function cs(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+  }
+
+  const prog = gl.createProgram();
+  gl.attachShader(prog, cs(gl.VERTEX_SHADER, vs));
+  gl.attachShader(prog, cs(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const pos = gl.getAttribLocation(prog, 'a_position');
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+  const uTime = gl.getUniformLocation(prog, 'u_time');
+  const uRes = gl.getUniformLocation(prog, 'u_resolution');
+  const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+
+  let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+  window.addEventListener('mousemove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      const nx = (event.clientX - rect.left) / rect.width;
+      const ny = 1.0 - (event.clientY - rect.top) / rect.height;
+      mouse.x = nx * canvas.width;
+      mouse.y = ny * canvas.height;
+    }
+  });
+
+  function render(t) {
+    if (typeof ResizeObserver === 'undefined') syncSize();
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    if (uTime) gl.uniform1f(uTime, t * 0.001);
+    if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
+    if (uMouse) gl.uniform2f(uMouse, mouse.x, mouse.y);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  render(0);
+})();
+</script>
+</body>
+</html>

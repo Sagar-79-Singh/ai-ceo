@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.5 ships standalone, self-contained executables built from the Avalonia desktop head:
+# v1.0.6 ships standalone, self-contained executables built from the Avalonia desktop head:
 #   * Windows (win-x64, win-x86, win-arm64) → a single .exe per architecture.
 #   * Linux/macOS (linux-x64, linux-arm64, osx-x64, osx-arm64) → a .tar.gz per architecture.
 #   * Windows x64 → AI-CEO-Orchestrator-<version>-win-x64-Setup.exe, compiled by Inno Setup
@@ -282,7 +282,7 @@ jobs:
             AiCeo-win-x64.exe \
             AiCeo-win-x86.exe \
             AiCeo-win-arm64.exe \
-            AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe \
+            AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe \
             AiCeo-linux-x64.tar.gz \
             AiCeo-linux-arm64.tar.gz \
             AiCeo-osx-x64.tar.gz \
@@ -321,14 +321,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.5
-          tag_name: v1.0.5
+          name: AI CEO Orchestrator v1.0.6
+          tag_name: v1.0.6
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.5
+            ## AI CEO Orchestrator v1.0.6
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI) that opens in a native
             window — no browser, no local web server. Workers can read, write and run commands inside
@@ -338,7 +338,7 @@ jobs:
 
             | Platform | File | How |
             | --- | --- | --- |
-            | **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe` | Double-click the installer: Start-menu + desktop shortcuts, per-user, no admin rights. |
+            | **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe` | Double-click the installer: Start-menu + desktop shortcuts, per-user, no admin rights. |
             | Windows x64 (portable) | `AiCeo-win-x64.exe` | Double-click. Nothing is installed. |
             | Windows x86 (32-bit) | `AiCeo-win-x86.exe` | Double-click. Older 32-bit machines. |
             | Windows ARM64 | `AiCeo-win-arm64.exe` | Double-click. Surface / Snapdragon PCs. |
@@ -357,30 +357,35 @@ jobs:
             On Linux you may need `chmod +x AiCeo`; on macOS, if Gatekeeper blocks an unsigned binary,
             right-click → **Open**.
 
-            ### What's new in v1.0.5
+            ### What's new in v1.0.6 — the Nexus interface
 
-            **A custom installer.** `AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe` is compiled with Inno
-            Setup from `installer.iss` in the repository root. It uses the modern wizard style painted
-            in the app's own dark palette (`#1E1E2E`), custom artwork, a rewritten welcome/finished
-            copy, a slim accent progress bar with a live percentage, **desktop and Start-menu
-            shortcuts**, and installs per-user into `%LOCALAPPDATA%\Programs\AI CEO Orchestrator`
-            (no UAC prompt; administrators can still opt into an all-users install). Anything that
-            breaks in the app is uninstalled cleanly from Apps & features.
+            The plain desktop shell has been replaced by **Nexus**, the interface from the new
+            design: a dark obsidian console with a live WebGL holographic core behind the execution
+            feed, the swarm matrix down the left, and a glowing console dock across the bottom.
 
-            **A real Settings page.** The gear button in the top-right corner opens a settings panel
-            with:
-            - **Theme** — Dark, Light, or follow the operating system (live-switches when Windows or
-              macOS flips between light and dark).
-            - **Accent colour** — Green, Blue, Purple, Amber or Rose; buttons, badges, focus rings and
-              the CEO dot all follow it.
-            - **Text size** — a Small / Medium / Large slider that rescales every font in the UI, with
-              a live preview.
+            - **Embedded HTML surface.** The layout is rendered by the platform's native web engine
+              (`Avalonia.Controls.WebView`): Edge WebView2 on Windows, WKWebView on macOS and
+              WebKitGTK on Linux. The page, its precompiled Tailwind stylesheet and the icon font are
+              bundled inside the executable, so the interface looks identical offline — no CDN, no
+              local web server, no Node.js.
+            - **Live execution feed.** The gyroscope emblem, badge row and neural-wave telemetry give
+              way to the real run: CEO plan steps, one delegation at a time, tool calls with their
+              output, worker results and the synthesised final answer, streamed straight from the
+              orchestrator.
+            - **Swarm matrix.** Every agent with its role, provider, model and tool flag; promote any
+              worker to CEO, edit or remove one, or deploy a new agent, all from the sidebar.
+            - **Select Workspace** still opens the native folder picker and the sandbox guard is
+              unchanged — workers cannot read or write outside the folder you choose.
+            - **Dispatch Swarm** sends your directive to the CEO through exactly the same
+              orchestrator path as before (strict star topology, sequential delegation).
+            - **Settings modal** (sliders button, top right): Dark / Light / System theme, five accent
+              colours and three text sizes, painted instantly and remembered in SQLite.
+            - **Graceful fallback.** If a machine has no web engine (for example a bare Linux box
+              without WebKitGTK), the app opens the previous Avalonia interface instead of failing,
+              and offers a one-click switch from the Nexus window.
 
-            Preferences are persisted in a new `UserSettings` table in the local SQLite database (the
-            schema upgrades itself on first launch) and are applied at startup through a dynamic
-            resource dictionary — the Avalonia equivalent of the CSS custom properties that used to
-            live in `wwwroot/css/app.css`. A generated `Assets/theme.css` keeps the same token set
-            available for web/branding use.
+            The installer was refreshed for this release: same dark modern wizard, new version,
+            same per-user install with desktop and Start-menu shortcuts.
 
             ### Unchanged
             Strict star topology (you ↔ CEO only, one worker at a time), multi-provider LLM support
