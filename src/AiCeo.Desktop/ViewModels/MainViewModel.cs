@@ -196,7 +196,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _isRefreshingHealth, value))
             {
-                OnPropertyChanged(nameof(ProviderText), nameof(ProviderDotBrush));
+                OnPropertyChanged(nameof(ProviderText), nameof(ProviderDotBrush), nameof(ProviderChecking), nameof(ProviderName));
                 RefreshHealthCommand.RaiseCanExecuteChanged();
             }
         }
@@ -344,6 +344,9 @@ public sealed class MainViewModel : ObservableObject
 
     /// <summary>True when the provider behind the CEO answered the last health check.</summary>
     public bool ProviderOnline => _providerHealth?.Online ?? false;
+
+    /// <summary>True while the health check runs (or before it has ever completed).</summary>
+    public bool ProviderChecking => _isRefreshingHealth || _providerHealth is null;
 
     /// <summary>Name of the provider behind the CEO (for the Nexus telemetry strip).</summary>
     public string ProviderName => _providerHealth?.ProviderDisplayName ?? "provider";
@@ -544,7 +547,7 @@ public sealed class MainViewModel : ObservableObject
         finally
         {
             IsRefreshingHealth = false;
-            OnPropertyChanged(nameof(ProviderText), nameof(ProviderTooltip), nameof(ProviderDotBrush));
+            OnPropertyChanged(nameof(ProviderText), nameof(ProviderTooltip), nameof(ProviderDotBrush), nameof(ProviderChecking), nameof(ProviderName), nameof(ProviderOnline));
         }
     }
 
