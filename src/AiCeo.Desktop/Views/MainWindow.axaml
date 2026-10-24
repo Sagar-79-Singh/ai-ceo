@@ -7,24 +7,24 @@
         MinWidth="1020"
         MinHeight="680"
         WindowStartupLocation="CenterScreen"
-        Background="#070A10">
+        Background="{DynamicResource AppBg}">
 
     <Grid ColumnDefinitions="368,*">
 
         <!-- ============================================================ SIDEBAR -->
-        <Border Grid.Column="0" Background="#0B111A" BorderBrush="#161F2E" BorderThickness="0,0,1,0">
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBg}" BorderBrush="{DynamicResource SidebarBorder}" BorderThickness="0,0,1,0">
             <Grid RowDefinitions="Auto,*,Auto">
 
                 <StackPanel Grid.Row="0" Spacing="12" Margin="16,16,16,10">
 
                     <!-- brand -->
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Border Width="40" Height="40" CornerRadius="12" Background="#123A33">
-                            <TextBlock Text="AI" FontWeight="Bold" FontSize="15" Foreground="#5EE0B0"
+                        <Border Width="40" Height="40" CornerRadius="12" Background="{DynamicResource BrandTileBg}">
+                            <TextBlock Text="AI" FontWeight="Bold" FontSize="15" Foreground="{DynamicResource Accent}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <StackPanel VerticalAlignment="Center" Spacing="2">
-                            <TextBlock Text="AI CEO" FontSize="17" FontWeight="SemiBold" Foreground="#EAF2FB" />
+                            <TextBlock Text="AI CEO" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
                             <TextBlock Text="{Binding VersionLabel}" Classes="subtitle" />
                         </StackPanel>
                     </StackPanel>
@@ -35,7 +35,7 @@
                             ToolTip.Tip="{Binding ProviderTooltip}" Padding="10,7">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{Binding ProviderDotBrush}" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding ProviderText}" FontSize="11.5" Foreground="#9FB2C7"
+                            <TextBlock Text="{Binding ProviderText}" FontSize="11.5" Foreground="{DynamicResource TextBody}"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </Button>
@@ -48,10 +48,10 @@
                                 <TextBlock Grid.Column="1" Text="{Binding WorkspaceStatusText}" Classes="tiny" />
                             </Grid>
 
-                            <TextBlock Text="{Binding WorkspacePath}" Classes="mono" Foreground="#D6E2F0"
+                            <TextBlock Text="{Binding WorkspacePath}" Classes="mono" Foreground="{DynamicResource TextPrimary}"
                                        TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="54" />
 
-                            <TextBlock Text="{Binding WorkspaceProblem}" Foreground="#FFC46B" FontSize="11"
+                            <TextBlock Text="{Binding WorkspaceProblem}" Foreground="{DynamicResource Warn}" FontSize="11"
                                        TextWrapping="Wrap" IsVisible="{Binding HasWorkspaceProblem}" />
 
                             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -88,12 +88,12 @@
                                             <StackPanel Spacing="3">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5"
-                                                               Foreground="#EAF2FB" TextTrimming="CharacterEllipsis" />
+                                                               Foreground="{DynamicResource TextPrimary}" TextTrimming="CharacterEllipsis" />
                                                     <Border Classes="badge" IsVisible="{Binding IsManager}">
-                                                        <TextBlock Text="CEO" FontSize="9" FontWeight="Bold" Foreground="#5EE0B0" />
+                                                        <TextBlock Text="CEO" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource Accent}" />
                                                     </Border>
-                                                    <Border Classes="badge" Background="#1B2436" IsVisible="{Binding CanUseTools}">
-                                                        <TextBlock Text="tools" FontSize="9" FontWeight="Bold" Foreground="#9AA8FF" />
+                                                    <Border Classes="badge" Background="{DynamicResource BadgeToolsBg}" IsVisible="{Binding CanUseTools}">
+                                                        <TextBlock Text="tools" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource ToolAccent}" />
                                                     </Border>
                                                 </StackPanel>
                                                 <TextBlock Text="{Binding Role}" Classes="tiny" />
@@ -110,16 +110,16 @@
                                         </Grid>
 
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <TextBlock Text="{Binding ProviderDisplayName}" FontSize="10" Foreground="#5EE0B0" />
+                                            <TextBlock Text="{Binding ProviderDisplayName}" FontSize="10" Foreground="{DynamicResource Accent}" />
                                             <TextBlock Text="{Binding ModelId}" Classes="tiny" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
 
-                                        <TextBlock Text="{Binding KeyText}" FontSize="10" Foreground="#55657A" />
+                                        <TextBlock Text="{Binding KeyText}" FontSize="10" Foreground="{DynamicResource TextDim}" />
 
-                                        <Border IsVisible="{Binding IsConfirmingDelete}" Background="#2A1417"
-                                                BorderBrush="#5A2A31" BorderThickness="1" CornerRadius="8" Padding="8,6">
+                                        <Border IsVisible="{Binding IsConfirmingDelete}" Background="{DynamicResource DangerBg}"
+                                                BorderBrush="{DynamicResource DangerBorder}" BorderThickness="1" CornerRadius="8" Padding="8,6">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock Text="{Binding DeleteQuestion}" FontSize="11" Foreground="#FFB3B3"
+                                                <TextBlock Text="{Binding DeleteQuestion}" FontSize="11" Foreground="{DynamicResource Danger}"
                                                            VerticalAlignment="Center" />
                                                 <Button Classes="small ghost" Content="Keep" Command="{Binding CancelDeleteCommand}" />
                                                 <Button Classes="small danger" Content="Delete" Command="{Binding ConfirmDeleteCommand}" />
@@ -133,9 +133,9 @@
                 </ScrollViewer>
 
                 <StackPanel Grid.Row="2" Margin="16,10,16,14" Spacing="3">
-                    <TextBlock Text="{Binding FooterText}" FontSize="9.5" Foreground="#48586C"
+                    <TextBlock Text="{Binding FooterText}" FontSize="9.5" Foreground="{DynamicResource TextDim}"
                                TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding FooterText}" />
-                    <TextBlock Text=".NET 10 · Avalonia · strict star topology" FontSize="9.5" Foreground="#48586C" />
+                    <TextBlock Text=".NET 10 · Avalonia · strict star topology" FontSize="9.5" Foreground="{DynamicResource TextDim}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -143,35 +143,41 @@
         <!-- ============================================================ MAIN PANE -->
         <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*,Auto">
 
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="22,18,22,10">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="22,18,22,10">
                 <StackPanel Spacing="3">
                     <TextBlock Text="Execution feed" Classes="title" />
                     <TextBlock Text="Strict star topology · sequential delegation · workspace-confined tools"
                                Classes="subtitle" />
                 </StackPanel>
                 <Border Grid.Column="1" Classes="panel" Padding="10,6" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding FlowText}" FontSize="11" Foreground="#8EA3BD" />
+                    <TextBlock Text="{Binding FlowText}" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
                 </Border>
+
+                <!-- settings gear, top right -->
+                <Button Grid.Column="2" Classes="gear" Content="⚙"
+                        Margin="10,0,0,0" VerticalAlignment="Center"
+                        Command="{Binding OpenSettingsCommand}"
+                        ToolTip.Tip="Settings — theme, accent colour, text size" />
             </Grid>
 
             <Border Grid.Row="1" Margin="22,0,22,8" CornerRadius="10" Padding="10,7"
                     Background="{Binding BannerBackground}" BorderBrush="{Binding BannerBorderBrush}"
                     BorderThickness="1" IsVisible="{Binding HasBanner}">
-                <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" FontSize="11.5" Foreground="#CFE0EF" />
+                <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource TextBody}" />
             </Border>
 
-            <Border Grid.Row="2" Margin="22,0,22,0" Background="#080C13"
-                    BorderBrush="#151E2C" BorderThickness="1" CornerRadius="14">
+            <Border Grid.Row="2" Margin="22,0,22,0" Background="{DynamicResource FeedBg}"
+                    BorderBrush="{DynamicResource FeedBorder}" BorderThickness="1" CornerRadius="14">
                 <Grid>
                     <ScrollViewer x:Name="FeedScroll" Padding="18" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Spacing="10">
 
                             <!-- the user's ask -->
-                            <Border IsVisible="{Binding HasPrompt}" Background="#14243A" BorderBrush="#20354F"
+                            <Border IsVisible="{Binding HasPrompt}" Background="{DynamicResource UserBubbleBg}" BorderBrush="{DynamicResource UserBubbleBorder}"
                                     BorderThickness="1" CornerRadius="12" Padding="12"
                                     HorizontalAlignment="Right" MaxWidth="720">
                                 <SelectableTextBlock Text="{Binding CurrentPrompt}" TextWrapping="Wrap"
-                                                     FontSize="12.5" Foreground="#E3EDF9" />
+                                                     FontSize="12.5" Foreground="{DynamicResource TextPrimary}" />
                             </Border>
 
                             <ItemsControl ItemsSource="{Binding Feed}">
@@ -183,8 +189,8 @@
                                             <Border Classes="card" IsVisible="{Binding ShowPlan}">
                                                 <StackPanel Spacing="8">
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <Ellipse Width="7" Height="7" Fill="#5EE0B0" VerticalAlignment="Center" />
-                                                        <TextBlock Text="CEO plan" FontWeight="SemiBold" FontSize="12" Foreground="#EAF2FB" />
+                                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="CEO plan" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimary}" />
                                                         <TextBlock Text="{Binding AgentName}" Classes="tiny" VerticalAlignment="Center" />
                                                     </StackPanel>
 
@@ -192,16 +198,16 @@
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
                                                                 <Grid ColumnDefinitions="26,*" Margin="0,3">
-                                                                    <Border Width="20" Height="20" CornerRadius="10" Background="#17222F"
+                                                                    <Border Width="20" Height="20" CornerRadius="10" Background="{DynamicResource StepIndexBg}"
                                                                             VerticalAlignment="Top">
-                                                                        <TextBlock Text="{Binding Index}" FontSize="10" Foreground="#8EA3BD"
+                                                                        <TextBlock Text="{Binding Index}" FontSize="10" Foreground="{DynamicResource TextSecondary}"
                                                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                     </Border>
                                                                     <StackPanel Grid.Column="1" Spacing="2">
                                                                         <TextBlock Text="{Binding Role}" FontSize="11"
-                                                                                   FontWeight="SemiBold" Foreground="#9AA8FF" />
+                                                                                   FontWeight="SemiBold" Foreground="{DynamicResource ToolAccent}" />
                                                                         <SelectableTextBlock Text="{Binding Instructions}" FontSize="12"
-                                                                                             TextWrapping="Wrap" Foreground="#C9D6E6" />
+                                                                                             TextWrapping="Wrap" Foreground="{DynamicResource TextBody}" />
                                                                     </StackPanel>
                                                                 </Grid>
                                                             </DataTemplate>
@@ -209,7 +215,7 @@
                                                     </ItemsControl>
 
                                                     <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding ShowPlanRaw}"
-                                                                         FontSize="11.5" TextWrapping="Wrap" Foreground="#8EA3BD" />
+                                                                         FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondary}" />
                                                 </StackPanel>
                                             </Border>
 
@@ -219,27 +225,27 @@
                                                     <Ellipse Width="7" Height="7" Fill="{Binding PendingDotBrush}"
                                                              VerticalAlignment="Top" Margin="0,6,0,0" />
                                                     <StackPanel Grid.Column="1" Spacing="2">
-                                                        <TextBlock Text="{Binding DelegationTitle}" FontSize="11" Foreground="#8EA3BD" />
+                                                        <TextBlock Text="{Binding DelegationTitle}" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
                                                         <SelectableTextBlock Text="{Binding Text}" FontSize="12"
-                                                                             TextWrapping="Wrap" Foreground="#C9D6E6" />
+                                                                             TextWrapping="Wrap" Foreground="{DynamicResource TextBody}" />
                                                     </StackPanel>
                                                 </Grid>
                                             </Border>
 
                                             <!-- tool call / tool result -->
-                                            <Border IsVisible="{Binding ShowTool}" Background="#0D1522" BorderBrush="#22304A"
+                                            <Border IsVisible="{Binding ShowTool}" Background="{DynamicResource ToolBg}" BorderBrush="{DynamicResource ToolBorder}"
                                                     BorderThickness="1" CornerRadius="10" Padding="10">
                                                 <StackPanel Spacing="6">
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <TextBlock Text="⚙" FontSize="11" Foreground="#9AA8FF" VerticalAlignment="Center" />
-                                                        <TextBlock Text="{Binding ToolName}" Classes="mono" Foreground="#9AA8FF"
+                                                        <TextBlock Text="⚙" FontSize="11" Foreground="{DynamicResource ToolAccent}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding ToolName}" Classes="mono" Foreground="{DynamicResource ToolAccent}"
                                                                    VerticalAlignment="Center" />
-                                                        <TextBlock Text="{Binding ToolStateText}" FontSize="10" Foreground="#647A94"
+                                                        <TextBlock Text="{Binding ToolStateText}" FontSize="10" Foreground="{DynamicResource TextMuted}"
                                                                    VerticalAlignment="Center" />
                                                     </StackPanel>
                                                     <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding ShowToolArgs}"
                                                                          FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"
-                                                                         Foreground="#8EA3BD" />
+                                                                         Foreground="{DynamicResource TextSecondary}" />
                                                     <SelectableTextBlock Text="{Binding Text}" IsVisible="{Binding ShowToolOutput}"
                                                                          FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"
                                                                          Foreground="{Binding ToolOutputBrush}" />
@@ -250,34 +256,34 @@
                                             <Border Classes="card" IsVisible="{Binding ShowResult}">
                                                 <StackPanel Spacing="6">
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <TextBlock Text="✓" Foreground="#5EE0B0" FontSize="11" VerticalAlignment="Center" />
+                                                        <TextBlock Text="✓" Foreground="{DynamicResource Accent}" FontSize="11" VerticalAlignment="Center" />
                                                         <TextBlock Text="{Binding AgentName}" FontWeight="SemiBold" FontSize="12"
-                                                                   Foreground="#EAF2FB" />
-                                                        <TextBlock Text="worker result" FontSize="10" Foreground="#647A94"
+                                                                   Foreground="{DynamicResource TextPrimary}" />
+                                                        <TextBlock Text="worker result" FontSize="10" Foreground="{DynamicResource TextMuted}"
                                                                    VerticalAlignment="Center" />
                                                     </StackPanel>
                                                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                                                         FontSize="12.5" Foreground="#CBD8E8" />
+                                                                         FontSize="12.5" Foreground="{DynamicResource TextBody}" />
                                                 </StackPanel>
                                             </Border>
 
                                             <!-- error -->
-                                            <Border IsVisible="{Binding ShowError}" Background="#1E1316" BorderBrush="#3A1E24"
+                                            <Border IsVisible="{Binding ShowError}" Background="{DynamicResource DangerBg}" BorderBrush="{DynamicResource DangerBorder}"
                                                     BorderThickness="1" CornerRadius="10" Padding="10">
                                                 <Grid ColumnDefinitions="18,*">
-                                                    <TextBlock Text="⚠" Foreground="#FF9A9A" FontSize="11" VerticalAlignment="Top" />
+                                                    <TextBlock Text="⚠" Foreground="{DynamicResource Danger}" FontSize="11" VerticalAlignment="Top" />
                                                     <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
-                                                                         FontSize="11.5" Foreground="#FFB3B3" />
+                                                                         FontSize="11.5" Foreground="{DynamicResource Danger}" />
                                                 </Grid>
                                             </Border>
 
                                             <!-- anything else -->
                                             <Border IsVisible="{Binding ShowNote}" Padding="2,4">
                                                 <Grid ColumnDefinitions="18,*">
-                                                    <Ellipse Width="6" Height="6" Fill="#55657A" VerticalAlignment="Top"
+                                                    <Ellipse Width="6" Height="6" Fill="{DynamicResource TextDim}" VerticalAlignment="Top"
                                                              Margin="0,6,0,0" />
                                                     <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap"
-                                                                         FontSize="11.5" Foreground="#8EA3BD" />
+                                                                         FontSize="11.5" Foreground="{DynamicResource TextSecondary}" />
                                                 </Grid>
                                             </Border>
                                         </StackPanel>
@@ -286,23 +292,23 @@
                             </ItemsControl>
 
                             <!-- final answer -->
-                            <Border IsVisible="{Binding HasFinalOutput}" Background="#0E1B1A" BorderBrush="#1D4A44"
+                            <Border IsVisible="{Binding HasFinalOutput}" Background="{DynamicResource FinalBg}" BorderBrush="{DynamicResource FinalBorder}"
                                     BorderThickness="1" CornerRadius="12" Padding="14">
                                 <StackPanel Spacing="8">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Ellipse Width="7" Height="7" Fill="#5EE0B0" VerticalAlignment="Center" />
-                                        <TextBlock Text="Final answer" FontWeight="SemiBold" FontSize="12" Foreground="#EAF2FB" />
+                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource Accent}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Final answer" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimary}" />
                                         <TextBlock Text="{Binding CeoName}" Classes="tiny" VerticalAlignment="Center" />
                                     </StackPanel>
                                     <SelectableTextBlock Text="{Binding FinalOutput}" TextWrapping="Wrap"
-                                                         FontSize="12.5" Foreground="#D5E5E2" />
+                                                         FontSize="12.5" Foreground="{DynamicResource TextBody}" />
                                 </StackPanel>
                             </Border>
 
                             <!-- running indicator -->
                             <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsRunning}" Margin="2,2,0,8">
-                                <Ellipse Width="7" Height="7" Fill="#FFC46B" VerticalAlignment="Center" />
-                                <TextBlock Text="orchestrating…" FontSize="11" Foreground="#8EA3BD" />
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource Warn}" VerticalAlignment="Center" />
+                                <TextBlock Text="orchestrating…" FontSize="11" Foreground="{DynamicResource TextSecondary}" />
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
@@ -310,16 +316,16 @@
                     <!-- empty state -->
                     <StackPanel IsVisible="{Binding ShowEmptyState}" VerticalAlignment="Center"
                                 HorizontalAlignment="Center" MaxWidth="520" Spacing="10">
-                        <Border Width="52" Height="52" CornerRadius="16" Background="#123A33"
+                        <Border Width="52" Height="52" CornerRadius="16" Background="{DynamicResource BrandTileBg}"
                                 HorizontalAlignment="Center">
-                            <TextBlock Text="◎" FontSize="24" Foreground="#5EE0B0"
+                            <TextBlock Text="◎" FontSize="24" Foreground="{DynamicResource Accent}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
-                        <TextBlock Text="Brief your CEO" FontSize="18" FontWeight="SemiBold" Foreground="#EAF2FB"
+                        <TextBlock Text="Brief your CEO" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"
                                    HorizontalAlignment="Center" />
                         <TextBlock TextWrapping="Wrap" TextAlignment="Center" Classes="subtitle"
                                    Text="You talk to the CEO only. It plans the work, delegates to one worker at a time, then writes the final answer here. Workers tagged 'tools' can edit files in your workspace and run builds." />
-                        <Border Background="#0D1522" BorderBrush="#1D2838" BorderThickness="1"
+                        <Border Background="{DynamicResource ToolBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1"
                                 CornerRadius="10" Padding="12,8" Margin="0,6,0,0">
                             <TextBlock Classes="tiny" TextWrapping="Wrap" TextAlignment="Center"
                                        Text="Try: “write a hello-world script into the workspace and run it” or “inspect the workspace and summarise what this project does”." />
@@ -329,7 +335,7 @@
             </Border>
 
             <!-- composer -->
-            <Border Grid.Row="3" Margin="22,14,22,18" Background="#0D1420" BorderBrush="#1B2635"
+            <Border Grid.Row="3" Margin="22,14,22,18" Background="{DynamicResource ComposerBg}" BorderBrush="{DynamicResource ComposerBorder}"
                     BorderThickness="1" CornerRadius="14" Padding="12">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
@@ -359,15 +365,15 @@
         </Grid>
 
         <!-- ============================================================ AGENT EDITOR OVERLAY -->
-        <Border Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsEditorOpen}" Background="#C4000000">
-            <Border Background="#0E1622" BorderBrush="#23303F" BorderThickness="1" CornerRadius="16"
+        <Border Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsEditorOpen}" Background="{DynamicResource OverlayBg}">
+            <Border Background="{DynamicResource EditorBg}" BorderBrush="{DynamicResource EditorBorder}" BorderThickness="1" CornerRadius="16"
                     Padding="20" Width="640" MaxHeight="800" VerticalAlignment="Center" HorizontalAlignment="Center">
                 <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="12" DataContext="{Binding Editor}">
 
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="2">
-                                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="#EAF2FB" />
+                                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" />
                                 <TextBlock Text="{Binding Subtitle}" Classes="tiny" />
                             </StackPanel>
                             <Button Grid.Column="1" Classes="icon" Content="✕" Command="{Binding CancelCommand}"
@@ -431,7 +437,7 @@
                                   IsChecked="{Binding CanUseTools, Mode=TwoWay}" IsEnabled="{Binding IsNotCeo}" />
                         <TextBlock Text="{Binding ToolsHint}" Classes="tiny" TextWrapping="Wrap" />
 
-                        <TextBlock Text="{Binding ValidationError}" Foreground="#FF9A9A" FontSize="11.5"
+                        <TextBlock Text="{Binding ValidationError}" Foreground="{DynamicResource Danger}" FontSize="11.5"
                                    TextWrapping="Wrap" IsVisible="{Binding HasValidationError}" />
 
                         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
@@ -439,6 +445,130 @@
                             <Button Classes="primary" Content="{Binding SubmitText}"
                                     Command="{Binding SaveCommand}" IsEnabled="{Binding IsNotBusy}" />
                         </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Border>
+        <!-- ============================================================ SETTINGS OVERLAY -->
+        <Border Grid.Column="0" Grid.ColumnSpan="2" IsVisible="{Binding IsSettingsOpen}"
+                Background="{DynamicResource OverlayBg}">
+            <Border Background="{DynamicResource EditorBg}" BorderBrush="{DynamicResource EditorBorder}"
+                    BorderThickness="1" CornerRadius="16" Padding="22" Width="560"
+                    MaxHeight="820" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="18" DataContext="{Binding Settings}">
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Settings" FontSize="17" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimary}" />
+                                <TextBlock Text="Painted instantly · remembered in SQLite"
+                                           Classes="tiny" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="icon" Content="✕" Command="{Binding CloseCommand}"
+                                    VerticalAlignment="Top" ToolTip.Tip="Close settings" />
+                        </Grid>
+
+                        <!-- ──────────────────────────────────────── theme -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="THEME" Classes="label" />
+                            <ItemsControl x:Name="SettingsThemeList" ItemsSource="{Binding Themes}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Classes="themecard" Classes.selected="{Binding IsSelected}"
+                                                Width="162"
+                                                Command="{Binding #SettingsThemeList.DataContext.SelectThemeCommand}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Spacing="3">
+                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold"
+                                                           FontSize="{DynamicResource FontBase}"
+                                                           Foreground="{DynamicResource TextPrimary}" />
+                                                <TextBlock Text="{Binding Description}" Classes="tiny"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- ──────────────────────────────────────── accent -->
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="ACCENT COLOUR" Classes="label" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="Used for buttons, badges and focus rings"
+                                           Classes="tiny" />
+                            </Grid>
+                            <ItemsControl x:Name="SettingsAccentList" ItemsSource="{Binding Accents}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="12" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Spacing="4">
+                                            <Button Classes="swatch" Classes.selected="{Binding IsSelected}"
+                                                    Background="{Binding Swatch}"
+                                                    Content="{Binding Marker}"
+                                                    ToolTip.Tip="{Binding Label}"
+                                                    Command="{Binding #SettingsAccentList.DataContext.SelectAccentCommand}"
+                                                    CommandParameter="{Binding}" />
+                                            <TextBlock Text="{Binding Label}" Classes="tiny"
+                                                       HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- ──────────────────────────────────────── font size -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="TEXT SIZE" Classes="label" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding FontSizeLabel}"
+                                           Classes="tiny" VerticalAlignment="Center" />
+                            </Grid>
+                            <Slider Minimum="0" Maximum="2" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    TickPlacement="BottomRight" Value="{Binding FontSizeIndex, Mode=TwoWay}" />
+                            <Grid ColumnDefinitions="*,*,*">
+                                <TextBlock Text="Small" Classes="tiny" />
+                                <TextBlock Grid.Column="1" Text="Medium" Classes="tiny" TextAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="Large" Classes="tiny" TextAlignment="Right" />
+                            </Grid>
+
+                            <Border Classes="card" Margin="0,4,0,0">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Preview" Classes="label" />
+                                    <TextBlock Text="The CEO is planning your request…"
+                                               FontSize="{Binding FontPreviewSize}"
+                                               Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" />
+                                    <TextBlock Text="Every size in the UI follows this slider."
+                                               FontSize="{Binding FontPreviewSize}"
+                                               Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <Border Background="{DynamicResource AccentSoft}" BorderBrush="{DynamicResource AccentBorder}"
+                                BorderThickness="1" CornerRadius="10" Padding="12,8">
+                            <TextBlock Text="{Binding Summary}" FontSize="{DynamicResource FontSubtitle}"
+                                       Foreground="{DynamicResource AccentSoftText}" TextWrapping="Wrap" />
+                        </Border>
+
+                        <TextBlock Text="{Binding Status}" Classes="tiny" IsVisible="{Binding HasStatus}" />
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Button Classes="ghost" Content="Reset to defaults" Command="{Binding ResetCommand}"
+                                    HorizontalAlignment="Left" />
+                            <Button Grid.Column="1" Classes="primary" Content="Done" Command="{Binding CloseCommand}"
+                                    MinWidth="96" />
+                        </Grid>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

@@ -1,10 +1,11 @@
 name: CI
 
-# v1.0.4 is a cross-platform Avalonia desktop app, so the pipeline does:
-#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema),
+# v1.0.5 is a cross-platform Avalonia desktop app, so the pipeline does:
+#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema, theme tokens),
 #   2. the desktop head built and published as a single file on Linux (real executable, booted
-#      headlessly through --self-test),
-#   3. the same on Windows, producing the standalone .exe users download.
+#      headlessly through --self-test, plus the --smoke-ui window + settings panel on Xvfb),
+#   3. the same on Windows, producing the standalone .exe users download, and compiling
+#      installer.iss with Inno Setup so the installer script is validated on every push.
 on:
   push:
     branches:
@@ -290,6 +291,43 @@ jobs:
               Write-Host "::error title=selftest-report::SELF-TEST OK was not reported"
               exit 1
             }
+          }
+
+      - name: Compile the Inno Setup installer (validation)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            Write-Host "::error title=no-inno-setup::Chocolatey did not install Inno Setup"
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+          Copy-Item "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe" "dist/AiCeo-win-x64.exe" -Force
+
+          $log = Join-Path $env:RUNNER_TEMP "iscc.log"
+          & $iscc "installer.iss" 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
+              ForEach-Object { $_.Line.Trim() }) -join " | "
+            Write-Host "::error title=iscc-failed::$($errors.Substring(0, [Math]::Min(1800, $errors.Length)))"
+            exit 1
+          }
+
+          $setup = Get-ChildItem "dist/installer/*-Setup.exe" | Select-Object -First 1
+          if (-not $setup) {
+            Write-Host "::error title=missing-installer::installer.iss produced no Setup.exe"
+            exit 1
+          }
+          $sizeMb = [Math]::Round($setup.Length / 1MB, 1)
+          Write-Host "installer compiled: $($setup.Name) ($sizeMb MB)"
+          if ($setup.Length -lt 5MB) {
+            Write-Host "::error title=small-installer::the installer does not contain the application"
+            exit 1
           }
 
       - name: Upload the standalone exe
