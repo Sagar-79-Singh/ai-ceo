@@ -139,7 +139,7 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.6</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.8</span>
       </span>
     </div>
   </div>
@@ -170,8 +170,9 @@
       <i class="fa-solid fa-chart-line text-[10px] text-mint-400"></i>
       <span class="hidden sm:inline">Telemetry</span>
     </button>
-    <button id="nx-settings-open" class="hover:text-slate-200 transition p-1.5 rounded bg-obsidian-850 hover:bg-obsidian-800 border border-obsidian-750" title="Settings">
-      <i class="fa-solid fa-sliders text-[11px]"></i>
+    <button id="nx-settings-open" class="hover:text-slate-200 transition px-2 py-1.5 rounded bg-obsidian-850 hover:bg-obsidian-800 border border-obsidian-750 flex items-center" title="Settings">
+      <i class="fa-solid fa-gear text-[11px]"></i>
+      <span class="hidden sm:inline text-[11px] font-mono ml-1">Settings</span>
     </button>
     <div class="h-3 w-px bg-obsidian-700"></div>
     <span id="nx-clock" class="text-[11px] font-mono text-slate-300 bg-obsidian-850 px-2 py-0.5 rounded border border-obsidian-800">--:--:--</span>
@@ -467,8 +468,9 @@
 
             <div class="flex items-center space-x-3">
               <span class="text-[10px] font-mono text-slate-500 hidden sm:inline select-none">
-                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Ctrl</kbd> +
-                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Enter</kbd>
+                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Shift</kbd> +
+                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Enter</kbd> for new line,
+                <kbd class="px-1.5 py-0.5 bg-obsidian-850 border border-obsidian-700 rounded text-slate-400 font-mono">Enter</kbd> to dispatch
               </span>
               <button id="nx-dispatch" class="bg-gradient-to-r from-mint-500 via-emerald-400 to-teal-400 hover:from-mint-400 hover:to-teal-300 text-obsidian-950 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-all active:scale-95 shadow-glow-emerald tracking-wide">
                 <span id="nx-dispatch-label">Dispatch Swarm</span>
@@ -695,9 +697,9 @@
   function renderProvider(s) {
     var provider = s.provider || {};
     text('nx-provider-text', provider.text || 'provider');
-    text('nx-provider-state', provider.online ? 'ONLINE' : 'OFFLINE');
+    text('nx-provider-state', provider.checking ? 'CHECKING…' : (provider.online ? 'ONLINE' : 'OFFLINE'));
     var dot = el('nx-provider-dot'), ping = el('nx-provider-dot-ping');
-    var colour = provider.online ? '#34d399' : '#fb7185';
+    var colour = provider.checking ? '#fbbf24' : (provider.online ? '#34d399' : '#fb7185');
     if (dot) { dot.style.background = colour; dot.style.boxShadow = '0 0 8px ' + colour; }
     if (ping) ping.style.background = colour;
     text('nx-swarm-status', s.running ? 'orchestrating' : 'idle');
@@ -890,7 +892,7 @@
     var icon = el('nx-dispatch-icon');
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
     if (dispatch) dispatch.classList.toggle('opacity-60', false);
-    text('nx-version', s.version ? 'v' + s.version : 'v1.0.6');
+    text('nx-version', s.version ? 'v' + s.version : 'v1.0.8');
     text('nx-footer', s.footer || 'sqlite: aiceo.db');
     var banner = el('nx-banner');
     if (banner) {
@@ -998,7 +1000,7 @@
     el('nx-agent-close').addEventListener('click', closeAgentModal);
 
     el('nx-prompt').addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); dispatchPrompt(); }
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); dispatchPrompt(); }
     });
 
     Array.prototype.forEach.call(document.querySelectorAll('.nx-quick'), function (card) {

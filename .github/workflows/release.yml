@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.7 ships a portable build *and* a native installer for every platform:
+# v1.0.8 ships a portable build *and* a native installer for every platform:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
 #                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
 #   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
@@ -640,14 +640,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.7
-          tag_name: v1.0.7
+          name: AI CEO Orchestrator v1.0.8
+          tag_name: v1.0.8
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.7
+            ## AI CEO Orchestrator v1.0.8
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
             opens in a native window — no browser, no local web server. Workers can read, write and
@@ -703,10 +703,27 @@ jobs:
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.7 — installers everywhere
+            ### What's new in v1.0.8 — dispatch with Enter
 
-            The release pipeline was rebuilt as a matrix that produces a portable build *and* a
-            native installer for all seven targets:
+            Four ergonomics fixes in the Nexus console:
+
+            - **Settings is discoverable.** The sliders glyph became a **gear** icon with a visible
+              `Settings` label, so the theme/accent/text-size panel is no longer hidden behind an
+              unlabelled button in the title bar.
+            - **Enter dispatches.** `Enter` now sends the prompt to the CEO and `Shift` + `Enter`
+              inserts a newline (IME composition is respected, so confirming a Japanese/Chinese
+              candidate never fires a run). The dock spells the shortcut out instead of the old
+              `Ctrl` + `Enter` hint.
+            - **Provider CHECKING state.** While the health probe is in flight — and until the first
+              answer arrives — the telemetry dot turns **amber** and the badge reads `CHECKING…`,
+              instead of flashing a false `OFFLINE`. Green means the last probe answered, red means
+              it failed.
+            - **Version badge** in the title bar reads `v1.0.8`.
+
+            ### Previous release — v1.0.7, installers everywhere
+
+            The release pipeline is a matrix that produces a portable build *and* a native installer
+            for all seven targets:
 
             - **Three Inno Setup installers** (`Setup-win-x64/x86/arm64.exe`), each compiled against
               its own executable with the matching `ArchitecturesAllowed` guard.
