@@ -32,7 +32,8 @@ public sealed record NexusProviderState(
     string Name,
     string Text,
     bool Online,
-    string Tooltip);
+    string Tooltip,
+    bool Checking = false);
 
 public sealed record NexusBannerState(string? Text, bool IsError);
 
