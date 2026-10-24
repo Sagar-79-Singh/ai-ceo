@@ -4,7 +4,7 @@ A **cross-platform desktop** AI orchestrator written in **C# / .NET 10**, with a
 that hosts the **Nexus** interface: a live HTML/WebGL console rendered by the platform's own web
 engine inside the app window — no browser tab, no local web server, no Node.js. It runs a strict star
 topology of agents that can read, write and build inside a folder **you** choose. Windows users can
-grab the optional `Setup.exe`, and the whole console can be re-themed (dark / light / system, five
+grab the native installer, and the whole console can be re-themed (dark / light / system, five
 accent colours, three text sizes) from the settings modal.
 
 ```
@@ -14,21 +14,28 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.6 — Nexus
+## What's new in v1.0.7 — installers on every platform
+
+| Platform | Portable | Installer |
+| --- | --- | --- |
+| Windows x64 | `AiCeo-win-x64.exe` | `Setup-win-x64.exe` (Inno Setup) |
+| Windows x86 | `AiCeo-win-x86.exe` | `Setup-win-x86.exe` (Inno Setup) |
+| Windows ARM64 | `AiCeo-win-arm64.exe` | `Setup-win-arm64.exe` (Inno Setup) |
+| Linux x64 | `AiCeo-linux-x64.tar.gz` | `AiCeo-linux-x64.deb` (dpkg-deb) |
+| Linux ARM64 | `AiCeo-linux-arm64.tar.gz` | `AiCeo-linux-arm64.deb` (dpkg-deb) |
+| macOS Intel | `AiCeo-osx-x64.tar.gz` | `AiCeo-osx-x64.dmg` (hdiutil) |
+| macOS Apple Silicon | `AiCeo-osx-arm64.tar.gz` | `AiCeo-osx-arm64.dmg` (hdiutil) |
 
 | Area | Change |
 | --- | --- |
-| **Nexus interface** | The stock Avalonia layout is replaced by the Nexus console: obsidian shell, swarm matrix on the left, execution feed in the middle with the gyroscope emblem, the breadcrumb `You → CEO → workers → CEO → You` and the neural-wave telemetry strip, and the glowing console dock across the bottom. |
-| **Embedded HTML surface** | The page is rendered by the platform web engine through `Avalonia.Controls.WebView` 11.4.1 — Edge WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux — inside the same native window. |
-| **Offline by design** | Tailwind (precompiled, ~120 KB) and the Font Awesome subset are bundled inside the executable and extracted next to the database on first launch. Nothing is fetched from a CDN, so the interface renders identically with the network unplugged; the Google Fonts link is a progressive enhancement over the system stack. |
-| **Holographic shader** | The animated WebGL core (ring filaments, noise aura, grid, vignette) runs on a canvas behind the feed at 60 fps and follows the mouse. |
-| **Wiring** | *Select Workspace* opens the native folder picker and updates the sidebar chip; *Dispatch Swarm* sends the directive to the CEO through the unchanged orchestrator; the swarm matrix can deploy, edit, delete and promote agents; the feed streams the real plan, delegations, tool calls and final answer. |
-| **Settings modal** | Theme (Dark / Light / System), five accent colours and three text sizes, applied instantly in the page and in the Avalonia shell, persisted in the `UserSettings` table. |
-| **Graceful fallback** | On a machine without a usable web engine the app opens the previous Avalonia interface and offers a one-click switch, so orchestration, agents and the sandbox never depend on the renderer. |
-| **Installer** | `AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe` is rebuilt from `installer.iss` with the same dark modern wizard, refreshed for this version. |
-| **Version** | `1.0.6` in both `.csproj` files, the assembly/file version and the installer metadata. |
+| **Release matrix** | `.github/workflows/release.yml` publishes all seven targets and then builds a native installer for each one: three Inno Setup installers, two Debian packages and two disk images. The release job refuses to publish unless all 14 deliverables exist and carry the right magic bytes. |
+| **Three Windows installers** | `installer.iss` now takes `/DAppArch=x64\|x86\|arm64`, picks the matching `ArchitecturesAllowed` / `ArchitecturesInstallIn64BitMode` guards and writes `Setup-win-<arch>.exe`. The dark modern wizard, per-user install and shortcuts are unchanged. |
+| **Debian packages** | The published Linux binary is wrapped into `/usr/lib/aiceo` with an `aiceo` launcher in `/usr/bin`, a desktop entry, the app icon, docs and `Depends` / `Recommends` metadata (WebKitGTK is recommended, not required — the app falls back to its native shell). |
+| **Disk images** | A real `AI CEO Orchestrator.app` bundle (icon generated from the shipped PNG, versioned `Info.plist`, ad-hoc signature) inside a compressed `.dmg` with the usual **Applications** drop target. |
+| **Version** | `1.0.7` in both `.csproj` files, the assembly/file version, the installer metadata and the release notes. |
 
 ### Older releases
+- **v1.0.6** — Nexus interface: embedded HTML/Tailwind/WebGL surface, settings modal, graceful fallback.
 - **v1.0.5** — custom dark Inno Setup installer, settings page (theme / accent / text size) persisted in `UserSettings`.
 - **v1.0.4** — Avalonia UI replaces MAUI; Linux/macOS builds; single-file executables; `crash.log`.
 - **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
@@ -40,14 +47,17 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 Download one file from the **Releases** page and run it.
 
-| Platform | File | How to run |
+| Platform | Installer | Portable |
 | --- | --- | --- |
-| **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe` | Double-click the installer. Per-user, no admin prompt, Start-menu + desktop shortcuts, clean uninstall. |
-| **Windows x64 (portable)** | `AiCeo-win-x64.exe` | Double-click. No installer, no runtime to install. |
-| **Windows x86** | `AiCeo-win-x86.exe` | For 32-bit Windows. |
-| **Windows ARM64** | `AiCeo-win-arm64.exe` | Surface / Snapdragon PCs. |
-| **Linux x64 / ARM64** | `AiCeo-linux-*.tar.gz` | `tar -xzf AiCeo-linux-x64.tar.gz && ./AiCeo` |
-| **macOS Intel / Apple Silicon** | `AiCeo-osx-*.tar.gz` | `tar -xzf AiCeo-osx-arm64.tar.gz && ./AiCeo` |
+| **Windows x64 (recommended)** | `Setup-win-x64.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64.exe` |
+| Windows x86 | `Setup-win-x86.exe` | `AiCeo-win-x86.exe` |
+| Windows ARM64 | `Setup-win-arm64.exe` | `AiCeo-win-arm64.exe` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` | `AiCeo-linux-x64.tar.gz` |
+| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64.deb` | `AiCeo-linux-arm64.tar.gz` |
+| macOS Intel | `AiCeo-osx-x64.dmg` — open, drag the app to Applications | `AiCeo-osx-x64.tar.gz` |
+| macOS Apple Silicon | `AiCeo-osx-arm64.dmg` | `AiCeo-osx-arm64.tar.gz` |
+
+Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
 Then, in the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
@@ -177,7 +187,7 @@ src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
   ViewModels/              MainViewModel, SettingsViewModel, AgentEditorViewModel, cards, feed items
   AvaloniaWorkspacePicker  native folder picker through IStorageProvider
   Assets/                  nexus.html + nexus.css (the Nexus console), aiceo.ico, aiceo.png, theme.css
-installer.iss              Inno Setup script (root) → AI-CEO-Orchestrator-<version>-win-x64-Setup.exe
+installer.iss              Inno Setup script (root) → Setup-win-<arch>.exe (x64 / x86 / arm64)
 installer/                 wizard-large.bmp / wizard-small.bmp artwork for the installer
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
 ```
@@ -215,9 +225,18 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
   -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 
-# the Windows installer (needs Inno Setup 6 on Windows: choco install innosetup)
-mkdir -p dist && cp src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe dist/AiCeo-win-x64.exe
-ISCC.exe installer.iss        # → dist\installer\AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe
+# the Windows installers (need Inno Setup 6.3+ on Windows: choco install innosetup)
+mkdir -p dist
+for arch in x64 x86 arm64; do
+  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
+  ISCC.exe "/DAppVersion=1.0.7" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
+done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
+
+# the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
+dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64.deb
+
+# the macOS disk image (needs macOS: hdiutil + iconutil)
+hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64.dmg
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
@@ -253,12 +272,17 @@ never reaches a release.
 - `ci.yml` — core library + unit tests on Linux; a real Linux single-file publish that is **run**
   (`--self-test`) and **smoke-tested on a virtual display** (`--smoke-ui`, which also opens the
   settings panel and switches theme/accent/size); a Windows single-file publish whose `.exe` is also
-  run and whose `installer.iss` is compiled with Inno Setup on every push; and a grep that fails the
+  run and whose `installer.iss` is compiled for x64, x86 and arm64 with Inno Setup on every push
+  (the cross-architecture builds use stub executables, which still exercises the preprocessor
+  branches and Inno's ARM64 support); and a grep that fails the
   build if `Task.WhenAll`, `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
 - `release.yml` — on a `v*` tag: publishes all seven RIDs as self-contained single files (Windows →
-  `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), builds `Setup.exe` with Inno Setup
-  (installed through Chocolatey) on a Windows runner, smoke-tests every binary it can execute
-  natively, then creates the **v1.0.6** release with all assets plus `SHA256SUMS.txt`.
+  `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
+  natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
+  through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
+  **v1.0.7** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  presence and file magic of every asset, so a missing or truncated installer fails the run instead
+  of shipping.
 
 ---
 
