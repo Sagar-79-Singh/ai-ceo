@@ -26,7 +26,7 @@ public sealed class UserSettingsService
     {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
         var settings = await GetOrCreateAsync(db, cancellationToken);
-        return Sanitize(settings);
+        return Sanitize(settings).ToSnapshot();
     }
 
     /// <summary>
