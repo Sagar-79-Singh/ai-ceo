@@ -1,10 +1,10 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — custom Inno Setup script (v1.0.6)
+;  AI CEO Orchestrator — custom Inno Setup script (v1.0.7)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=1.0.6 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
+;      ISCC.exe /DAppVersion=1.0.7 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
 ;
 ;  The release workflow downloads Inno Setup through Chocolatey, drops the published
 ;  AiCeo-win-x64.exe into dist\ and compiles this file; the resulting Setup.exe is attached to
@@ -24,12 +24,33 @@
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.0.6"
+  #define AppVersion "1.0.7"
+#endif
+
+; The architecture this installer targets: x64 (default), x86 or arm64. The release workflow
+; compiles all three, each against its own published single-file executable.
+#ifndef AppArch
+  #define AppArch "x64"
+#endif
+
+; Inno Setup needs different platform guards per architecture. A 32-bit build installs on any
+; x86-compatible machine (including x64), while the x64 and arm64 builds stay in native mode.
+#if AppArch == "x86"
+  #define AppArchAllowed  "x86compatible"
+  #define AppArchLabel    "32-bit (x86)"
+#elif AppArch == "arm64"
+  #define AppArchAllowed  "arm64"
+  #define AppArch64Mode   "arm64"
+  #define AppArchLabel    "ARM64"
+#else
+  #define AppArchAllowed  "x64compatible"
+  #define AppArch64Mode   "x64compatible"
+  #define AppArchLabel    "64-bit (x64)"
 #endif
 
 ; The published single-file executable handed to the compiler.
 #ifndef AppSourceExe
-  #define AppSourceExe "dist\AiCeo-win-x64.exe"
+  #define AppSourceExe "dist\AiCeo-win-" + AppArch + ".exe"
 #endif
 
 #define AppName        "AI CEO Orchestrator"
@@ -72,7 +93,7 @@ DisableProgramGroupPage=no
 
 ; Output.
 OutputDir=dist\installer
-OutputBaseFilename=AI-CEO-Orchestrator-{#AppVersion}-win-x64-Setup
+OutputBaseFilename=Setup-win-{#AppArch}
 SetupIconFile=src\AiCeo.Desktop\Assets\aiceo.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName}
@@ -87,8 +108,10 @@ AllowNoIcons=yes
 
 ; .NET 10 (bundled in the executable) requires Windows 10 1809 / Server 2019 or newer.
 MinVersion=10.0.17763
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed={#AppArchAllowed}
+#ifdef AppArch64Mode
+ArchitecturesInstallIn64BitMode={#AppArch64Mode}
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -284,7 +307,7 @@ begin
   WelcomeNote := TNewStaticText.Create(WizardForm);
   WelcomeNote.Parent := WizardForm.WelcomePage;
   WelcomeNote.AutoSize := False;
-  WelcomeNote.Caption := 'AI CEO  ·  v1.0.6  ·  native desktop  ·  strictly one worker at a time';
+  WelcomeNote.Caption := 'AI CEO  ·  v1.0.7  ·  {#AppArchLabel}  ·  strictly one worker at a time';
   WelcomeNote.Font.Color := TextMuted;
   WelcomeNote.Font.Size := 8;
   WelcomeNote.SetBounds(0, WizardForm.WelcomeLabel2.Top + WizardForm.WelcomeLabel2.Height + 12, 420, 30);

@@ -1,13 +1,13 @@
 name: CI
 
-# v1.0.6 is a cross-platform Avalonia desktop app whose UI is an embedded HTML surface, so the
+# v1.0.7 is a cross-platform Avalonia desktop app whose UI is an embedded HTML surface, so the
 # pipeline does:
 #   1. the core library + unit tests on Linux (guardrail, topology, tools, schema, theme tokens),
 #   2. the desktop head built and published as a single file on Linux (real executable, booted
 #      headlessly through --self-test, plus the --smoke-ui window, settings panel and bundled Nexus
 #      page/stylesheet extraction on Xvfb),
 #   3. the same on Windows, producing the standalone .exe users download, and compiling
-#      installer.iss with Inno Setup so the installer script is validated on every push.
+#      installer.iss for x64 / x86 / arm64 with Inno Setup so every installer script is validated on every push.
 on:
   push:
     branches:
@@ -295,7 +295,7 @@ jobs:
             }
           }
 
-      - name: Compile the Inno Setup installer (validation)
+      - name: Compile the Inno Setup installers (all three architectures)
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
@@ -307,27 +307,46 @@ jobs:
             Write-Host "::error title=no-inno-setup::Chocolatey did not install Inno Setup"
             exit 1
           }
+          Write-Host "ISCC: $iscc"
 
           New-Item -ItemType Directory -Force -Path "dist" | Out-Null
           Copy-Item "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe" "dist/AiCeo-win-x64.exe" -Force
 
-          $log = Join-Path $env:RUNNER_TEMP "iscc.log"
-          & $iscc "installer.iss" 2>&1 | Tee-Object -FilePath $log
-          if ($LASTEXITCODE -ne 0) {
-            $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
-              ForEach-Object { $_.Line.Trim() }) -join " | "
-            Write-Host "::error title=iscc-failed::$($errors.Substring(0, [Math]::Min(1800, $errors.Length)))"
-            exit 1
+          # Stubs for the cross-architecture installers: this runner is x64, but the preprocessor
+          # branches (ArchitecturesAllowed / ArchitecturesInstallIn64BitMode) and Inno Setup's
+          # ARM64 support still have to compile, so every installer architecture is validated.
+          foreach ($arch in @("x86", "arm64")) {
+            $stub = Join-Path "dist" "AiCeo-win-$arch.exe"
+            [System.IO.File]::WriteAllBytes($stub, [byte[]](0x4D, 0x5A) + (New-Object byte[] 2048))
           }
 
-          $setup = Get-ChildItem "dist/installer/*-Setup.exe" | Select-Object -First 1
-          if (-not $setup) {
-            Write-Host "::error title=missing-installer::installer.iss produced no Setup.exe"
-            exit 1
+          foreach ($arch in @("x64", "x86", "arm64")) {
+            Write-Host "compiling Setup-win-$arch.exe"
+            $log = Join-Path $env:RUNNER_TEMP "iscc-$arch.log"
+            & $iscc "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" "installer.iss" 2>&1 |
+              Tee-Object -FilePath $log
+            if ($LASTEXITCODE -ne 0) {
+              $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
+                ForEach-Object { $_.Line.Trim() }) -join " | "
+              Write-Host "::error title=iscc-failed::Setup-win-$arch.exe failed: $($errors.Substring(0, [Math]::Min(1600, $errors.Length)))"
+              exit 1
+            }
           }
-          $sizeMb = [Math]::Round($setup.Length / 1MB, 1)
-          Write-Host "installer compiled: $($setup.Name) ($sizeMb MB)"
-          if ($setup.Length -lt 5MB) {
+
+          Get-ChildItem "dist/installer" | Select-Object Name, Length
+
+          foreach ($arch in @("x64", "x86", "arm64")) {
+            $setup = "dist/installer/Setup-win-$arch.exe"
+            if (-not (Test-Path $setup)) {
+              Write-Host "::error title=missing-installer::$setup was not produced"
+              exit 1
+            }
+          }
+
+          # The x64 installer wraps the real application; the other two only carry stubs.
+          $sizeMb = [Math]::Round((Get-Item "dist/installer/Setup-win-x64.exe").Length / 1MB, 1)
+          Write-Host "installer compiled: Setup-win-x64.exe ($sizeMb MB)"
+          if ((Get-Item "dist/installer/Setup-win-x64.exe").Length -lt 5MB) {
             Write-Host "::error title=small-installer::the installer does not contain the application"
             exit 1
           }
