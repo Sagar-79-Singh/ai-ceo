@@ -1,10 +1,12 @@
 name: Release
 
-# v1.0.6 ships standalone, self-contained executables built from the Avalonia desktop head:
-#   * Windows (win-x64, win-x86, win-arm64) → a single .exe per architecture.
-#   * Linux/macOS (linux-x64, linux-arm64, osx-x64, osx-arm64) → a .tar.gz per architecture.
-#   * Windows x64 → AI-CEO-Orchestrator-<version>-win-x64-Setup.exe, compiled by Inno Setup
-#     (installer.iss at the repo root) on a Windows runner using Chocolatey's innosetup package.
+# v1.0.7 ships a portable build *and* a native installer for every platform:
+#   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
+#                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
+#   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
+#                                            → AiCeo-linux-<arch>.deb    (dpkg-deb)
+#   * macOS    osx-x64 / osx-arm64           → AiCeo-osx-<arch>.tar.gz   (portable)
+#                                            → AiCeo-osx-<arch>.dmg      (hdiutil, real .app bundle)
 # No .zip and no .msix.
 on:
   push:
@@ -22,6 +24,7 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
+  # ------------------------------------------------------------------ portable binaries
   publish:
     name: Publish ${{ matrix.rid }}
     runs-on: ${{ matrix.os }}
@@ -111,15 +114,13 @@ jobs:
           export AICEO_DB_PATH="$RUNNER_TEMP/smoke/aiceo.db"
           mkdir -p "$RUNNER_TEMP/smoke"
 
-          if [ "${{ matrix.rid }}" = "win-x64" ] || [ "${{ matrix.rid }}" = "win-x86" ] || [ "${{ matrix.rid }}" = "win-arm64" ]; then
-            if [ "${{ matrix.rid }}" != "win-x64" ]; then
-              echo "cross-architecture binary (${{ matrix.rid }}): execution skipped on an x64 runner"
-              exit 0
-            fi
+          if [ "${{ matrix.rid }}" = "win-x86" ]; then
+            echo "cross-architecture binary (${{ matrix.rid }}): execution skipped on an x64 runner"
+            exit 0
           fi
 
-          if [ "${{ matrix.rid }}" = "win-arm64" ] || [ "${{ matrix.rid }}" = "linux-arm64" ]; then
-            echo "arm64 binary: execution skipped on an x64 runner"
+          if [ "${{ matrix.rid }}" = "win-arm64" ] || [ "${{ matrix.rid }}" = "linux-arm64" ] || [ "${{ matrix.rid }}" = "osx-x64" ]; then
+            echo "cross-architecture binary (${{ matrix.rid }}): execution skipped on this runner"
             exit 0
           fi
 
@@ -163,7 +164,7 @@ jobs:
           rm -rf stage
           ls -la dist
 
-      - name: Upload the asset
+      - name: Upload the portable asset
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -171,19 +172,24 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  installer:
-    name: Windows installer (Inno Setup)
+  # ------------------------------------------------------------------ Windows installers
+  windows-installer:
+    name: Windows installer (Inno Setup, ${{ matrix.arch }})
     needs: publish
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86, arm64]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download the published win-x64 executable
+      - name: Download the portable ${{ matrix.arch }} executable
         uses: actions/download-artifact@v4
         with:
-          name: AiCeo-win-x64.exe
+          name: AiCeo-win-${{ matrix.arch }}.exe
           path: dist
 
       - name: Install Inno Setup via Chocolatey
@@ -204,16 +210,23 @@ jobs:
             exit 1
           }
           Write-Host "ISCC: $iscc"
+          # Print the compiler version: ARM64 installers need Inno Setup 6.3 or newer. The help
+          # output returns a non-zero exit code, which must not fail the step.
+          & $iscc /? 2>&1 | Select-Object -First 3 | Write-Host
+          $LASTEXITCODE = 0
           "ISCC=$iscc" >> $env:GITHUB_ENV
 
-      - name: Compile the installer
+      - name: Compile Setup-win-${{ matrix.arch }}.exe
         shell: pwsh
         run: |
           $version = (Select-String -Path "src/AiCeo.Desktop/AiCeo.Desktop.csproj" -Pattern "<Version>([^<]+)</Version>").Matches[0].Groups[1].Value
-          Write-Host "building Setup.exe for version $version"
+          $arch = "${{ matrix.arch }}"
+          Write-Host "building Setup-win-$arch.exe for version $version"
 
-          $log = Join-Path $env:RUNNER_TEMP "iscc.log"
-          & $env:ISCC "/DAppVersion=$version" "/DAppSourceExe=dist\AiCeo-win-x64.exe" "installer.iss" 2>&1 |
+          Get-ChildItem "dist" | Select-Object Name, Length
+
+          $log = Join-Path $env:RUNNER_TEMP "iscc-$arch.log"
+          & $env:ISCC "/DAppVersion=$version" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" "installer.iss" 2>&1 |
             Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
             $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
@@ -225,8 +238,8 @@ jobs:
       - name: Verify the installer
         shell: pwsh
         run: |
-          $version = (Select-String -Path "src/AiCeo.Desktop/AiCeo.Desktop.csproj" -Pattern "<Version>([^<]+)</Version>").Matches[0].Groups[1].Value
-          $expected = "AI-CEO-Orchestrator-$version-win-x64-Setup.exe"
+          $arch = "${{ matrix.arch }}"
+          $expected = "Setup-win-$arch.exe"
           $setup = Join-Path "dist/installer" $expected
 
           Get-ChildItem "dist/installer" -ErrorAction SilentlyContinue | Select-Object Name, Length
@@ -249,17 +262,296 @@ jobs:
             exit 1
           }
 
-      - name: Upload the installer
+      - name: Upload Setup-win-${{ matrix.arch }}.exe
         uses: actions/upload-artifact@v4
         with:
-          name: AI-CEO-Orchestrator-Setup.exe
-          path: dist/installer/*-Setup.exe
+          name: Setup-win-${{ matrix.arch }}.exe
+          path: dist/installer/Setup-win-${{ matrix.arch }}.exe
           if-no-files-found: error
           retention-days: 7
 
+  # ------------------------------------------------------------------ Linux .deb packages
+  linux-packages:
+    name: Linux package (.deb, ${{ matrix.arch }})
+    needs: publish
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            deb_arch: amd64
+          - arch: arm64
+            deb_arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the portable archive
+        uses: actions/download-artifact@v4
+        with:
+          name: AiCeo-linux-${{ matrix.arch }}.tar.gz
+          path: dist
+
+      - name: Assemble the Debian package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION=$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/AiCeo.Desktop/AiCeo.Desktop.csproj | head -1)
+          ARCH="${{ matrix.arch }}"
+          DEB_ARCH="${{ matrix.deb_arch }}"
+          ROOT="$RUNNER_TEMP/pkgroot"
+
+          echo "packaging AiCeo-linux-$ARCH.deb (version $VERSION, architecture $DEB_ARCH)"
+
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT/DEBIAN" \
+                   "$ROOT/usr/lib/aiceo" \
+                   "$ROOT/usr/bin" \
+                   "$ROOT/usr/share/applications" \
+                   "$ROOT/usr/share/icons/hicolor/256x256/apps" \
+                   "$ROOT/usr/share/doc/aiceo"
+
+          tar -xzf "dist/AiCeo-linux-$ARCH.tar.gz" -C "$ROOT/usr/lib/aiceo"
+          rm -f "$ROOT/usr/lib/aiceo/README.md"
+          chmod 755 "$ROOT/usr/lib/aiceo/AiCeo"
+          ln -s /usr/lib/aiceo/AiCeo "$ROOT/usr/bin/aiceo"
+
+          cp src/AiCeo.Desktop/Assets/aiceo.png "$ROOT/usr/share/icons/hicolor/256x256/apps/aiceo.png"
+          cp README.md "$ROOT/usr/share/doc/aiceo/README.md"
+
+          cat > "$ROOT/usr/share/applications/aiceo.desktop" <<'DESKTOP'
+          [Desktop Entry]
+          Type=Application
+          Name=AI CEO Orchestrator
+          GenericName=AI Orchestrator
+          Comment=Star-topology AI orchestrator with a sandboxed workspace
+          Exec=aiceo
+          Icon=aiceo
+          Terminal=false
+          Categories=Development;Utility;
+          StartupWMClass=AiCeo
+          DESKTOP
+
+          INSTALLED_KB=$(du -sk "$ROOT/usr" | cut -f1)
+
+          cat > "$ROOT/DEBIAN/control" <<CONTROL
+          Package: aiceo
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: $DEB_ARCH
+          Installed-Size: $INSTALLED_KB
+          Maintainer: Sagar Singh <sagar@users.noreply.github.com>
+          Homepage: https://github.com/Sagar-79-Singh/ai-ceo
+          Depends: libx11-6, libfontconfig1
+          Recommends: libwebkit2gtk-4.1-0
+          Description: AI CEO Orchestrator
+           A cross-platform desktop AI orchestrator written in C# / .NET 10.
+           You brief one CEO agent, which plans the work, delegates to a single
+           worker at a time inside the folder you choose, and reports back.
+           .
+           The interface is the Nexus HTML/WebGL console rendered inside a
+           native window; the app falls back to its plain Avalonia shell when
+           no WebKitGTK runtime is available.
+          CONTROL
+
+          cat > "$ROOT/DEBIAN/postinst" <<'POSTINST'
+          #!/bin/sh
+          set -e
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+          fi
+          if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+          fi
+          exit 0
+          POSTINST
+          chmod 755 "$ROOT/DEBIAN/postinst"
+
+          dpkg-deb --root-owner-group --build "$ROOT" "dist/AiCeo-linux-$ARCH.deb"
+
+      - name: Verify the package
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEB="dist/AiCeo-linux-${{ matrix.arch }}.deb"
+
+          if [ ! -f "$DEB" ]; then
+            echo "::error title=missing-deb::$DEB was not produced"
+            exit 1
+          fi
+
+          if [ "$(head -c 7 "$DEB")" != "!<arch>" ]; then
+            echo "::error title=bad-deb::$(basename "$DEB") is not a Debian archive"
+            exit 1
+          fi
+
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB" | head -20
+
+          SIZE=$(stat -c%s "$DEB")
+          echo "package size: $SIZE bytes"
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "::error title=small-deb::the package does not contain the application"
+            exit 1
+          fi
+
+      - name: Upload AiCeo-linux-${{ matrix.arch }}.deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: AiCeo-linux-${{ matrix.arch }}.deb
+          path: dist/AiCeo-linux-${{ matrix.arch }}.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  # ------------------------------------------------------------------ macOS .dmg images
+  macos-dmg:
+    name: macOS installer (.dmg, ${{ matrix.arch }})
+    needs: publish
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the portable archive
+        uses: actions/download-artifact@v4
+        with:
+          name: AiCeo-osx-${{ matrix.arch }}.tar.gz
+          path: dist
+
+      - name: Assemble the .app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION=$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/AiCeo.Desktop/AiCeo.Desktop.csproj | head -1)
+          ARCH="${{ matrix.arch }}"
+          APP="$RUNNER_TEMP/AI CEO Orchestrator.app"
+
+          echo "packaging AiCeo-osx-$ARCH.dmg (version $VERSION)"
+
+          rm -rf "$APP"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+          tar -xzf "dist/AiCeo-osx-$ARCH.tar.gz" -C "$APP/Contents/MacOS"
+          if [ -f "$APP/Contents/MacOS/README.md" ]; then
+            mv "$APP/Contents/MacOS/README.md" "$APP/Contents/Resources/README.md"
+          fi
+          chmod +x "$APP/Contents/MacOS/AiCeo"
+
+          # Icon: the shipped 256×256 PNG turned into a real .icns.
+          ICONSET="$RUNNER_TEMP/AiCeo.iconset"
+          rm -rf "$ICONSET"
+          mkdir -p "$ICONSET"
+          for size in 16 32 128 256 512; do
+            sips -z "$size" "$size" src/AiCeo.Desktop/Assets/aiceo.png --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+            sips -z "$((size * 2))" "$((size * 2))" src/AiCeo.Desktop/Assets/aiceo.png --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AiCeo.icns"
+
+          cat > "$APP/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>AI CEO Orchestrator</string>
+            <key>CFBundleDisplayName</key>
+            <string>AI CEO Orchestrator</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.sagarsingh.aiceo</string>
+            <key>CFBundleVersion</key>
+            <string>$VERSION</string>
+            <key>CFBundleShortVersionString</key>
+            <string>$VERSION</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleExecutable</key>
+            <string>AiCeo</string>
+            <key>CFBundleIconFile</key>
+            <string>AiCeo</string>
+            <key>CFBundleSignature</key>
+            <string>????</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSRequiresAquaSystemAppearance</key>
+            <false/>
+          </dict>
+          </plist>
+          PLIST
+
+          # Ad-hoc signature: the bundle is unsigned, but a valid local signature keeps
+          # macOS from refusing to launch the inner executable outright.
+          codesign --force --deep --sign - "$APP" || echo "::warning::ad-hoc signing was skipped"
+
+      - name: Build the .dmg
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION=$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/AiCeo.Desktop/AiCeo.Desktop.csproj | head -1)
+          ARCH="${{ matrix.arch }}"
+          APP="$RUNNER_TEMP/AI CEO Orchestrator.app"
+          STAGE="$RUNNER_TEMP/dmg-stage"
+
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R "$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+
+          hdiutil create \
+            -volname "AI CEO Orchestrator $VERSION" \
+            -srcfolder "$STAGE" \
+            -ov -format UDZO \
+            "dist/AiCeo-osx-$ARCH.dmg"
+
+      - name: Verify the image
+        shell: bash
+        run: |
+          set -euo pipefail
+          DMG="dist/AiCeo-osx-${{ matrix.arch }}.dmg"
+
+          if [ ! -f "$DMG" ]; then
+            echo "::error title=missing-dmg::$DMG was not produced"
+            exit 1
+          fi
+
+          if [ "$(tail -c 512 "$DMG" | head -c 4)" != "koly" ]; then
+            echo "::error title=bad-dmg::$(basename "$DMG") has no UDIF trailer"
+            exit 1
+          fi
+
+          hdiutil verify "$DMG"
+
+          SIZE=$(stat -f%z "$DMG")
+          echo "image size: $SIZE bytes"
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "::error title=small-dmg::the image does not contain the application"
+            exit 1
+          fi
+
+      - name: Upload AiCeo-osx-${{ matrix.arch }}.dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: AiCeo-osx-${{ matrix.arch }}.dmg
+          path: dist/AiCeo-osx-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  # ------------------------------------------------------------------ release
   release:
     name: Create GitHub Release
-    needs: [publish, installer]
+    needs: [publish, windows-installer, linux-packages, macos-dmg]
     runs-on: ubuntu-latest
 
     steps:
@@ -278,33 +570,60 @@ jobs:
           set -euo pipefail
           ls -la ./assets
 
+          # 14 deliverables: a portable build and an installer for every platform/architecture.
           for asset in \
             AiCeo-win-x64.exe \
             AiCeo-win-x86.exe \
             AiCeo-win-arm64.exe \
-            AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe \
+            Setup-win-x64.exe \
+            Setup-win-x86.exe \
+            Setup-win-arm64.exe \
             AiCeo-linux-x64.tar.gz \
             AiCeo-linux-arm64.tar.gz \
+            AiCeo-linux-x64.deb \
+            AiCeo-linux-arm64.deb \
             AiCeo-osx-x64.tar.gz \
-            AiCeo-osx-arm64.tar.gz
+            AiCeo-osx-arm64.tar.gz \
+            AiCeo-osx-x64.dmg \
+            AiCeo-osx-arm64.dmg
           do
             if [ ! -f "./assets/$asset" ]; then
               echo "::error title=missing-asset::$asset was not produced"
               exit 1
             fi
+            if [ ! -s "./assets/$asset" ]; then
+              echo "::error title=empty-asset::$asset is empty"
+              exit 1
+            fi
           done
 
-          # The Windows binaries must be real PE files; the archives must be gzip.
-          for exe in ./assets/AiCeo-win-*.exe; do
+          # Windows binaries — portable and installers — must be real PE files.
+          for exe in ./assets/AiCeo-win-*.exe ./assets/Setup-win-*.exe; do
             if [ "$(head -c 2 "$exe")" != "MZ" ]; then
               echo "::error title=bad-exe::$(basename "$exe") is not a Windows executable"
               exit 1
             fi
           done
 
-          for archive in ./assets/*.tar.gz; do
+          # The portable archives must be gzip tarballs.
+          for archive in ./assets/AiCeo-*.tar.gz; do
             if ! tar -tzf "$archive" > /dev/null; then
               echo "::error title=bad-archive::$(basename "$archive") is not a valid .tar.gz"
+              exit 1
+            fi
+          done
+
+          # Debian packages are `ar` archives; disk images end in a UDIF trailer.
+          for deb in ./assets/AiCeo-*.deb; do
+            if [ "$(head -c 7 "$deb")" != "!<arch>" ]; then
+              echo "::error title=bad-deb::$(basename "$deb") is not a Debian package"
+              exit 1
+            fi
+          done
+
+          for dmg in ./assets/AiCeo-*.dmg; do
+            if [ "$(tail -c 512 "$dmg" | head -c 4)" != "koly" ]; then
+              echo "::error title=bad-dmg::$(basename "$dmg") is not a UDIF image"
               exit 1
             fi
           done
@@ -321,87 +640,102 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.6
-          tag_name: v1.0.6
+          name: AI CEO Orchestrator v1.0.7
+          tag_name: v1.0.7
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.6
+            ## AI CEO Orchestrator v1.0.7
 
-            A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI) that opens in a native
-            window — no browser, no local web server. Workers can read, write and run commands inside
-            a folder you choose.
+            A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
+            opens in a native window — no browser, no local web server. Workers can read, write and
+            run commands inside a folder you choose.
 
-            ### Download and run
+            Every platform now ships **both** a portable build and a native installer.
 
-            | Platform | File | How |
+            ### Windows
+
+            | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.6-win-x64-Setup.exe` | Double-click the installer: Start-menu + desktop shortcuts, per-user, no admin rights. |
-            | Windows x64 (portable) | `AiCeo-win-x64.exe` | Double-click. Nothing is installed. |
-            | Windows x86 (32-bit) | `AiCeo-win-x86.exe` | Double-click. Older 32-bit machines. |
-            | Windows ARM64 | `AiCeo-win-arm64.exe` | Double-click. Surface / Snapdragon PCs. |
-            | Linux x64 | `AiCeo-linux-x64.tar.gz` | `tar -xzf …` then `./AiCeo` |
-            | Linux ARM64 | `AiCeo-linux-arm64.tar.gz` | `tar -xzf …` then `./AiCeo` |
-            | macOS Intel | `AiCeo-osx-x64.tar.gz` | `tar -xzf …` then `./AiCeo` |
-            | macOS Apple Silicon | `AiCeo-osx-arm64.tar.gz` | `tar -xzf …` then `./AiCeo` |
+            | **x64 (recommended)** | `AiCeo-win-x64.exe` | `Setup-win-x64.exe` |
+            | x86 (32-bit) | `AiCeo-win-x86.exe` | `Setup-win-x86.exe` |
+            | ARM64 (Surface / Snapdragon) | `AiCeo-win-arm64.exe` | `Setup-win-arm64.exe` |
 
-            Every portable file is a **single, self-contained executable**: the .NET runtime is inside
-            it, so nothing needs to be installed first. The database lives in your per-user data
-            folder (`%APPDATA%\AiCeoOrchestrator` on Windows, `~/.local/share/AiCeoOrchestrator` on
-            Linux, `~/Library/Application Support/AiCeoOrchestrator` on macOS). Override it with
-            `AICEO_DB_PATH`.
+            The installers are compiled with Inno Setup in the app's dark modern wizard: per-user
+            install (no UAC prompt, administrator override available), desktop and Start-menu
+            shortcuts, and a clean entry in *Apps & features*.
 
-            Windows SmartScreen may warn because the build is not code-signed: **More info → Run anyway**.
-            On Linux you may need `chmod +x AiCeo`; on macOS, if Gatekeeper blocks an unsigned binary,
-            right-click → **Open**.
+            ### Linux
 
-            ### What's new in v1.0.6 — the Nexus interface
+            | Architecture | Portable | Installer |
+            | --- | --- | --- |
+            | x64 | `AiCeo-linux-x64.tar.gz` | `AiCeo-linux-x64.deb` |
+            | ARM64 | `AiCeo-linux-arm64.tar.gz` | `AiCeo-linux-arm64.deb` |
 
-            The plain desktop shell has been replaced by **Nexus**, the interface from the new
-            design: a dark obsidian console with a live WebGL holographic core behind the execution
-            feed, the swarm matrix down the left, and a glowing console dock across the bottom.
+            Portable: `tar -xzf AiCeo-linux-x64.tar.gz && ./AiCeo`. Debian/Ubuntu:
+            `sudo apt install ./AiCeo-linux-x64.deb` — installs to `/usr/lib/aiceo`, adds the
+            `aiceo` command, a desktop entry and the icon. The package *recommends* WebKitGTK for the
+            Nexus surface; without it the app falls back to its native shell.
 
-            - **Embedded HTML surface.** The layout is rendered by the platform's native web engine
-              (`Avalonia.Controls.WebView`): Edge WebView2 on Windows, WKWebView on macOS and
-              WebKitGTK on Linux. The page, its precompiled Tailwind stylesheet and the icon font are
-              bundled inside the executable, so the interface looks identical offline — no CDN, no
-              local web server, no Node.js.
-            - **Live execution feed.** The gyroscope emblem, badge row and neural-wave telemetry give
-              way to the real run: CEO plan steps, one delegation at a time, tool calls with their
-              output, worker results and the synthesised final answer, streamed straight from the
-              orchestrator.
-            - **Swarm matrix.** Every agent with its role, provider, model and tool flag; promote any
-              worker to CEO, edit or remove one, or deploy a new agent, all from the sidebar.
-            - **Select Workspace** still opens the native folder picker and the sandbox guard is
-              unchanged — workers cannot read or write outside the folder you choose.
-            - **Dispatch Swarm** sends your directive to the CEO through exactly the same
-              orchestrator path as before (strict star topology, sequential delegation).
-            - **Settings modal** (sliders button, top right): Dark / Light / System theme, five accent
-              colours and three text sizes, painted instantly and remembered in SQLite.
-            - **Graceful fallback.** If a machine has no web engine (for example a bare Linux box
-              without WebKitGTK), the app opens the previous Avalonia interface instead of failing,
-              and offers a one-click switch from the Nexus window.
+            ### macOS
 
-            The installer was refreshed for this release: same dark modern wizard, new version,
-            same per-user install with desktop and Start-menu shortcuts.
+            | Architecture | Portable | Installer |
+            | --- | --- | --- |
+            | Intel | `AiCeo-osx-x64.tar.gz` | `AiCeo-osx-x64.dmg` |
+            | Apple Silicon | `AiCeo-osx-arm64.tar.gz` | `AiCeo-osx-arm64.dmg` |
+
+            The `.dmg` contains a real `AI CEO Orchestrator.app` bundle (icon, versioned `Info.plist`,
+            ad-hoc signature) plus an **Applications** shortcut: open the image, drag the app across.
+            Portable: `tar -xzf … && ./AiCeo`.
+
+            ### Notes
+
+            Every portable executable is **single-file and self-contained**: the .NET runtime is
+            inside it, so nothing needs to be installed first. Application data (agents, keys, task
+            history, theme) lives in your per-user data folder — `%APPDATA%\AiCeoOrchestrator`,
+            `~/.local/share/AiCeoOrchestrator` or
+            `~/Library/Application Support/AiCeoOrchestrator` — overridable with `AICEO_DB_PATH`.
+
+            Windows SmartScreen may warn because the builds are not code-signed: **More info → Run
+            anyway**. On macOS, if Gatekeeper blocks the ad-hoc signed app, right-click → **Open** the
+            first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
+            local file.
+
+            ### What's new in v1.0.7 — installers everywhere
+
+            The release pipeline was rebuilt as a matrix that produces a portable build *and* a
+            native installer for all seven targets:
+
+            - **Three Inno Setup installers** (`Setup-win-x64/x86/arm64.exe`), each compiled against
+              its own executable with the matching `ArchitecturesAllowed` guard.
+            - **Two Debian packages**, assembled with `dpkg-deb` from the published binary: launcher
+              in `/usr/bin`, desktop entry, icon, docs and dependency metadata.
+            - **Two disk images**, built with `hdiutil` around a complete `.app` bundle (icon from the
+              shipped PNG, `Info.plist`, ad-hoc signature) with the customary Applications drop
+              target.
+            - **Release gate**: the release job refuses to publish unless all 14 deliverables exist,
+              the executables are real PE files, the tarballs unzip, the `.deb` files are `ar`
+              archives and the `.dmg` files carry a UDIF trailer.
 
             ### Unchanged
             Strict star topology (you ↔ CEO only, one worker at a time), multi-provider LLM support
-            (OmniRoute / OpenAI / Gemini / custom), masked API keys, **Select Workspace Folder**, and
-            the workspace-confined `list_files` / `read_file` / `write_file` / `run_command` tool loop.
+            (OmniRoute / OpenAI / Gemini / custom), masked API keys, **Select Workspace Folder**, the
+            workspace-confined `list_files` / `read_file` / `write_file` / `run_command` tool loop,
+            and the Nexus interface with its offline-bundled Tailwind/WebGL surface.
 
             ### Windows 7 / 8 note
             .NET 10 — bundled inside these executables — officially supports Windows 10 1809 (build
-            17763) and newer only; the installer enforces that floor. On Windows 7/8.1 the process
-            fails before any application code runs, so no `crash.log` is produced. `AiCeo-win-x86.exe`
-            is the right build for 32-bit Windows 10 machines.
+            17763) and newer only; the installers enforce that floor. `AiCeo-win-x86.exe` is the right
+            build for 32-bit Windows 10 machines.
 
             ### Verify the download
             `SHA256SUMS.txt` (and a `.sha256` per file) is attached to the release.
           files: |
             assets/*.exe
             assets/*.tar.gz
+            assets/*.deb
+            assets/*.dmg
             assets/*.sha256
             assets/SHA256SUMS.txt
