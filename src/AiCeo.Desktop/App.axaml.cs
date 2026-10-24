@@ -89,9 +89,9 @@ public partial class App : Application
                 {
                     await viewModel.InitializeAsync();
 
-                    if (Program.SmokeTestMode)
+                    if (Program.SmokeTestMode && window is MainWindow classicWindow)
                     {
-                        await RunSmokeTestAsync(window, viewModel);
+                        await RunSmokeTestAsync(classicWindow, viewModel);
                     }
                 };
             }

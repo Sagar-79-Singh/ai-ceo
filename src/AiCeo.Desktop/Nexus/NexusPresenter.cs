@@ -115,6 +115,8 @@ public sealed class NexusPresenter : IDisposable
                     info.RequiresApiKey))
                 .ToList(),
             Footer: $"sqlite · {Path.GetFileName(_runtime.DatabasePath)}");
+
+        return JsonSerializer.Serialize(state, NexusJson.Options);
     }
 
     /// <summary>Sends the current state to the page (no-op before the web view exists).</summary>
