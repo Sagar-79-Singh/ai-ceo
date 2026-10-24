@@ -14,27 +14,17 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.7 — installers on every platform
-
-| Platform | Portable | Installer |
-| --- | --- | --- |
-| Windows x64 | `AiCeo-win-x64.exe` | `Setup-win-x64.exe` (Inno Setup) |
-| Windows x86 | `AiCeo-win-x86.exe` | `Setup-win-x86.exe` (Inno Setup) |
-| Windows ARM64 | `AiCeo-win-arm64.exe` | `Setup-win-arm64.exe` (Inno Setup) |
-| Linux x64 | `AiCeo-linux-x64.tar.gz` | `AiCeo-linux-x64.deb` (dpkg-deb) |
-| Linux ARM64 | `AiCeo-linux-arm64.tar.gz` | `AiCeo-linux-arm64.deb` (dpkg-deb) |
-| macOS Intel | `AiCeo-osx-x64.tar.gz` | `AiCeo-osx-x64.dmg` (hdiutil) |
-| macOS Apple Silicon | `AiCeo-osx-arm64.tar.gz` | `AiCeo-osx-arm64.dmg` (hdiutil) |
+## What's new in v1.0.8 — dispatch with Enter
 
 | Area | Change |
 | --- | --- |
-| **Release matrix** | `.github/workflows/release.yml` publishes all seven targets and then builds a native installer for each one: three Inno Setup installers, two Debian packages and two disk images. The release job refuses to publish unless all 14 deliverables exist and carry the right magic bytes. |
-| **Three Windows installers** | `installer.iss` now takes `/DAppArch=x64\|x86\|arm64`, picks the matching `ArchitecturesAllowed` / `ArchitecturesInstallIn64BitMode` guards and writes `Setup-win-<arch>.exe`. The dark modern wizard, per-user install and shortcuts are unchanged. |
-| **Debian packages** | The published Linux binary is wrapped into `/usr/lib/aiceo` with an `aiceo` launcher in `/usr/bin`, a desktop entry, the app icon, docs and `Depends` / `Recommends` metadata (WebKitGTK is recommended, not required — the app falls back to its native shell). |
-| **Disk images** | A real `AI CEO Orchestrator.app` bundle (icon generated from the shipped PNG, versioned `Info.plist`, ad-hoc signature) inside a compressed `.dmg` with the usual **Applications** drop target. |
-| **Version** | `1.0.7` in both `.csproj` files, the assembly/file version, the installer metadata and the release notes. |
+| **Settings is discoverable** | The title-bar button is now a **gear** with a visible `Settings` label instead of an unlabelled sliders glyph. |
+| **Enter dispatches** | `Enter` sends the prompt to the CEO, `Shift` + `Enter` inserts a newline, and IME composition is respected (a confirmed Japanese/Chinese candidate never fires a run). The dock labels the new shortcut instead of the old `Ctrl` + `Enter`. |
+| **Provider CHECKING state** | While the health probe is in flight — and until the first answer arrives — the telemetry dot is **amber** and the badge reads `CHECKING…` rather than flashing a false `OFFLINE`. Green = last probe answered, red = it failed. |
+| **Version** | `1.0.8` in both `.csproj` files, the assembly/file version, the installer metadata, the Nexus badge and the release notes. |
 
 ### Older releases
+- **v1.0.7** — portable build *and* native installer on every platform: 3 Inno Setup installers, 2 `.deb`, 2 `.dmg`.
 - **v1.0.6** — Nexus interface: embedded HTML/Tailwind/WebGL surface, settings modal, graceful fallback.
 - **v1.0.5** — custom dark Inno Setup installer, settings page (theme / accent / text size) persisted in `UserSettings`.
 - **v1.0.4** — Avalonia UI replaces MAUI; Linux/macOS builds; single-file executables; `crash.log`.
@@ -229,7 +219,7 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 mkdir -p dist
 for arch in x64 x86 arm64; do
   cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
-  ISCC.exe "/DAppVersion=1.0.7" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
+  ISCC.exe "/DAppVersion=1.0.8" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
 done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
@@ -280,7 +270,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.7** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v1.0.8** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
