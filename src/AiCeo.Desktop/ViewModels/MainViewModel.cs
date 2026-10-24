@@ -38,6 +38,7 @@ public sealed class MainViewModel : ObservableObject
     private string? _banner;
     private bool _bannerIsError;
     private CancellationTokenSource? _runCts;
+    private bool _initialised;
 
     public MainViewModel(
         AgentDirectory directory,
@@ -336,6 +337,45 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    // ------------------------------------------------------------------------------------ nexus
+
+    /// <summary>Root of the selected workspace, or null when none is configured.</summary>
+    public string? WorkspaceRootPath => _workspaceView.RootPath;
+
+    /// <summary>True when the provider behind the CEO answered the last health check.</summary>
+    public bool ProviderOnline => _providerHealth?.Online ?? false;
+
+    /// <summary>Name of the provider behind the CEO (for the Nexus telemetry strip).</summary>
+    public string ProviderName => _providerHealth?.ProviderDisplayName ?? "provider";
+
+    /// <summary>Sends a prompt typed in the Nexus console through the normal orchestration path.</summary>
+    internal Task NexusDispatchAsync(string prompt)
+    {
+        Prompt = prompt;
+        return SendAsync();
+    }
+
+    /// <summary>Opens the native folder picker (Nexus "Select Workspace").</summary>
+    internal Task NexusPickWorkspaceAsync() => SelectWorkspaceAsync();
+
+    internal Task NexusClearWorkspaceAsync() => ClearWorkspaceAsync();
+
+    internal Task NexusRefreshHealthAsync() => RefreshHealthAsync();
+
+    internal Task NexusSetToolsAsync(bool enabled) => PersistToolsAsync(enabled);
+
+    internal AgentCardViewModel? FindAgent(Guid id) => Agents.FirstOrDefault(card => card.Id == id);
+
+    internal Task NexusDeleteAgentAsync(AgentCardViewModel card) => ConfirmDeleteAsync(card);
+
+    internal Task NexusMakeCeoAsync(AgentCardViewModel card) => MakeCeoAsync(card);
+
+    /// <summary>Creates or updates an agent from the Nexus editor form.</summary>
+    internal Task NexusSaveAgentAsync(AgentFormModel form) => SaveAgentAsync(form);
+
+    /// <summary>True once the window has finished its first load; used to skip early state pushes.</summary>
+    public bool IsInitialised => _initialised;
+
     // ---------------------------------------------------------------------------------- startup
 
     /// <summary>Loads agents, the workspace and the provider badge.</summary>
@@ -359,6 +399,9 @@ public sealed class MainViewModel : ObservableObject
         await LoadAgentsAsync();
         await LoadWorkspaceAsync();
         await RefreshHealthAsync();
+
+        _initialised = true;
+        OnPropertyChanged(nameof(IsInitialised));
     }
 
     private async Task LoadAgentsAsync()
@@ -539,7 +582,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void CloseEditor() => Editor = null;
 
-    private async Task SaveAgentAsync(AgentFormModel form)
+    internal async Task SaveAgentAsync(AgentFormModel form)
     {
         if (IsRunning)
         {

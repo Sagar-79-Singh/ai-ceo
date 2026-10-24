@@ -1,3 +1,4 @@
+using AiCeo.Desktop.Nexus;
 using AiCeo.Desktop.Theme;
 using AiCeo.Desktop.ViewModels;
 using AiCeo.Desktop.Views;
@@ -43,11 +44,33 @@ public partial class App : Application
                     AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                     AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
 
-                var window = new MainWindow
+                // v1.0.6: the Nexus shell (embedded HTML/WebGL) is the default interface. Machines
+                // without a usable web engine — and the CI smoke run — get the native Avalonia shell.
+                Window window;
+
+                if (!Program.SmokeTestMode && NexusAvailability.IsSupported)
                 {
-                    DataContext = viewModel,
-                    Icon = TryLoadIcon()
-                };
+                    Console.WriteLine($"NEXUS: using the web surface ({NexusAvailability.Reason})");
+
+                    window = new NexusWindow(
+                        viewModel,
+                        userSettings,
+                        AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
+                        () => OpenClassicShell(desktop, viewModel))
+                    {
+                        Icon = TryLoadIcon()
+                    };
+                }
+                else
+                {
+                    Console.WriteLine($"NEXUS: classic shell ({NexusAvailability.Reason})");
+
+                    window = new MainWindow
+                    {
+                        DataContext = viewModel,
+                        Icon = TryLoadIcon()
+                    };
+                }
 
                 desktop.MainWindow = window;
 
@@ -84,6 +107,25 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Opens the native Avalonia shell on top of the same view model, used when the web engine is
+    /// missing or the user prefers it. The Nexus window closes itself so exactly one shell is live.
+    /// </summary>
+    private static void OpenClassicShell(IClassicDesktopStyleApplicationLifetime desktop, MainViewModel viewModel)
+    {
+        var classic = new MainWindow
+        {
+            DataContext = viewModel,
+            Icon = TryLoadIcon()
+        };
+
+        var previous = desktop.MainWindow;
+        desktop.MainWindow = classic;
+
+        classic.Show();
+        previous?.Close();
+    }
+
+    /// <summary>
     /// CI smoke test: proves the window, the settings overlay and the theme pipeline all work on a
     /// real (virtual) display. Any missing marker fails the build.
     /// </summary>
@@ -91,6 +133,37 @@ public partial class App : Application
     {
         await Task.Delay(TimeSpan.FromSeconds(1.5));
         Console.WriteLine($"UI SMOKE: window '{window.Title}' rendered, {viewModel.Agents.Count} agents loaded");
+
+        // v1.0.6: the Nexus page and its stylesheet must be inside the published executable and
+        // must be extractable for the web engine.
+        var assetsOk = NexusAssets.IsValid(out var assetDetail);
+        Console.WriteLine($"UI SMOKE: nexus assets {assetDetail}");
+
+        if (!assetsOk)
+        {
+            Console.WriteLine("UI SMOKE FAILED: the bundled Nexus assets are missing or incomplete");
+            Environment.ExitCode = 1;
+        }
+
+        try
+        {
+            var pageUri = NexusAssets.EnsureExtracted(out var nexusDirectory);
+            var extracted = File.Exists(pageUri.LocalPath)
+                && File.Exists(Path.Combine(nexusDirectory, NexusAssets.StyleFileName));
+
+            Console.WriteLine($"UI SMOKE: nexus extracted to {nexusDirectory} (files present: {extracted})");
+
+            if (!extracted)
+            {
+                Console.WriteLine("UI SMOKE FAILED: the Nexus assets could not be extracted");
+                Environment.ExitCode = 1;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Console.WriteLine("UI SMOKE FAILED: extracting the Nexus assets threw: " + exception.Message);
+            Environment.ExitCode = 1;
+        }
 
         viewModel.OpenSettingsCommand.Execute(null);
         await Task.Delay(TimeSpan.FromMilliseconds(400));
