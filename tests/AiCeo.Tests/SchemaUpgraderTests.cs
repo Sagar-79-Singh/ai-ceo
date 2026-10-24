@@ -92,6 +92,39 @@ public class SchemaUpgraderTests
     }
 
     [Fact]
+    public async Task Adds_the_UserSettings_table_for_v1_0_5()
+    {
+        await using var legacy = await LegacyDatabase.CreateAsync();
+
+        Assert.False(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "UserSettings"));
+
+        await SchemaUpgrader.UpgradeAsync(legacy.Db, NullLogger.Instance);
+
+        Assert.True(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "UserSettings"));
+
+        var columns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "UserSettings");
+        Assert.Contains("Id", columns);
+        Assert.Contains("Theme", columns);
+        Assert.Contains("AccentColor", columns);
+        Assert.Contains("FontSize", columns);
+        Assert.Contains("UpdatedAt", columns);
+
+        // A hand-written row is readable through EF right after the upgrade.
+        await using (var command = legacy.Connection.CreateCommand())
+        {
+            command.CommandText =
+                "INSERT INTO \"UserSettings\" (\"Id\", \"Theme\", \"AccentColor\", \"FontSize\", \"UpdatedAt\") " +
+                "VALUES (1, 'Light', 'Rose', 'Large', '2025-01-01 00:00:00');";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var stored = await legacy.Db.UserSettings.AsNoTracking().SingleAsync();
+        Assert.Equal(AiCeo.Models.AppTheme.Light, stored.Theme);
+        Assert.Equal(AiCeo.Models.AccentColor.Rose, stored.AccentColor);
+        Assert.Equal(AiCeo.Models.FontSizePreference.Large, stored.FontSize);
+    }
+
+    [Fact]
     public async Task Is_idempotent()
     {
         await using var legacy = await LegacyDatabase.CreateAsync();

@@ -1,3 +1,5 @@
+using AiCeo.Desktop.Theme;
+using AiCeo.Models;
 using Avalonia.Media;
 
 namespace AiCeo.Desktop.ViewModels;
@@ -17,10 +19,6 @@ public enum FeedKind
 /// <summary>One rendered line of the execution feed.</summary>
 public sealed class FeedItemViewModel : ObservableObject
 {
-    private static readonly IBrush OkBrush = new SolidColorBrush(Color.Parse("#5EE0B0"));
-    private static readonly IBrush FailedBrush = new SolidColorBrush(Color.Parse("#FFB3B3"));
-    private static readonly IBrush OutputBrush = new SolidColorBrush(Color.Parse("#C7D6E8"));
-
     private bool _isPending;
 
     public FeedKind Kind { get; init; }
@@ -79,9 +77,16 @@ public sealed class FeedItemViewModel : ObservableObject
         _ => string.Empty
     };
 
-    public IBrush ToolOutputBrush => Failed ? FailedBrush : OutputBrush;
+    public IBrush ToolOutputBrush => Failed
+        ? ThemeBrushes.Get(UiTheme.Danger, "#FFB3B3")
+        : ThemeBrushes.Get(UiTheme.TextBody, "#C7D6E8");
 
-    public IBrush PendingDotBrush => IsPending ? new SolidColorBrush(Color.Parse("#FFC46B")) : OkBrush;
+    public IBrush PendingDotBrush => IsPending
+        ? ThemeBrushes.Get(UiTheme.Warn, "#FFC46B")
+        : ThemeBrushes.Get(UiTheme.Ok, "#5EE0B0");
+
+    /// <summary>Re-reads the themed brushes after a theme change.</summary>
+    public void RefreshTheme() => OnPropertyChanged(nameof(ToolOutputBrush), nameof(PendingDotBrush));
 
     public string HeaderText => Kind switch
     {

@@ -1,3 +1,4 @@
+using AiCeo.Desktop.Theme;
 using AiCeo.Desktop.ViewModels;
 using AiCeo.Desktop.Views;
 using AiCeo.Models;
@@ -8,6 +9,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 
 namespace AiCeo.Desktop;
@@ -25,12 +27,18 @@ public partial class App : Application
                 AppBootstrap.Initialize();
 
                 var picker = new AvaloniaWorkspacePicker(() => desktop.MainWindow);
+                var userSettings = AppBootstrap.GetRequiredService<UserSettingsService>();
+
+                // Paint with the saved preferences before the window is created, so the chosen theme
+                // is what the very first frame shows (no dark flash when light is selected).
+                ApplySavedTheme(userSettings);
 
                 var viewModel = new MainViewModel(
                     AppBootstrap.GetRequiredService<AgentDirectory>(),
                     AppBootstrap.GetRequiredService<AgentOrchestrator>(),
                     AppBootstrap.GetRequiredService<AgentHealthService>(),
                     AppBootstrap.GetRequiredService<WorkspaceService>(),
+                    userSettings,
                     picker,
                     AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                     AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
@@ -43,6 +51,16 @@ public partial class App : Application
 
                 desktop.MainWindow = window;
 
+                // Follow live OS light/dark switches when the saved theme is "System".
+                if (PlatformSettings is { } platformSettings)
+                {
+                    platformSettings.ColorValuesChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+                    {
+                        ThemeManager.ReapplyIfFollowingSystem();
+                        viewModel.OnSystemThemeChanged();
+                    });
+                }
+
                 // Loading agents/workspace touches SQLite, so it runs after the window exists.
                 window.Opened += async (_, _) =>
                 {
@@ -50,9 +68,7 @@ public partial class App : Application
 
                     if (Program.SmokeTestMode)
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(1.5));
-                        Console.WriteLine($"UI SMOKE: window '{window.Title}' rendered, {viewModel.Agents.Count} agents loaded");
-                        window.Close();
+                        await RunSmokeTestAsync(window, viewModel);
                     }
                 };
             }
@@ -65,6 +81,75 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// CI smoke test: proves the window, the settings overlay and the theme pipeline all work on a
+    /// real (virtual) display. Any missing marker fails the build.
+    /// </summary>
+    private static async Task RunSmokeTestAsync(MainWindow window, MainViewModel viewModel)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        Console.WriteLine($"UI SMOKE: window '{window.Title}' rendered, {viewModel.Agents.Count} agents loaded");
+
+        viewModel.OpenSettingsCommand.Execute(null);
+        await Task.Delay(TimeSpan.FromMilliseconds(400));
+
+        var settings = viewModel.Settings;
+        Console.WriteLine($"UI SMOKE: settings panel open = {viewModel.IsSettingsOpen}, options = {settings?.Themes.Count ?? 0} themes / {settings?.Accents.Count ?? 0} accents");
+
+        if (settings is null)
+        {
+            Console.WriteLine("UI SMOKE FAILED: the settings panel did not open");
+            Environment.ExitCode = 1;
+            window.Close();
+            return;
+        }
+
+        // Exercise the dynamic resources: switch theme + accent + text size, then confirm the
+        // application resource table actually changed.
+        var before = ThemeManager.Current?.Colors[UiTheme.AppBg];
+        settings.SelectThemeCommand.Execute(settings.Themes.First(option => option.Value == AppTheme.Light));
+        settings.SelectAccentCommand.Execute(settings.Accents.First(option => option.Value == AccentColor.Purple));
+        settings.FontSizeIndex = 2;
+        await Task.Delay(TimeSpan.FromMilliseconds(400));
+
+        var after = ThemeManager.Current?.Colors[UiTheme.AppBg];
+        var accent = ThemeManager.Current?.Colors[UiTheme.Accent];
+        var scaled = ThemeManager.Current?.FontValues[UiTheme.FontBase];
+
+        Console.WriteLine($"UI SMOKE: theme {before} -> {after}, accent {accent}, base font {scaled}");
+
+        if (before == after || ThemeManager.Current?.IsDark != false || scaled is null || scaled <= 13)
+        {
+            Console.WriteLine("UI SMOKE FAILED: the theme did not repaint");
+            Environment.ExitCode = 1;
+        }
+
+        settings.CloseCommand.Execute(null);
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
+
+        if (viewModel.IsSettingsOpen)
+        {
+            Console.WriteLine("UI SMOKE FAILED: the settings panel did not close");
+            Environment.ExitCode = 1;
+        }
+
+        window.Close();
+    }
+
+    /// <summary>Applies the stored theme, falling back to the default palette on any database issue.</summary>
+    private static void ApplySavedTheme(UserSettingsService userSettings)
+    {
+        try
+        {
+            ThemeManager.Apply(userSettings.GetAsync().GetAwaiter().GetResult());
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or System.Data.Common.DbException)
+        {
+            // A broken database must not stop the shell from starting; InitializeAsync reports it.
+            ThemeManager.Apply(UserSettingsSnapshot.Default);
+        }
     }
 
     private static WindowIcon? TryLoadIcon()

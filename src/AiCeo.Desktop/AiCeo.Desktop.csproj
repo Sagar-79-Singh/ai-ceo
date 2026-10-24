@@ -11,9 +11,9 @@
 
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator with a local workspace and tool-using agents.</Description>
-    <Version>1.0.4</Version>
-    <AssemblyVersion>1.0.4.0</AssemblyVersion>
-    <FileVersion>1.0.4.0</FileVersion>
+    <Version>1.0.5</Version>
+    <AssemblyVersion>1.0.5.0</AssemblyVersion>
+    <FileVersion>1.0.5.0</FileVersion>
 
     <!-- The icon shown in Explorer/taskbar. Windows-only; ignored by the other targets. -->
     <ApplicationIcon>Assets/aiceo.ico</ApplicationIcon>

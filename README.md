@@ -1,8 +1,10 @@
 # AI CEO Orchestrator
 
 A **cross-platform desktop** AI orchestrator written in **C# / .NET 10** with **Avalonia UI**. It
-opens in its own native window — no browser, no local web server, no installer — and runs a strict
-star topology of agents that can read, write and build inside a folder **you** choose.
+opens in its own native window — no browser, no local web server — and runs a strict star topology
+of agents that can read, write and build inside a folder **you** choose. Windows users can grab the
+optional `Setup.exe`, and the whole UI can be re-themed (dark / light / system, five accent colours,
+three text sizes) from the **Settings** gear in the corner.
 
 ```
 You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  ──▶  CEO  ──▶  You
@@ -11,16 +13,20 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.4
+## What's new in v1.0.5
 
 | Area | Change |
 | --- | --- |
-| **Cross-platform UI** | **.NET MAUI is gone.** The whole window is now **Avalonia UI 11** on plain `net10.0`, so it runs on Windows, Linux and macOS from one project. No Windows App SDK, no MAUI runtime — which is what made v1.0.3 crash on machines that were missing those dependencies. |
-| **Linux + macOS** | `linux-x64`, `linux-arm64`, `osx-x64` and `osx-arm64` builds are published for the first time. |
-| **Crash logging** | `Main` is wrapped in a global `try/catch`; any startup failure appends the full stack trace — plus OS, runtime, version and process path — to **`crash.log`** next to the executable, and the window itself explains where the log is. |
-| **Single-file executables** | Every target is published self-contained, single-file: one `.exe` for Windows, one `AiCeo` binary inside a `.tar.gz` for Linux/macOS. No `.zip`, no `.msix`, no installer. |
-| **Icon** | `Assets/aiceo.ico` is wired to `ApplicationIcon`, and `Assets/aiceo.png` is the window/taskbar icon. |
-| **Unchanged** | The core stays exactly as it was: star topology, sequential delegation, multi-provider LLMs, workspace folder + guardrail, agentic tool loop. |
+| **Custom installer** | `installer.iss` in the repository root compiles the published Windows executable into `AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe`. Inno Setup's **modern** wizard style is repainted in the app's own dark palette (`#1E1E2E`) with custom artwork, rewritten welcome/finished copy and a slim accent progress bar with a live percentage. It creates **desktop + Start-menu shortcuts** and installs per-user (no UAC, admin override available). |
+| **Settings page** | A gear button in the top-right corner opens the settings panel: **Theme** (Dark / Light / System default, which follows the OS live), **Accent colour** (Green, Blue, Purple, Amber, Rose) and **Text size** (Small / Medium / Large slider with a live preview). |
+| **Persisted preferences** | Choices live in a new `UserSettings` table in the local SQLite database; the schema upgrades itself on first launch. They are applied at startup through Avalonia dynamic resources — the same `--color-*` / `--font-*` token contract as the old `wwwroot/css/app.css`, mirrored in a generated `src/AiCeo.Desktop/Assets/theme.css`. |
+| **Version** | `1.0.5` in both `.csproj` files, the assembly/file version and the installer metadata. |
+| **Unchanged** | Strict star topology, sequential delegation, multi-provider LLMs, masked API keys, workspace guardrail and the agentic tool loop. |
+
+### Older releases
+- **v1.0.4** — Avalonia UI replaces MAUI; Linux/macOS builds; single-file executables; `crash.log`.
+- **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
+- **v1.0.2** — multi-provider LLM layer and health badges.
 
 ### Older releases
 - **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
@@ -34,7 +40,8 @@ Download one file from the **Releases** page and run it.
 
 | Platform | File | How to run |
 | --- | --- | --- |
-| **Windows x64** | `AiCeo-win-x64.exe` | Double-click. No installer, no runtime to install. |
+| **Windows x64 (recommended)** | `AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe` | Double-click the installer. Per-user, no admin prompt, Start-menu + desktop shortcuts, clean uninstall. |
+| **Windows x64 (portable)** | `AiCeo-win-x64.exe` | Double-click. No installer, no runtime to install. |
 | **Windows x86** | `AiCeo-win-x86.exe` | For 32-bit Windows. |
 | **Windows ARM64** | `AiCeo-win-arm64.exe` | Surface / Snapdragon PCs. |
 | **Linux x64 / ARM64** | `AiCeo-linux-*.tar.gz` | `tar -xzf AiCeo-linux-x64.tar.gz && ./AiCeo` |
@@ -151,18 +158,23 @@ mask such as `sk-1…cdef` plus where the key came from (`stored`, `env:OPENAI_A
 
 ```
 src/AiCeo.Core/            portable class library (no UI)
-  Models/                  Agent, AgentView, TaskItem, TaskLog, WorkspaceSettings, …
+  Models/                  Agent, AgentView, TaskItem, TaskLog, WorkspaceSettings, UserSettings,
+                           UiTheme (tokens + dark/light palettes + CSS export), …
   Data/                    AppDbContext, DbSeeder, SchemaUpgrader, DatabasePaths
-  Services/                AgentOrchestrator, LlmGateway, AgentDirectory, WorkspaceService, …
+  Services/                AgentOrchestrator, LlmGateway, AgentDirectory, WorkspaceService,
+                           UserSettingsService, …
   Tools/                   WorkspaceGuard, CommandGuard, ToolCatalog, ToolService, ToolResult
 src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
   Program.cs               entry point: global try/catch + crash.log
-  App.axaml(.cs)           theme, DI bootstrap, startup-failure window
-  Views/MainWindow.axaml   sidebar (agents, workspace) + execution feed + composer
-  ViewModels/              MainViewModel, AgentEditorViewModel, AgentCardViewModel, feed items
+  App.axaml(.cs)           token-based styles, DI bootstrap, startup-failure window
+  Theme/ThemeManager.cs    writes a ThemePalette into the application resources
+  Views/MainWindow.axaml   sidebar (agents, workspace) + feed + composer + settings overlay
+  ViewModels/              MainViewModel, SettingsViewModel, AgentEditorViewModel, cards, feed items
   AvaloniaWorkspacePicker  native folder picker through IStorageProvider
-  Assets/                  aiceo.ico (ApplicationIcon) and aiceo.png (window icon)
-tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider resolution
+  Assets/                  aiceo.ico (ApplicationIcon), aiceo.png (window icon), theme.css (token mirror)
+installer.iss              Inno Setup script (root) → AI-CEO-Orchestrator-<version>-win-x64-Setup.exe
+installer/                 wizard-large.bmp / wizard-small.bmp artwork for the installer
+tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
 ```
 
 ### Database
@@ -175,6 +187,7 @@ on macOS). Override with the `AICEO_DB_PATH` environment variable.
 
 - v1.0.1 → v1.0.2: adds `Agents.Provider`, `Agents.BaseUrl`, `Agents.ApiKey`
 - v1.0.2 → v1.0.3: adds `Agents.CanUseTools`, `TaskLogs.ToolName`, creates `WorkspaceSettings`
+- v1.0.4 → v1.0.5: creates `UserSettings` (`Theme`, `AccentColor`, `FontSize` stored as readable text)
 
 Existing agents, tasks and logs are preserved.
 
@@ -196,11 +209,25 @@ dotnet test tests/AiCeo.Tests/AiCeo.Tests.csproj
 dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
   -c Release -r win-x64 --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+
+# the Windows installer (needs Inno Setup 6 on Windows: choco install innosetup)
+mkdir -p dist && cp src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe dist/AiCeo-win-x64.exe
+ISCC.exe installer.iss        # → dist\installer\AI-CEO-Orchestrator-1.0.5-win-x64-Setup.exe
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
 publishing to Linux/macOS from any host works because Avalonia is a plain NuGet dependency; only the
 final executable has to match the target OS.
+
+### Theming
+
+Every colour and font size in the UI is a *dynamic resource* keyed by a token name (`AppBg`,
+`Accent`, `CardBg`, `FontBase`, …). On startup — and whenever the settings panel changes anything —
+`ThemeManager` builds a `ThemePalette` from `UserSettings` (`UiTheme.Build`) and writes it into
+`Application.Resources`; every style in `App.axaml` refers to those keys with
+`{DynamicResource …}`, so the whole window repaints without a restart. `ThemePalette.ToCss()` emits
+the same tokens as `--color-*` / `--font-*` custom properties, and `Assets/theme.css` is that output
+for dark and light (a unit test keeps it in sync).
 
 ### Verifying a build without a GUI
 
@@ -212,11 +239,14 @@ never reaches a release.
 ### CI / release
 
 - `ci.yml` — core library + unit tests on Linux; a real Linux single-file publish that is **run**
-  (`--self-test`); a Windows single-file publish whose `.exe` is also run; and a grep that fails the
+  (`--self-test`) and **smoke-tested on a virtual display** (`--smoke-ui`, which also opens the
+  settings panel and switches theme/accent/size); a Windows single-file publish whose `.exe` is also
+  run and whose `installer.iss` is compiled with Inno Setup on every push; and a grep that fails the
   build if `Task.WhenAll`, `Task.WhenAny` or `Parallel.ForEachAsync` ever appear in the core.
 - `release.yml` — on a `v*` tag: publishes all seven RIDs as self-contained single files (Windows →
-  `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can
-  execute natively, then creates the **v1.0.4** release with all assets plus `SHA256SUMS.txt`.
+  `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), builds `Setup.exe` with Inno Setup
+  (installed through Chocolatey) on a Windows runner, smoke-tests every binary it can execute
+  natively, then creates the **v1.0.5** release with all assets plus `SHA256SUMS.txt`.
 
 ---
 

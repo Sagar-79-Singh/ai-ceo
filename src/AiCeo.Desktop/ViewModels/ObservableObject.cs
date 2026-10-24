@@ -98,3 +98,32 @@ public sealed class AsyncRelayCommand : ICommand
 
     public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
+
+/// <summary>Synchronous command that receives a typed parameter from the view.</summary>
+public sealed class RelayCommand<T> : ICommand
+{
+    private readonly Action<T> _execute;
+    private readonly Func<T, bool>? _canExecute;
+
+    public RelayCommand(Action<T> execute, Func<T, bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged;
+
+    // Enabled by default even before the parameter binding has been evaluated.
+    public bool CanExecute(object? parameter)
+        => _canExecute is null || (parameter is T typed && _canExecute(typed));
+
+    public void Execute(object? parameter)
+    {
+        if (parameter is T typed)
+        {
+            _execute(typed);
+        }
+    }
+
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}

@@ -11,6 +11,7 @@ namespace AiCeo.Data;
 ///   <item>v1.0.1 → v1.0.2: <c>Agents.Provider</c>, <c>Agents.BaseUrl</c>, <c>Agents.ApiKey</c></item>
 ///   <item>v1.0.2 → v1.0.3: <c>Agents.CanUseTools</c>, <c>TaskLogs.ToolName</c>, and the
 ///   <c>WorkspaceSettings</c> table</item>
+///   <item>v1.0.4 → v1.0.5: the <c>UserSettings</c> table (theme, accent colour, font size)</item>
 /// </list>
 /// Runs on every start and is a no-op once applied.
 /// </summary>
@@ -34,6 +35,16 @@ public static class SchemaUpgrader
             "Id" INTEGER NOT NULL CONSTRAINT "PK_WorkspaceSettings" PRIMARY KEY AUTOINCREMENT,
             "RootPath" TEXT NULL,
             "ToolsEnabled" INTEGER NOT NULL DEFAULT 1,
+            "UpdatedAt" TEXT NOT NULL
+        );
+        """;
+
+    private const string UserSettingsTableDdl = """
+        CREATE TABLE IF NOT EXISTS "UserSettings" (
+            "Id" INTEGER NOT NULL CONSTRAINT "PK_UserSettings" PRIMARY KEY AUTOINCREMENT,
+            "Theme" TEXT NOT NULL DEFAULT 'System',
+            "AccentColor" TEXT NOT NULL DEFAULT 'Green',
+            "FontSize" TEXT NOT NULL DEFAULT 'Medium',
             "UpdatedAt" TEXT NOT NULL
         );
         """;
@@ -70,6 +81,12 @@ public static class SchemaUpgrader
             {
                 await ExecuteAsync(connection, WorkspaceTableDdl, cancellationToken);
                 logger.LogInformation("Schema upgrade: created WorkspaceSettings table");
+            }
+
+            if (!await TableExistsAsync(connection, "UserSettings", cancellationToken))
+            {
+                await ExecuteAsync(connection, UserSettingsTableDdl, cancellationToken);
+                logger.LogInformation("Schema upgrade: created UserSettings table");
             }
         }
         finally
