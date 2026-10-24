@@ -1,6 +1,7 @@
 using AiCeo.Models;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Styling;
 
 namespace AiCeo.Desktop.Theme;
@@ -45,7 +46,7 @@ public static class ThemeManager
                 var settings = Application.Current?.PlatformSettings;
                 if (settings is not null)
                 {
-                    return settings.GetColorValues().ThemeVariant == ThemeVariant.Dark;
+                    return settings.GetColorValues().ThemeVariant == PlatformThemeVariant.Dark;
                 }
             }
             catch (Exception exception) when (exception is NotSupportedException or InvalidOperationException)
