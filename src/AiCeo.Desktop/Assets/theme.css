@@ -1,0 +1,143 @@
+/*
+ * AI CEO Orchestrator — theme tokens (v1.0.5)
+ *
+ * The Avalonia desktop shell writes these same tokens into its resource dictionary at runtime
+ * (see src/AiCeo.Desktop/Theme/ThemeManager.cs and AiCeo.Core/Models/UiTheme.cs). This file is the
+ * CSS-custom-property mirror of that palette — the modern equivalent of the old wwwroot/css/app.css
+ * variables — kept for web/demo surfaces and for anyone theming the app's branding.
+ *
+ * Accent colours replace --color-accent, --color-accent-soft, --color-accent-border,
+ * --color-accent-soft-text and --color-ok. Available accents:
+ *   green #5EE0B0 · blue #3B82F6 · purple #8B5CF6 · amber #F59E0B · rose #F43F5E
+ * A light-surface accent is darkened automatically for contrast (see UiTheme.AccentHex).
+ *
+ * Text sizes scale every --font-* value: small 0.90x, medium 1.00x, large 1.15x.
+ *
+ * Generated from UiTheme.DarkColors()/LightColors(); do not edit by hand.
+ */
+
+:root {
+  --color-accent: #5EE0B0;
+  --color-accent-border: #1D4A44;
+  --color-accent-on: #04140F;
+  --color-accent-soft: #153A30;
+  --color-accent-soft-text: #5EE0B0;
+  --color-agent-card-bg: #0D1520;
+  --color-agent-card-border: #1A2434;
+  --color-app-bg: #070A10;
+  --color-badge-ceo-bg: #153A30;
+  --color-badge-tools-bg: #1B2436;
+  --color-banner-error-bg: #2A1417;
+  --color-banner-error-border: #5A2A31;
+  --color-banner-info-bg: #0F2430;
+  --color-banner-info-border: #1D4A56;
+  --color-brand-tile-bg: #123A33;
+  --color-button-bg: #16202E;
+  --color-button-border: #22303F;
+  --color-button-text: #DCE7F5;
+  --color-card-bg: #0F1622;
+  --color-card-border: #1C2635;
+  --color-composer-bg: #0D1420;
+  --color-composer-border: #1B2635;
+  --color-danger: #FF9A9A;
+  --color-danger-bg: #2A1417;
+  --color-danger-border: #5A2A31;
+  --color-editor-bg: #0E1622;
+  --color-editor-border: #23303F;
+  --color-feed-bg: #080C13;
+  --color-feed-border: #151E2C;
+  --color-final-bg: #0E1B1A;
+  --color-final-border: #1D4A44;
+  --font-base: 13px;
+  --font-body: 12.5px;
+  --font-button: 12px;
+  --font-label: 10px;
+  --font-mono: 11px;
+  --font-subtitle: 11.5px;
+  --font-tiny: 10.5px;
+  --font-title: 19px;
+  --color-input-bg: #0A1017;
+  --color-input-border: #1E2A3A;
+  --color-input-text: #E4EDF8;
+  --color-ok: #5EE0B0;
+  --color-overlay-bg: #C4000000;
+  --color-panel-bg: #101825;
+  --color-panel-border: #1C2635;
+  --color-sidebar-bg: #0B111A;
+  --color-sidebar-border: #161F2E;
+  --color-step-index-bg: #17222F;
+  --color-text-body: #C9D6E6;
+  --color-text-dim: #48586C;
+  --color-text-muted: #5E7186;
+  --color-text-primary: #EAF2FB;
+  --color-text-secondary: #8EA3BD;
+  --color-tool-accent: #9AA8FF;
+  --color-tool-bg: #0D1522;
+  --color-tool-border: #22304A;
+  --color-user-bubble-bg: #14243A;
+  --color-user-bubble-border: #20354F;
+  --color-warn: #FFC46B;
+}
+
+[data-theme="light"] {
+  --color-accent: #0F9D74;
+  --color-accent-border: #BFE7DA;
+  --color-accent-on: #FFFFFF;
+  --color-accent-soft: #E3F7F0;
+  --color-accent-soft-text: #0F9D74;
+  --color-agent-card-bg: #F8FAFD;
+  --color-agent-card-border: #E5EAF1;
+  --color-app-bg: #F4F6FA;
+  --color-badge-ceo-bg: #E3F7F0;
+  --color-badge-tools-bg: #EAEBFC;
+  --color-banner-error-bg: #FDECEA;
+  --color-banner-error-border: #F3C4BE;
+  --color-banner-info-bg: #EAF4FB;
+  --color-banner-info-border: #C6E0F0;
+  --color-brand-tile-bg: #DDF3EA;
+  --color-button-bg: #FFFFFF;
+  --color-button-border: #D7DEE8;
+  --color-button-text: #1B2836;
+  --color-card-bg: #FFFFFF;
+  --color-card-border: #E5EAF1;
+  --color-composer-bg: #FFFFFF;
+  --color-composer-border: #DFE6EF;
+  --color-danger: #C0392B;
+  --color-danger-bg: #FDECEA;
+  --color-danger-border: #F3C4BE;
+  --color-editor-bg: #FFFFFF;
+  --color-editor-border: #DCE3EC;
+  --color-feed-bg: #FFFFFF;
+  --color-feed-border: #E5EAF1;
+  --color-final-bg: #F1FBF6;
+  --color-final-border: #C7E9D9;
+  --font-base: 13px;
+  --font-body: 12.5px;
+  --font-button: 12px;
+  --font-label: 10px;
+  --font-mono: 11px;
+  --font-subtitle: 11.5px;
+  --font-tiny: 10.5px;
+  --font-title: 19px;
+  --color-input-bg: #F7F9FC;
+  --color-input-border: #D7DEE8;
+  --color-input-text: #14202E;
+  --color-ok: #0F9D74;
+  --color-overlay-bg: #66000000;
+  --color-panel-bg: #FFFFFF;
+  --color-panel-border: #E2E8F0;
+  --color-sidebar-bg: #FFFFFF;
+  --color-sidebar-border: #E2E8F0;
+  --color-step-index-bg: #EEF2F8;
+  --color-text-body: #26333F;
+  --color-text-dim: #93A0AF;
+  --color-text-muted: #7A8899;
+  --color-text-primary: #0F1A26;
+  --color-text-secondary: #5A6B7D;
+  --color-tool-accent: #4F5BD5;
+  --color-tool-bg: #F6F8FC;
+  --color-tool-border: #DCE3EF;
+  --color-user-bubble-bg: #E8F1FE;
+  --color-user-bubble-border: #CBDFFB;
+  --color-warn: #B4690E;
+}
