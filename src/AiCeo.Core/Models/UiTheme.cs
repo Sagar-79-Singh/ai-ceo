@@ -249,7 +249,7 @@ public static class UiTheme
         [Accent] = "#0F9D74",
         [AccentOn] = "#FFFFFF",
         [AccentSoft] = "#E3F7F0",
-        [AccentSoftText] = "#0B7A59",
+        [AccentSoftText] = "#0F9D74",
         [AccentBorder] = "#BFE7DA",
         [Ok] = "#0F9D74",
         [Warn] = "#B4690E",
