@@ -1,6 +1,6 @@
 name: CI
 
-# v1.0.12 is a cross-platform Avalonia desktop app whose UI is an embedded HTML surface, so the
+# v1.0.13 is a cross-platform Avalonia desktop app whose UI is an embedded HTML surface, so the
 # pipeline does:
 #   1. the core library + unit tests on Linux (guardrail, topology, tools, schema, theme tokens),
 #   2. the desktop head built and published as a single file on Linux (real executable, booted
