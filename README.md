@@ -14,20 +14,19 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.12 — no freeze, installers that check what they need
+## What's new in v1.0.13 — the window always appears
 
 | Area | Change |
 | --- | --- |
-| **Start-up reverted** | The v1.0.11 show/activate path could leave the app running with no window on some machines, so `App.axaml.cs`, both window classes and the WebView initialisation are back to their v1.0.8 state — the build where the portable `.exe` opened reliably. Standard Avalonia window defaults, no decorative overrides, no `Show()`/`Activate()` from framework initialisation, no monitor-fitting logic. |
-| **Diagnostics kept** | `crash.log` and `startup.log` are still written for unhandled exceptions, so a future regression leaves evidence. |
-| **Standard installer wizard** | The custom dark Inno Setup theme, its hand-painted controls, its artwork and its overridden messages are gone. `Setup.exe` is the stock native wizard. |
-| **WebView2, OS-aware** | Setup detects the runtime and picks the bootstrapper by Windows version: the current Evergreen build on Windows 10/11, the **109** line (109.0.1518.x, the last one that supports them) on Windows 7 / 8 / 8.1. The user is asked; **declining aborts the installation**. |
-| **Visual C++ check** | The 2015-2022 Redistributable is detected and offered — prompted for, never forced. `.NET` is deliberately not checked: the executable is self-contained. |
-| **Linux dependencies** | The `.deb` now **depends** on `libgtk-3-0` and `libwebkit2gtk-4.1-0`, so `apt` resolves the toolkit and the web engine instead of leaving the Nexus surface to fall back. |
-| **macOS floor** | The `.dmg` targets **macOS 10.13 (High Sierra) or later**: the packaging script aborts below it, `Info.plist` declares `LSMinimumSystemVersion`, and the app shows an alert and exits on anything older. |
-| **Version** | `1.0.12` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes. |
+| **Window first, blocking work second** | `OnFrameworkInitializationCompleted` builds the shell and assigns `desktop.MainWindow` *before* the one call on that path that blocks (the saved theme, a SQLite read). There is always a window for the lifetime to show. |
+| **The window shows itself** | `PresentWindow()` clears a `FullScreen`/`Minimized` state, forces `ShowInTaskbar="True"` and `Topmost="False"`, then calls `Show()` and `Activate()`. Called from the window itself, from `App` after the `Opened` handler is attached, and from the classic-shell switch — never dependent on one lifetime call. |
+| **Explicit window state** | Both windows declare `WindowStartupLocation="CenterScreen"` and `WindowState="Normal"`. No `WindowState="FullScreen"` anywhere — that is a known way to make an Avalonia window never appear. |
+| **WebView2 never blocks** | Page extraction runs on the thread pool, navigation and script calls are awaited, and there is no `.Result` or `.Wait()` on any WebView2 call, so the deadlock that froze the interface cannot happen. The window is on screen before the browser engine is touched. |
+| **Attribution** | Release commits now carry the official footer: `🤖 Generated with Claude Code` and `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`. |
+| **Version** | `1.0.13` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes. |
 
 ### Older releases
+- **v1.0.12** — start-up reverted to the v1.0.8 code; stock installer wizard with OS-aware WebView2 (109 on Windows 7/8/8.1) and VC++ checks; `.deb` depends on `libgtk-3-0` + `libwebkit2gtk-4.1-0`; `.dmg` targets macOS 10.13+.
 - **v1.0.11** — explicit show/activate start-up path and Claude release attribution (the window path was reverted in v1.0.12).
 - **v1.0.10** — installer launch fixes: bundled WebView2 prerequisite, `WorkingDir={app}`, native libraries inside the single-file bundle, `crash.log` diagnostics.
 - **v1.0.9** — native OS window chrome (no more fake traffic lights) and the taskbar/dock icon fix.
@@ -236,7 +235,7 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 mkdir -p dist
 for arch in x64 x86 arm64; do
   cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
-  ISCC.exe "/DAppVersion=1.0.11" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
+  ISCC.exe "/DAppVersion=1.0.13" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
 done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
@@ -287,7 +286,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.11** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v1.0.13** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
