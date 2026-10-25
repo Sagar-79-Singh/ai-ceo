@@ -1,10 +1,10 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — custom Inno Setup script (v1.0.9)
+;  AI CEO Orchestrator — custom Inno Setup script (v1.0.10)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=1.0.9 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
+;      ISCC.exe /DAppVersion=1.0.10 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
 ;
 ;  The release workflow downloads Inno Setup through Chocolatey, drops the published
 ;  AiCeo-win-x64.exe into dist\ and compiles this file; the resulting Setup.exe is attached to
@@ -21,10 +21,30 @@
 ;    * Per-user install into %LOCALAPPDATA%\Programs — no UAC prompt; an administrator can
 ;      still choose "install for all users" from the dialog.
 ;    * Desktop shortcut (opt-out task) and Start-menu shortcuts are always created.
+;    * v1.0.10: the Microsoft Edge WebView2 Evergreen runtime is installed silently when the app's
+;      web surface needs it and it is missing (the bootstrapper is embedded in Setup.exe when the
+;      release workflow supplies it). Both shortcuts and the post-install launch run with
+;      WorkingDir = {app}, because a self-contained single-file app resolves its extracted native
+;      payload relative to the working directory on some Windows configurations.
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.0.9"
+  #define AppVersion "1.0.10"
+#endif
+
+; The Evergreen WebView2 bootstrapper. The release workflow drops it next to the published
+; executable; when it is absent (a bare local compile) the installer simply skips the optional
+; prerequisite and points the user at the download page instead of failing to build.
+#ifndef WebView2Bootstrapper
+  #define WebView2Bootstrapper "dist\MicrosoftEdgeWebView2Setup.exe"
+#endif
+
+; `#ifexist` resolves a relative path against this script's folder, so a release build that
+; dropped the bootstrapper into dist\ embeds it, and a plain local compile still succeeds.
+#ifndef IncludeWebView2Bootstrapper
+  #ifexist "dist\MicrosoftEdgeWebView2Setup.exe"
+    #define IncludeWebView2Bootstrapper
+  #endif
 #endif
 
 ; The architecture this installer targets: x64 (default), x86 or arm64. The release workflow
@@ -138,6 +158,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#AppSourceExe}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
+#ifdef IncludeWebView2Bootstrapper
+; dontcopy: the bytes stay inside Setup.exe until ExtractTemporaryFile pulls them into {tmp}, so a
+; machine that already has the runtime never pays for them.
+Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebView2Setup.exe"; Flags: dontcopy
+#endif
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Plan, delegate and deliver — one CEO agent, one worker at a time."
@@ -145,10 +170,15 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; WorkingDir is explicit: the app extracts its bundled native libraries (Skia, HarfBuzz, the
+; WebView2 loader) relative to the working directory, and Explorer/Inno otherwise start it in
+; System32. Running it there is exactly the kind of thing that makes an installed build look dead.
+Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\logs"
+Type: files; Name: "{app}\crash.log"
+Type: files; Name: "{app}\startup.log"
 
 [Code]
 const
@@ -163,11 +193,73 @@ const
   TextBody    = $E6D6C9;   { body text }
   TextMuted   = $BDA38E;   { muted text }
 
+  { The Evergreen "WebView2 Runtime" product GUID. Its presence under EdgeUpdate\Clients with a
+    non-empty pv value means the runtime is installed (per-machine or per-user). }
+  WebView2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+
 var
   ProgressTrack: TPanel;
   ProgressFill: TPanel;
   ProgressLabel: TNewStaticText;
   WelcomeNote: TNewStaticText;
+
+{ ------------------------------------------------------------------ WebView2 runtime }
+
+function WebView2KeyHasVersion(RootKey: Integer; const SubKey: String): Boolean;
+var
+  Version: String;
+begin
+  Result := RegQueryStringValue(RootKey, SubKey + '\' + WebView2ClientGuid, 'pv', Version)
+            and (Version <> '');
+end;
+
+function IsWebView2RuntimeInstalled: Boolean;
+begin
+  { Per-user install (the common one on Windows 10/11 desktops). }
+  Result := WebView2KeyHasVersion(HKCU, 'Software\Microsoft\EdgeUpdate\Clients');
+  if Result then
+    exit;
+
+  { Per-machine installs: 64-bit view first, then the 32-bit / WOW6432Node view. }
+  Result := WebView2KeyHasVersion(HKLM, 'Software\Microsoft\EdgeUpdate\Clients');
+  if Result then
+    exit;
+
+  Result := WebView2KeyHasVersion(HKLM, 'Software\WOW6432Node\Microsoft\EdgeUpdate\Clients');
+end;
+
+{ Runs the bundled Evergreen bootstrapper. Returns its exit code, or -1 when it could not run.
+  0 = installed, 1 = already installed, 2 = reboot required, 3 = failed. }
+function InstallWebView2Runtime: Integer;
+var
+  ExitCode: Integer;
+  Bootstrapper: String;
+begin
+  Result := -1;
+
+#ifdef IncludeWebView2Bootstrapper
+  Bootstrapper := ExpandConstant('{tmp}\MicrosoftEdgeWebView2Setup.exe');
+
+  { The entry in [Files] is flagged dontcopy, so pull it out of Setup.exe on demand. }
+  if not FileExists(Bootstrapper) then
+    ExtractTemporaryFile('MicrosoftEdgeWebView2Setup.exe');
+
+  if not FileExists(Bootstrapper) then
+  begin
+    Log('WebView2 runtime: the bootstrapper could not be extracted');
+    exit;
+  end;
+
+  WizardForm.StatusLabel.Caption := 'Installing the Microsoft Edge WebView2 runtime…';
+
+  if Exec(Bootstrapper, '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Result := ExitCode
+  else
+    Log('WebView2 runtime: the bootstrapper could not be started');
+#else
+  Log('WebView2 runtime: no bootstrapper was bundled with this installer');
+#endif
+end;
 
 { ------------------------------------------------------------------ painting helpers }
 
@@ -307,7 +399,7 @@ begin
   WelcomeNote := TNewStaticText.Create(WizardForm);
   WelcomeNote.Parent := WizardForm.WelcomePage;
   WelcomeNote.AutoSize := False;
-  WelcomeNote.Caption := 'AI CEO  ·  v1.0.9  ·  {#AppArchLabel}  ·  strictly one worker at a time';
+  WelcomeNote.Caption := 'AI CEO  ·  v1.0.10  ·  {#AppArchLabel}  ·  strictly one worker at a time';
   WelcomeNote.Font.Color := TextMuted;
   WelcomeNote.Font.Size := 8;
   WelcomeNote.SetBounds(0, WizardForm.WelcomeLabel2.Top + WizardForm.WelcomeLabel2.Height + 12, 420, 30);
@@ -349,8 +441,55 @@ begin
 end;
 
 function InitializeSetup: Boolean;
+var
+  ErrorCode: Integer;
 begin
+  { Never block the install: without the runtime the app still runs, on its native Avalonia shell. }
   Result := True;
+
+  if IsWebView2RuntimeInstalled then
+  begin
+    Log('WebView2 runtime: already installed');
+    exit;
+  end;
+
+#ifdef IncludeWebView2Bootstrapper
+  Log('WebView2 runtime: missing; the bundled Evergreen bootstrapper installs it silently after the files are copied');
+#else
+  Log('WebView2 runtime: missing and no bootstrapper was bundled with this build');
+  if not WizardSilent and (MsgBox('The Microsoft Edge WebView2 runtime is not installed.' + #13#10#13#10 +
+      'AI CEO Orchestrator uses it to draw its Nexus interface. Without it the app still starts, ' +
+      'but falls back to its simpler native interface.' + #13#10#13#10 +
+      'Open Microsoft''s download page now?',
+      mbConfirmation, MB_YESNO) = IDYES) then
+  begin
+    ShellExec('open', 'https://developer.microsoft.com/microsoft-edge/webview2/', '', '', SW_SHOW, ewNoWait, ErrorCode);
+  end;
+#endif
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep <> ssPostInstall then
+    exit;
+
+  if IsWebView2RuntimeInstalled then
+    exit;
+
+  ResultCode := InstallWebView2Runtime;
+  Log('WebView2 bootstrapper exit code: ' + IntToStr(ResultCode));
+
+  if ResultCode = 3 then
+  begin
+    { Optional prerequisite: warn, never fail the installation. }
+    if not WizardSilent then
+      MsgBox('The WebView2 runtime could not be installed automatically.' + #13#10#13#10 +
+             'The application is installed and will start, using its native interface. You can add ' +
+             'the runtime later from https://developer.microsoft.com/microsoft-edge/webview2/',
+             mbInformation, MB_OK);
+  end;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
