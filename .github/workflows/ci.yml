@@ -171,19 +171,29 @@ jobs:
           export GDK_BACKEND=x11
           export NO_AT_BRIDGE=1
           export LANG=C.UTF-8
+          # WebKit's bubblewrap sandbox cannot start inside a container where unprivileged user
+          # namespaces are restricted (Ubuntu 23.10+ with AppArmor); the smoke run only renders our
+          # own local page, so the sandbox is disabled for it.
+          export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+          export WEBKIT_FORCE_SANDBOX=0
 
           timeout 180 xvfb-run -a "$ROOT/AiCeo" --smoke-ui 2>&1 | tee "$RUNNER_TEMP/uismoke.log"
           UI_CODE=${PIPESTATUS[0]}
 
           echo "ui smoke exit code: $UI_CODE"
           if [ "$UI_CODE" -ne 0 ]; then
-            echo "::error title=ui-smoke-failed::the native window or its web view could not be created"
-            [ -f "$ROOT/crash.log" ] && tail -60 "$ROOT/crash.log"
+            # Surface the reason in the check annotations: the raw log lives on blob storage.
+            DETAIL=$(tail -c 3000 "$RUNNER_TEMP/uismoke.log" | tr '\n' '|' | tr -d '\r')
+            echo "::error title=ui-smoke-failed::exit $UI_CODE :: ${DETAIL:0:3400}"
+            if [ -f "$ROOT/crash.log" ]; then
+              CRASH=$(tail -c 2000 "$ROOT/crash.log" | tr '\n' '|' | tr -d '\r')
+              echo "::error title=ui-smoke-crash::${CRASH:0:3400}"
+            fi
             exit 1
           fi
           if ! grep -q "UI SMOKE OK" "$RUNNER_TEMP/uismoke.log"; then
-            echo "::error title=ui-smoke-report::UI SMOKE OK was not reported"
-            tail -40 "$RUNNER_TEMP/uismoke.log"
+            DETAIL=$(tail -c 3000 "$RUNNER_TEMP/uismoke.log" | tr '\n' '|' | tr -d '\r')
+            echo "::error title=ui-smoke-report::UI SMOKE OK was not reported :: ${DETAIL:0:3400}"
             exit 1
           fi
           # The page must have talked to the host and a command must have travelled back.
