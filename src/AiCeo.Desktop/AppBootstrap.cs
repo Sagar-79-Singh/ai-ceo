@@ -70,11 +70,12 @@ internal static class AppBootstrap
             Initialize();
         }
 
+        var services = Services;
         var logger = LoggerFactory.CreateLogger("Startup");
 
         try
         {
-            Services.InitializeDatabaseAsync(logger).GetAwaiter().GetResult();
+            services.InitializeDatabaseAsync(logger).GetAwaiter().GetResult();
             logger.LogInformation("Database ready at {Path}", DatabasePath);
         }
         catch (Exception exception)
