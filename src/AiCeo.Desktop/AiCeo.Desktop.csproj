@@ -11,9 +11,9 @@
 
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator with a local workspace and tool-using agents.</Description>
-    <Version>1.0.9</Version>
-    <AssemblyVersion>1.0.9.0</AssemblyVersion>
-    <FileVersion>1.0.9.0</FileVersion>
+    <Version>1.0.10</Version>
+    <AssemblyVersion>1.0.10.0</AssemblyVersion>
+    <FileVersion>1.0.10.0</FileVersion>
 
     <!-- The icon shown in Explorer/taskbar. Windows-only; ignored by the other targets. -->
     <ApplicationIcon>Assets/aiceo.ico</ApplicationIcon>
@@ -26,6 +26,26 @@
     <!-- Shipping as one file on machines without ICU installed. -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    Single-file, self-contained shipping settings.
+
+    These live in the project file (not only on the CI command line) so a local `dotnet publish -r
+    <rid>` produces exactly the artefact the installers package. IncludeNativeLibrariesForSelfExtract
+    matters most: Avalonia's native payload — libSkiaSharp, libHarfBuzzSharp, the WebView2 loader and
+    friends — is extracted to a temp folder at run time and resolved from there. Without it the
+    bundle cannot find its own native libraries, which is exactly the class of failure that shows up
+    as "the portable build runs but the installed build does nothing".
+
+    They are conditioned on a RuntimeIdentifier because the SDK rejects a self-contained build
+    without one (NETSDK1031), and `dotnet build` / `dotnet test` on the solution must keep working.
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>

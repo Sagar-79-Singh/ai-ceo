@@ -44,23 +44,43 @@ public partial class App : Application
                     AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                     AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
 
+                Program.Trace("services ready; choosing the shell");
+
                 // v1.0.6: the Nexus shell (embedded HTML/WebGL) is the default interface. Machines
                 // without a usable web engine — and the CI smoke run — get the native Avalonia shell.
+                //
+                // v1.0.10: the web host is now created defensively. An installed copy on a machine
+                // without the WebView2 runtime used to die inside the WebView adapter before a single
+                // window existed, which looked like "the app does not launch". Any failure here falls
+                // back to the plain Avalonia shell instead.
                 Window window;
 
                 if (!Program.SmokeTestMode && NexusAvailability.IsSupported)
                 {
-                    Console.WriteLine($"NEXUS: using the web surface ({NexusAvailability.Reason})");
+                    Program.Trace($"NEXUS: web surface selected ({NexusAvailability.Reason})");
 
-                    window = new NexusWindow(
-                        viewModel,
-                        userSettings,
-                        AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
-                        () => OpenClassicShell(desktop, viewModel));
+                    try
+                    {
+                        window = new NexusWindow(
+                            viewModel,
+                            userSettings,
+                            AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
+                            () => OpenClassicShell(desktop, viewModel));
+                    }
+                    catch (Exception exception) when (exception is not OutOfMemoryException)
+                    {
+                        Program.WriteCrashLog(exception, "NexusWindow construction");
+                        Program.Trace("NEXUS: web surface failed to construct; using the classic shell");
+
+                        window = new MainWindow
+                        {
+                            DataContext = viewModel
+                        };
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"NEXUS: classic shell ({NexusAvailability.Reason})");
+                    Program.Trace($"NEXUS: classic shell ({NexusAvailability.Reason})");
 
                     window = new MainWindow
                     {
@@ -87,7 +107,9 @@ public partial class App : Application
                 // Loading agents/workspace touches SQLite, so it runs after the window exists.
                 window.Opened += async (_, _) =>
                 {
+                    Program.Trace($"window opened: {window.GetType().Name}");
                     await viewModel.InitializeAsync();
+                    Program.Trace("view model initialised");
 
                     if (Program.SmokeTestMode && window is MainWindow classicWindow)
                     {
