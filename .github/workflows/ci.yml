@@ -73,6 +73,19 @@ jobs:
           fi
           tail -12 "$RUNNER_TEMP/test.log"
 
+      - name: Release notes template guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          # v1.0.16 shipped notes that read "AiCeo-win-x64-v${PRODUCT_VERSION}.exe": the release body
+          # is a GitHub Actions template, not a shell script, so a shell-style placeholder is copied
+          # into the published release verbatim. Only the version placeholder is checked here — the
+          # packaging steps legitimately use shell variables.
+          if grep -n '${PRODUCT_VERSION}' .github/workflows/release.yml; then
+            echo "::error title=release-body-placeholder::release.yml uses a shell-style version placeholder where a GitHub expression is required"
+            exit 1
+          fi
+
       - name: No-parallelism guard (strict sequential topology)
         shell: bash
         run: |
