@@ -134,7 +134,7 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.13</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.15</span>
       </span>
     </div>
   </div>
@@ -600,8 +600,14 @@
 
 <script>
 /* =====================================================================================
-   Nexus bridge.  C# pushes state with window.nexusReceive(state).  The page posts
-   commands back through chrome.webview.postMessage (falls back to invokeCSharpAction).
+   Nexus bridge (v1.0.15, PhotinoX).
+
+   C# -> page:  messages arrive through window.external.receiveMessage (PhotinoX injects
+                window.external on every engine: WebView2, WKWebView, WebKitGTK).  A packet is
+                either {"type":"state","state":{...}} or {"type":"toast","text":"…","isError":bool}.
+
+   page -> C#:  window.external.sendMessage(json).  Older hosts are still supported through
+                chrome.webview.postMessage and invokeCSharpAction.
    ===================================================================================== */
 (function () {
   'use strict';
@@ -613,12 +619,29 @@
   function post(payload) {
     try {
       var text = JSON.stringify(payload);
-      if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+      if (window.external && typeof window.external.sendMessage === 'function') {
+        window.external.sendMessage(text);
+      } else if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
         window.chrome.webview.postMessage(text);
       } else if (typeof window.invokeCSharpAction === 'function') {
         window.invokeCSharpAction(text);
       }
     } catch (error) { /* host went away */ }
+  }
+
+  /* Subscribes to the host's messages. Registered before the first post() so the very first
+     state snapshot the host sends in reply to "ready" cannot be missed. */
+  function listenToHost() {
+    if (!window.external || typeof window.external.receiveMessage !== 'function') return;
+
+    window.external.receiveMessage(function (message) {
+      try {
+        var packet = typeof message === 'string' ? JSON.parse(message) : message;
+        if (!packet || typeof packet !== 'object') return;
+        if (packet.type === 'state') window.nexusReceive(packet.state);
+        else if (packet.type === 'toast') window.nexusToast(packet.text, !!packet.isError);
+      } catch (error) { console.error('host message', error); }
+    });
   }
 
   function el(id) { return document.getElementById(id); }
@@ -887,7 +910,7 @@
     var icon = el('nx-dispatch-icon');
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
     if (dispatch) dispatch.classList.toggle('opacity-60', false);
-    text('nx-version', s.version ? 'v' + s.version : 'v1.0.13');
+    text('nx-version', s.version ? 'v' + s.version : 'v1.0.15');
     text('nx-footer', s.footer || 'sqlite: aiceo.db');
     var banner = el('nx-banner');
     if (banner) {
@@ -979,6 +1002,8 @@
   }
 
   function wire() {
+    listenToHost();
+
     el('nx-select-workspace').addEventListener('click', function () { post({ type: 'selectWorkspace' }); });
     el('nx-clear-workspace').addEventListener('click', function () { post({ type: 'clearWorkspace' }); });
     el('nx-refresh').addEventListener('click', function () { post({ type: 'refreshHealth' }); });

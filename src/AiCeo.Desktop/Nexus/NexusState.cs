@@ -78,9 +78,9 @@ public sealed record NexusProviderOption(
 public static class NexusJson
 {
     /// <summary>
-    /// camelCase so the JavaScript can read <c>state.workspace.path</c>. The relaxed encoder would
-    /// leave <c>&lt;</c> and quotes raw; this escapes them, which makes every value safe to splice
-    /// into the <c>window.nexusReceive(…)</c> call we evaluate in the page.
+    /// camelCase so the JavaScript can read <c>state.workspace.path</c>. The strict encoder keeps
+    /// every value inert even though v1.0.15 no longer splices the JSON into JavaScript source: the
+    /// snapshot is sent as a message payload and parsed with <c>JSON.parse</c> in the page.
     /// </summary>
     public static JsonSerializerOptions Options { get; } = new()
     {

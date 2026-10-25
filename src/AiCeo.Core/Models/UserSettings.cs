@@ -33,7 +33,7 @@ public enum FontSizePreference
 
 /// <summary>
 /// The single row of UI preferences (id 1). Stored in SQLite next to the agents so the choice
-/// survives restarts, and re-applied to the Avalonia resource dictionary on every launch.
+/// survives restarts, and re-applied to the Nexus page on every launch.
 /// </summary>
 public class UserSettings
 {

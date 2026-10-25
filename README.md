@@ -1,11 +1,12 @@
 # AI CEO Orchestrator
 
-A **cross-platform desktop** AI orchestrator written in **C# / .NET 10**, with an **Avalonia** shell
-that hosts the **Nexus** interface: a live HTML/WebGL console rendered by the platform's own web
-engine inside the app window — no browser tab, no local web server, no Node.js. It runs a strict star
-topology of agents that can read, write and build inside a folder **you** choose. Windows users can
-grab the native installer, and the whole console can be re-themed (dark / light / system, five
-accent colours, three text sizes) from the settings modal.
+A **cross-platform desktop** AI orchestrator written in **C# / .NET 10**, hosted by **PhotinoX**: a
+native OS window around the **Nexus** interface, a live HTML/WebGL console rendered by the operating
+system's own WebView (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux) — no browser
+tab, no local web server, no bundled UI toolkit, no Node.js. It runs a strict star topology of agents
+that can read, write and build inside a folder **you** choose. Windows users can grab the native
+installer, and the whole console can be re-themed (dark / light / system, five accent colours, three
+text sizes) from the settings modal.
 
 ```
 You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  ──▶  CEO  ──▶  You
@@ -14,18 +15,20 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.13 — the window always appears
+## What's new in v1.0.15 — Avalonia is gone, PhotinoX hosts the native WebView
 
 | Area | Change |
 | --- | --- |
-| **Window first, blocking work second** | `OnFrameworkInitializationCompleted` builds the shell and assigns `desktop.MainWindow` *before* the one call on that path that blocks (the saved theme, a SQLite read). There is always a window for the lifetime to show. |
-| **The window shows itself** | `PresentWindow()` clears a `FullScreen`/`Minimized` state, forces `ShowInTaskbar="True"` and `Topmost="False"`, then calls `Show()` and `Activate()`. Called from the window itself, from `App` after the `Opened` handler is attached, and from the classic-shell switch — never dependent on one lifetime call. |
-| **Explicit window state** | Both windows declare `WindowStartupLocation="CenterScreen"` and `WindowState="Normal"`. No `WindowState="FullScreen"` anywhere — that is a known way to make an Avalonia window never appear. |
-| **WebView2 never blocks** | Page extraction runs on the thread pool, navigation and script calls are awaited, and there is no `.Result` or `.Wait()` on any WebView2 call, so the deadlock that froze the interface cannot happen. The window is on screen before the browser engine is touched. |
-| **Attribution** | Release commits now carry the official footer: `🤖 Generated with Claude Code` and `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`. |
-| **Version** | `1.0.13` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes. |
+| **No Avalonia at all** | Every Avalonia package reference and every `.axaml` file is deleted from `src/AiCeo.Desktop`. There is no managed renderer and no compositor between the window and the page. |
+| **PhotinoX shell** | `Program.cs` is built around `PhotinoApplication.Run(new PhotinoWindow(…))`. `Run` shows the window and pumps the native message loop in one call, so the window that is created is the window that is shown — the invisible-window bug is structurally impossible. |
+| **No start-up freeze** | The window appears first. The database, the agent list and the provider probe then run on a background task (`Created` → `NexusPresenter.Start()`). No `.Result`, no `.Wait()`, no UI work before the first frame. |
+| **Native interop** | Page → host commands arrive as `WebMessageReceived` messages (`window.external.sendMessage`); host → page snapshots are sent with `SendWebMessage` (`window.external.receiveMessage`). The page is loaded by the window itself (`LoadString`) with its Tailwind stylesheet inlined, so no `file://` access is involved. |
+| **Native folder picker** | *Select Workspace Folder* now calls `PhotinoWindow.ShowOpenFolder` — the Win32 folder dialog, GTK's chooser or `NSOpenPanel`, depending on the OS. |
+| **Simpler installer** | The Visual C++ 2015-2022 Redistributable check is removed: PhotinoX uses the WebView the system already provides, so it is not a dependency. The WebView2 check is unchanged, including the **109** line for Windows 7 / 8 / 8.1. |
+| **Version** | `1.0.15` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes (1.0.14 is skipped). |
 
 ### Older releases
+- **v1.0.13** — the window always appears: window built and assigned first, `PresentWindow()` show/activate contract, fully asynchronous WebView2 initialisation.
 - **v1.0.12** — start-up reverted to the v1.0.8 code; stock installer wizard with OS-aware WebView2 (109 on Windows 7/8/8.1) and VC++ checks; `.deb` depends on `libgtk-3-0` + `libwebkit2gtk-4.1-0`; `.dmg` targets macOS 10.13+.
 - **v1.0.11** — explicit show/activate start-up path and Claude release attribution (the window path was reverted in v1.0.12).
 - **v1.0.10** — installer launch fixes: bundled WebView2 prerequisite, `WorkingDir={app}`, native libraries inside the single-file bundle, `crash.log` diagnostics.
@@ -34,7 +37,7 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 - **v1.0.7** — portable build *and* native installer on every platform: 3 Inno Setup installers, 2 `.deb`, 2 `.dmg`.
 - **v1.0.6** — Nexus interface: embedded HTML/Tailwind/WebGL surface, settings modal, graceful fallback.
 - **v1.0.5** — custom dark Inno Setup installer, settings page (theme / accent / text size) persisted in `UserSettings`.
-- **v1.0.4** — Avalonia UI replaces MAUI; Linux/macOS builds; single-file executables; `crash.log`.
+- **v1.0.4** — Avalonia UI replaces MAUI (Avalonia itself is gone in v1.0.15); Linux/macOS builds; single-file executables; `crash.log`.
 - **v1.0.3** — MAUI Blazor Hybrid desktop app, local workspace, tool calling, guardrail, agentic loop.
 - **v1.0.2** — multi-provider LLM layer and health badges.
 
@@ -49,7 +52,7 @@ Download one file from the **Releases** page and run it.
 | **Windows x64 (recommended)** | `Setup-win-x64.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64.exe` |
 | Windows x86 | `Setup-win-x86.exe` | `AiCeo-win-x86.exe` |
 | Windows ARM64 | `Setup-win-arm64.exe` | `AiCeo-win-arm64.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`) | `AiCeo-linux-x64.tar.gz` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64.tar.gz` |
 | Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64.deb` | `AiCeo-linux-arm64.tar.gz` |
 | macOS Intel | `AiCeo-osx-x64.dmg` — open, drag the app to Applications | `AiCeo-osx-x64.tar.gz` |
 | macOS Apple Silicon | `AiCeo-osx-arm64.dmg` | `AiCeo-osx-arm64.tar.gz` |
@@ -61,8 +64,14 @@ Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 - **Microsoft Edge WebView2 Runtime** — the Nexus interface draws itself with it. Windows 10/11 get
   the current Evergreen bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the
   last runtime that supports them. Setup asks first, and **cancels the installation if you decline**.
-- **Microsoft Visual C++ 2015-2022 Redistributable** — offered when missing, never forced.
+- **Microsoft Visual C++ 2015-2022 Redistributable** — no longer checked (v1.0.15): PhotinoX uses
+  the WebView the system provides, so the redistributable is not a dependency of this build.
 - **.NET is not checked**: the executable is published with `--self-contained true`.
+
+> **32-bit Windows:** `AiCeo-win-x86.exe` / `Setup-win-x86.exe` still build and install, but the
+> native window/WebView bridge PhotinoX ships is x64/ARM64 only, so the 32-bit build cannot open the
+> Nexus window — it says so in `crash.log` instead of failing obscurely. A 32-bit Windows 10
+> installation running on 64-bit hardware can and should use the **x64** build.
 
 Then, in the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
@@ -71,8 +80,9 @@ They are not code-signed: on Windows choose **More info → Run anyway** if Smar
 macOS use right-click → **Open** the first time; on Linux `chmod +x AiCeo` if your tar extractor
 dropped the bit.
 
-**Requirements:** Windows 10/11 (x64, x86 or ARM64), a modern glibc Linux (x64 or ARM64), or macOS
-13+ (Intel or Apple Silicon).
+**Requirements:** Windows 10/11 (x64, x86 or ARM64) with the WebView2 runtime (the installer adds it
+when missing), a modern glibc Linux with `libgtk-3-0` + `libwebkit2gtk-4.1-0` + `libnotify4` (the
+`.deb` declares all three), or macOS 10.13+ (Intel or Apple Silicon).
 
 > **Windows 7 / 8 / 8.1:** the app itself has no Windows-specific dependencies any more (that was the
 > MAUI crash), but .NET 10 — the runtime baked into the executable — officially supports Windows 10
@@ -183,16 +193,14 @@ src/AiCeo.Core/            portable class library (no UI)
   Services/                AgentOrchestrator, LlmGateway, AgentDirectory, WorkspaceService,
                            UserSettingsService, …
   Tools/                   WorkspaceGuard, CommandGuard, ToolCatalog, ToolService, ToolResult
-src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
-  Program.cs               entry point: global try/catch + crash.log
-  App.axaml(.cs)           token-based styles, DI bootstrap, startup-failure window
-  Theme/ThemeManager.cs    writes a ThemePalette into the application resources
-  Views/NexusWindow.axaml  the main window (native decorations): hosts the embedded HTML surface
-  Views/MainWindow.axaml   the previous native shell (fallback, and CI smoke tests)
-  Nexus/                   NexusAssets (extracts the page), NexusPresenter (state + commands),
-                           NexusAvailability (is a web engine usable?), NexusState (the JSON contract)
-  ViewModels/              MainViewModel, SettingsViewModel, AgentEditorViewModel, cards, feed items
-  AvaloniaWorkspacePicker  native folder picker through IStorageProvider
+src/AiCeo.Desktop/         PhotinoX desktop head (Windows · Linux · macOS) — no XAML at all
+  Program.cs               entry point: PhotinoApplication.Run, the NexusShell window, crash.log
+  UiThread.cs              the only file that knows about PhotinoDispatcher (+ SynchronizationContext)
+  PhotinoWorkspacePicker   native folder picker through PhotinoWindow.ShowOpenFolder
+  Nexus/                   NexusAssets (reads the embedded page, inlines its stylesheet),
+                           NexusPresenter (state snapshots + command router), NexusState (JSON contract)
+  ViewModels/              MainViewModel, AgentEditorViewModel, cards, feed items (no UI toolkit types)
+  AppBootstrap.cs          DI container, database preparation, --self-test
   Assets/                  nexus.html + nexus.css (the Nexus console), aiceo.ico, aiceo.png, theme.css
 installer.iss              Inno Setup script (root) → Setup-win-<arch>.exe (x64 / x86 / arm64)
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
@@ -217,7 +225,9 @@ Existing agents, tasks and logs are preserved.
 ## Build from source
 
 ```bash
-# prerequisites: the .NET 10 SDK (no workload needed — Avalonia is plain NuGet)
+# prerequisites: the .NET 10 SDK (no workload needed — PhotinoX is plain NuGet).
+# On Linux the system WebView is needed too:
+# sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libnotify4
 dotnet restore src/AiCeo.Desktop/AiCeo.Desktop.csproj
 
 # run it
@@ -235,7 +245,7 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 mkdir -p dist
 for arch in x64 x86 arm64; do
   cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
-  ISCC.exe "/DAppVersion=1.0.13" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
+  ISCC.exe "/DAppVersion=1.0.15" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
 done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
@@ -246,38 +256,48 @@ hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.ap
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
-publishing to Linux/macOS from any host works because Avalonia is a plain NuGet dependency; only the
-final executable has to match the target OS.
+publishing to Linux/macOS from any host works because PhotinoX is a plain NuGet package (its native
+library is compiled per RID); only the final executable has to match the target OS.
 
 ### Theming
 
-Every colour and font size in the UI is a *dynamic resource* keyed by a token name (`AppBg`,
-`Accent`, `CardBg`, `FontBase`, …). On startup — and whenever the settings panel changes anything —
-`ThemeManager` builds a `ThemePalette` from `UserSettings` (`UiTheme.Build`) and writes it into
-`Application.Resources`; every style in `App.axaml` refers to those keys with
-`{DynamicResource …}`, so the whole window repaints without a restart. `ThemePalette.ToCss()` emits
-the same tokens as `--color-*` / `--font-*` custom properties, and `Assets/theme.css` is that output
-for dark and light (a unit test keeps it in sync).
+The Nexus page owns every pixel, so theming happens in CSS custom properties on `<html>`:
+`data-theme` (`dark` / `light`, or the OS preference for `System`), `data-accent` and `--ui-scale`.
+Choosing a theme, accent or text size in the settings modal repaints immediately and posts
+`{"type":"settings",…}` to the host, which stores it in the `UserSettings` table. On the next start
+`NexusPresenter` renders the saved values into the first state snapshot, so the page comes up in the
+chosen palette.
 
-The Nexus surface consumes the same choices through a second contract: `NexusPresenter` renders the
-view model as one JSON snapshot (`window.nexusReceive(…)`), and the page answers with commands
-(`dispatch`, `selectWorkspace`, `settings`, `saveAgent`, …) over `window.chrome.webview.postMessage`.
-Theme, accent and text size are CSS custom properties on `<html>`, so a change is a repaint, not a
-reload. `AICEO_UI=classic` forces the native shell; `AICEO_UI=nexus` forces the web surface.
+`UiTheme` in `AiCeo.Core` still holds the token set and `ThemePalette.ToCss()`, which is what
+`Assets/theme.css` contains (a unit test keeps the two in sync); it is plain data, not a framework
+dependency, so the palette can be exported anywhere.
+
+### The host bridge
+
+| Direction | Mechanism |
+| --- | --- |
+| C# → page | `PhotinoWindow.SendWebMessage("{\"type\":\"state\",\"state\":{…}}")` → the page's `window.external.receiveMessage` callback → `window.nexusReceive(state)`; toasts use `{"type":"toast","text":…,"isError":…}` → `window.nexusToast(…)`. |
+| page → C# | `window.external.sendMessage("{\"type\":\"dispatch\",…}")` → `PhotinoWindow.RegisterWebMessageReceivedHandler` → `NexusPresenter.HandleMessageAsync`. |
+
+`window.chrome.webview.postMessage` is still understood as a fallback, so the same page also works in
+a plain WebView2 host. Command types: `ready`, `refresh`, `selectWorkspace`, `clearWorkspace`,
+`refreshHealth`, `setTools`, `dispatch`, `stop`, `settings`, `saveAgent`, `deleteAgent`, `makeCeo`.
 
 ### Verifying a build without a GUI
 
 Every published binary accepts `--self-test`. It opens the database, prints the resolved paths and
 exercises the workspace guardrail (relative path allowed, `..` and absolute escapes refused), then
-exits with `0`. `--smoke-ui` additionally checks that the bundled Nexus page and stylesheet are
-present and that they can be extracted to disk. CI runs exactly that on the real single-file binaries, so a build that cannot start
+exits with `0`. `--smoke-ui` additionally opens the real native window on a display (Xvfb in CI),
+waits for the page's `ready` handshake over the native web-message bridge, round-trips a settings
+command through the host, and exits `0` only if all of that worked. CI runs exactly that on the real
+single-file binary, so a build that cannot start — or whose WebView cannot render the console —
 never reaches a release.
 
 ### CI / release
 
 - `ci.yml` — core library + unit tests on Linux; a real Linux single-file publish that is **run**
-  (`--self-test`) and **smoke-tested on a virtual display** (`--smoke-ui`, which also opens the
-  settings panel and switches theme/accent/size); a Windows single-file publish whose `.exe` is also
+  (`--self-test`) and **smoke-tested on a virtual display** (`--smoke-ui`: native window, WebKitGTK
+  web view, page→host handshake, settings round-trip); a Windows single-file publish whose `.exe` is also
   run and whose `installer.iss` is compiled for x64, x86 and arm64 with Inno Setup on every push
   (the cross-architecture builds use stub executables, which still exercises the preprocessor
   branches and Inno's ARM64 support); and a grep that fails the
@@ -286,7 +306,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.13** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v1.0.15** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
@@ -310,8 +330,9 @@ Seeded on first run (edit or delete any of them in the sidebar):
 
 - **C# only.** No Python, no Node.js, no LangChain/CrewAI — the orchestration, the plan parser and
   the tool loop are ~600 lines of straight C#.
-- **No heavyweight UI runtime.** Avalonia targets plain `net10.0` with the .NET runtime inside the
-  single file, so there is nothing else to install and nothing that can be missing at startup.
+- **No heavyweight UI runtime.** PhotinoX targets plain `net10.0` and draws with the WebView the OS
+  already ships, with the .NET runtime inside the single file — so there is no UI toolkit to install
+  and nothing of ours that can be missing at startup.
 - **One chokepoint.** All path decisions live in `WorkspaceGuard`; all command decisions live in
   `CommandGuard`; all tool dispatch lives in `ToolService`. Nothing else opens a file or a process.
 - **Bounded.** Tool rounds, tool calls, file sizes, command output, command time and list sizes all

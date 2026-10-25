@@ -1,23 +1,26 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — Inno Setup script (v1.0.13)
+;  AI CEO Orchestrator — Inno Setup script (v1.0.15)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=1.0.13 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
+;      ISCC.exe /DAppVersion=1.0.15 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
 ;
-;  v1.0.13 design
+;  v1.0.15 design
 ;    * A stock Inno Setup wizard — no custom palette, no hand-painted controls, no custom
 ;      artwork, no altered [Messages]. It looks and behaves exactly like the native installer
 ;      every other Windows program uses, which is also what makes it accessible and DPI-safe.
-;    * Smart prerequisites, checked before any file is copied:
-;        - Microsoft Edge WebView2 Runtime. If it is missing the version of Windows decides
-;          which bootstrapper is used: Windows 10/11 get the current Evergreen bootstrapper,
-;          while Windows 7 / 8 / 8.1 get the 109 line (109.0.1518.x, the last runtime that
-;          supports those systems). The user is asked; declining aborts the installation.
-;        - Microsoft Visual C++ 2015-2022 Redistributable (x64 / x86 / arm64). Prompted for,
-;          never forced: the app is self-contained, so a missing redistributable can only cost
-;          a native component, never the launch.
+;    * One prerequisite, checked before any file is copied:
+;        - Microsoft Edge WebView2 Runtime. v1.0.15 draws the whole interface with the operating
+;          system's own WebView through PhotinoX, so this is the only native component the app
+;          cannot ship itself. If it is missing the version of Windows decides which bootstrapper
+;          is used: Windows 10/11 get the current Evergreen bootstrapper, while Windows 7 / 8 / 8.1
+;          get the 109 line (109.0.1518.x, the last runtime that supports those systems). The user
+;          is asked; declining aborts the installation.
+;        - The Microsoft Visual C++ 2015-2022 Redistributable is NO LONGER checked (v1.0.15).
+;          PhotinoX talks to the WebView the OS already provides and the app is self-contained, so
+;          the redistributable is not a dependency of anything that ships here. Removing the check
+;          removes one prompt and one download from every install.
 ;        - .NET is deliberately NOT checked: the executable is published with
 ;          --self-contained true and carries the runtime inside it.
 ;    * Per-user install into %LOCALAPPDATA%\Programs — no UAC prompt; an administrator can still
@@ -29,7 +32,7 @@
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.0.13"
+  #define AppVersion "1.0.15"
 #endif
 
 ; The Evergreen WebView2 bootstrapper. The release workflow drops it next to the published
@@ -154,9 +157,9 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-; WorkingDir is explicit: the app extracts its bundled native libraries (Skia, HarfBuzz, the
-; WebView2 loader) relative to the working directory, and Explorer/Inno otherwise start it in
-; System32.
+; WorkingDir is explicit: the app extracts its bundled native libraries (the PhotinoX native
+; window/WebView bridge and the WebView2 loader) relative to the working directory, and
+; Explorer/Inno otherwise start it in System32.
 Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
@@ -179,11 +182,6 @@ const
     cut-off is why this branch exists at all. }
   WebView2LegacyUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
   WebView2LegacyLabel = '109.0.1518.x (the last WebView2 runtime that supports Windows 7 / 8 / 8.1)';
-
-  { Visual C++ 2015-2022 Redistributable, per architecture. }
-  VCRedistX64Url = 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
-  VCRedistX86Url = 'https://aka.ms/vs/17/release/vc_redist.x86.exe';
-  VCRedistArm64Url = 'https://aka.ms/vs/17/release/vc_redist.arm64.exe';
 
   WebView2BootstrapperName = 'MicrosoftEdgeWebView2Setup.exe';
   DownloadPageUrl = 'https://developer.microsoft.com/microsoft-edge/webview2/';
@@ -252,54 +250,6 @@ begin
             or ((Version.Major = 10) and (Version.Build < 17763));
 end;
 
-{ The 2015-2022 redistributables share one ABI and one key, 14.0\VC\Runtimes\<arch>, and each
-  writes a "Version" string ("14.38.33135.00") whether it was installed per-machine or bundled
-  with another product. }
-function VCRedistPresentIn(RootKey: Integer; const Prefix, Arch: String): Boolean;
-var
-  Version: String;
-begin
-  Result := RegQueryStringValue(
-      RootKey, Prefix + 'Microsoft\VisualStudio\14.0\VC\Runtimes\' + Arch, 'Version', Version)
-    and (Version <> '');
-
-  if Result then
-    Log('Visual C++ redistributable found (' + Arch + '): ' + Version);
-end;
-
-function IsVCRedistInstalled: Boolean;
-begin
-  { The native view first, then the 32-bit view for an installer or a product that registered
-    there. Either architecture is good enough: it only has to supply the shared CRT. }
-  Result := VCRedistPresentIn(HKLM, 'Software\', 'x64')
-            or VCRedistPresentIn(HKLM, 'Software\WOW6432Node\', 'x64')
-            or VCRedistPresentIn(HKLM, 'Software\', 'x86')
-            or VCRedistPresentIn(HKLM, 'Software\WOW6432Node\', 'x86')
-            or VCRedistPresentIn(HKLM, 'Software\', 'arm64');
-end;
-
-function VCRedistUrl: String;
-begin
-#if AppArch == "x86"
-  Result := VCRedistX86Url;
-#elif AppArch == "arm64"
-  Result := VCRedistArm64Url;
-#else
-  Result := VCRedistX64Url;
-#endif
-end;
-
-function VCRedistFileName: String;
-begin
-#if AppArch == "x86"
-  Result := 'vc_redist.x86.exe';
-#elif AppArch == "arm64"
-  Result := 'vc_redist.arm64.exe';
-#else
-  Result := 'vc_redist.x64.exe';
-#endif
-end;
-
 { ------------------------------------------------------------------ acquisition }
 
 { Returns the path of the WebView2 bootstrapper in the temporary folder, extracting the copy embedded in
@@ -333,25 +283,6 @@ begin
 
     Result := FileExists(WebView2InstallerPath);
   end;
-end;
-
-{ Downloads a file into the temporary folder and returns its path ('' on failure). }
-function AcquireInstaller(const Url, FileName: String): String;
-begin
-  Result := ExpandConstant('{tmp}\') + FileName;
-
-  if FileExists(Result) then
-    exit;
-
-  try
-    Log('downloading ' + Url);
-    DownloadTemporaryFile(Url, FileName, '', nil);
-  except
-    Log('download failed: ' + GetExceptionMessage);
-  end;
-
-  if not FileExists(Result) then
-    Result := '';
 end;
 
 { ------------------------------------------------------------------ prerequisites }
@@ -443,66 +374,6 @@ begin
     Log('WebView2 runtime: the bootstrapper reported failure (' + IntToStr(ResultCode) + ')');
 end;
 
-{ Prompted, never required: the app is self-contained, so this only restores native components
-  (the WebView2 loader among them) that some configurations rely on. }
-function EnsureVCRedist: Boolean;
-var
-  RedistPath, RedistUrl: String;
-  ResultCode: Integer;
-begin
-  Result := True;
-
-  if IsVCRedistInstalled then
-  begin
-    Log('Visual C++ redistributable: already installed');
-    exit;
-  end;
-
-  if not WizardSilent then
-  begin
-    if MsgBox(
-      'Microsoft Visual C++ 2015-2022 Redistributable is not installed.' + #13#10#13#10 +
-      'It supplies native components that some Windows configurations need. {#AppName} can be ' +
-      'installed without it, but installing it now is recommended.' + #13#10#13#10 +
-      'Download and install it now?',
-      mbConfirmation, MB_YESNO) = IDNO then
-    begin
-      Log('Visual C++ redistributable: the user declined; continuing');
-      exit;
-    end;
-  end;
-
-  RedistUrl := VCRedistUrl;
-  RedistPath := AcquireInstaller(RedistUrl, VCRedistFileName);
-
-  if RedistPath = '' then
-  begin
-    Log('Visual C++ redistributable: the installer could not be downloaded; continuing');
-    exit;
-  end;
-
-  if not Exec(RedistPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Log('Visual C++ redistributable: the installer could not be started; continuing');
-    exit;
-  end;
-
-  Log('Visual C++ redistributable exit code: ' + IntToStr(ResultCode));
-
-  { 0 / 1638 / 3010 = installed, a newer one already present, or a reboot is pending. Anything
-    else is reported but never blocks the installation. }
-  if (ResultCode <> 0) and (ResultCode <> 1638) and (ResultCode <> 3010) and (ResultCode <> 5100) then
-  begin
-    if not WizardSilent then
-      MsgBox(
-        'The Visual C++ redistributable could not be installed automatically (code '
-        + IntToStr(ResultCode) + ').' + #13#10#13#10 +
-        '{#AppName} installs anyway; you can add the redistributable later from ' +
-        'https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist',
-        mbInformation, MB_OK);
-  end;
-end;
-
 { ------------------------------------------------------------------ wizard events }
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -528,7 +399,4 @@ begin
       + 'Install it from ' + DownloadPageUrl + ' and run this setup again.';
     exit;
   end;
-
-  { Prompted only; a decline or a failure is logged and the installation continues. }
-  EnsureVCRedist;
 end;
