@@ -14,19 +14,21 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.11 — the window is guaranteed to appear
+## What's new in v1.0.12 — no freeze, installers that check what they need
 
 | Area | Change |
 | --- | --- |
-| **No blocking on the UI thread** | The theme/accent/font row used to be read from SQLite inside `OnFrameworkInitializationCompleted` through `GetAwaiter().GetResult()` — on the very thread that has to show the window. It is now preloaded in `Program.Main` *before* Avalonia installs its dispatcher and `SynchronizationContext`, so there is no continuation to deadlock on and start-up performs no blocking call at all. |
-| **The window shows itself** | `WindowPresentation.PrepareForDisplay` clears a `Minimized` state, forces `ShowInTaskbar`, calls `Show()` and `Activate()`, and schedules one deferred re-activate for the first frame. Both windows call it from their `Opened` handler, and the app calls it right after assigning `MainWindow`, so visibility no longer depends on a single lifetime call. |
-| **Fitted to the monitor** | A 1480×940 window on a 1366×768 laptop opened mostly off-screen, with its title bar out of reach. The window is now clamped to the monitor's working area and re-centred before it is shown. |
-| **Explicit window state** | Both windows declare `WindowState="Normal"`, `ShowInTaskbar="True"` and `WindowStartupLocation="CenterScreen"` with full native decorations — no `WindowDecorations="None"` anywhere. |
-| **Failures stay visible** | The `Opened` handler is guarded: a failing load writes `crash.log` and shows a banner instead of killing the process from an `async void` handler. |
-| **Attribution** | The release workflow records each release with a `Co-authored-by: Claude <noreply@anthropic.com>` commit from the Actions bot. |
-| **Version** | `1.0.11` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes. |
+| **Start-up reverted** | The v1.0.11 show/activate path could leave the app running with no window on some machines, so `App.axaml.cs`, both window classes and the WebView initialisation are back to their v1.0.8 state — the build where the portable `.exe` opened reliably. Standard Avalonia window defaults, no decorative overrides, no `Show()`/`Activate()` from framework initialisation, no monitor-fitting logic. |
+| **Diagnostics kept** | `crash.log` and `startup.log` are still written for unhandled exceptions, so a future regression leaves evidence. |
+| **Standard installer wizard** | The custom dark Inno Setup theme, its hand-painted controls, its artwork and its overridden messages are gone. `Setup.exe` is the stock native wizard. |
+| **WebView2, OS-aware** | Setup detects the runtime and picks the bootstrapper by Windows version: the current Evergreen build on Windows 10/11, the **109** line (109.0.1518.x, the last one that supports them) on Windows 7 / 8 / 8.1. The user is asked; **declining aborts the installation**. |
+| **Visual C++ check** | The 2015-2022 Redistributable is detected and offered — prompted for, never forced. `.NET` is deliberately not checked: the executable is self-contained. |
+| **Linux dependencies** | The `.deb` now **depends** on `libgtk-3-0` and `libwebkit2gtk-4.1-0`, so `apt` resolves the toolkit and the web engine instead of leaving the Nexus surface to fall back. |
+| **macOS floor** | The `.dmg` targets **macOS 10.13 (High Sierra) or later**: the packaging script aborts below it, `Info.plist` declares `LSMinimumSystemVersion`, and the app shows an alert and exits on anything older. |
+| **Version** | `1.0.12` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes. |
 
 ### Older releases
+- **v1.0.11** — explicit show/activate start-up path and Claude release attribution (the window path was reverted in v1.0.12).
 - **v1.0.10** — installer launch fixes: bundled WebView2 prerequisite, `WorkingDir={app}`, native libraries inside the single-file bundle, `crash.log` diagnostics.
 - **v1.0.9** — native OS window chrome (no more fake traffic lights) and the taskbar/dock icon fix.
 - **v1.0.8** — gear-shaped Settings button, `Enter` to dispatch (`Shift` + `Enter` for a newline, IME-safe), amber provider `CHECKING…` state.
@@ -48,17 +50,20 @@ Download one file from the **Releases** page and run it.
 | **Windows x64 (recommended)** | `Setup-win-x64.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64.exe` |
 | Windows x86 | `Setup-win-x86.exe` | `AiCeo-win-x86.exe` |
 | Windows ARM64 | `Setup-win-arm64.exe` | `AiCeo-win-arm64.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` | `AiCeo-linux-x64.tar.gz` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`) | `AiCeo-linux-x64.tar.gz` |
 | Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64.deb` | `AiCeo-linux-arm64.tar.gz` |
 | macOS Intel | `AiCeo-osx-x64.dmg` — open, drag the app to Applications | `AiCeo-osx-x64.tar.gz` |
 | macOS Apple Silicon | `AiCeo-osx-arm64.dmg` | `AiCeo-osx-arm64.tar.gz` |
 
 Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
-`Setup-win-*.exe` also installs the Microsoft Edge **WebView2** runtime when it is missing — the
-Nexus interface draws itself with it, and its absence is the usual reason an installed copy looked
-dead while the portable `.exe` worked. The prerequisite is optional: if it cannot be installed the
-app still opens on its native shell and the installer points at the download page.
+`Setup-win-*.exe` checks its prerequisites before it copies anything:
+
+- **Microsoft Edge WebView2 Runtime** — the Nexus interface draws itself with it. Windows 10/11 get
+  the current Evergreen bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the
+  last runtime that supports them. Setup asks first, and **cancels the installation if you decline**.
+- **Microsoft Visual C++ 2015-2022 Redistributable** — offered when missing, never forced.
+- **.NET is not checked**: the executable is published with `--self-contained true`.
 
 Then, in the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
@@ -191,7 +196,6 @@ src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
   AvaloniaWorkspacePicker  native folder picker through IStorageProvider
   Assets/                  nexus.html + nexus.css (the Nexus console), aiceo.ico, aiceo.png, theme.css
 installer.iss              Inno Setup script (root) → Setup-win-<arch>.exe (x64 / x86 / arm64)
-installer/                 wizard-large.bmp / wizard-small.bmp artwork for the installer
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
 ```
 

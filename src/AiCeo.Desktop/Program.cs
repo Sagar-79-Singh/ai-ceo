@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia;
@@ -38,22 +39,24 @@ internal static class Program
 
         try
         {
+            // v1.0.12: the macOS image declares macOS 10.13 (High Sierra) as its floor. Finder obeys
+            // LSMinimumSystemVersion, but a copy launched from Terminal or a package manager does
+            // not, so the floor is enforced here as well: a dialog explains the problem and the
+            // process exits instead of failing somewhere deep inside the runtime.
+            if (IsUnsupportedMacOs())
+            {
+                Trace($"macOS is older than the supported {MinimumMacOs}");
+                WriteCrashLog(null, "Unsupported macOS version");
+                ShowMacOsVersionAlert();
+                return 1;
+            }
+
             // Headless smoke test used by CI: proves the published single-file binary starts, can
             // open its database and that the workspace guardrail still refuses escapes.
             if (args.Any(argument => string.Equals(argument, "--self-test", StringComparison.OrdinalIgnoreCase)))
             {
                 return SelfTest.Run();
             }
-
-            // v1.0.11: everything that touches SQLite happens here, before Avalonia installs its
-            // dispatcher and SynchronizationContext. The shell used to read the theme row on the UI
-            // thread during startup; if an await inside that read resumes on the dispatcher, the
-            // blocking bridge freezes the thread that is about to show the window — the app keeps
-            // running (and keeps its taskbar button) with nothing on screen. Preparing the container
-            // and the saved appearance first means the window can be created and shown with no
-            // blocking call on the UI thread at all.
-            AppBootstrap.Preload();
-            Trace($"database ready: {AppBootstrap.DatabasePath} (warning: {AppBootstrap.StartupWarning ?? "none"})");
 
             // UI smoke test used by CI: builds the real window (XAML + DI + database) on a virtual
             // display, closes it after a couple of seconds and exits 0.
@@ -186,6 +189,96 @@ internal static class Program
         }
 
         yield return Path.Combine(Path.GetTempPath(), fileName);
+    }
+
+    /// <summary>
+    /// The oldest macOS this build supports, matching the .dmg's <c>LSMinimumSystemVersion</c>.
+    /// </summary>
+    private static readonly Version MinimumMacOs = new(10, 13);
+
+    /// <summary>
+    /// True on macOS versions older than the 10.13 (High Sierra) floor declared in the .dmg.
+    ///
+    /// The version is read from <c>sw_vers</c> rather than <see cref="Environment.OSVersion"/>:
+    /// on macOS the latter reports the Darwin kernel release (23.x on macOS 14), so comparing it
+    /// directly against a macOS version would misjudge every modern Mac. If the probe fails for
+    /// any reason the app is allowed to start — a diagnostic must never be the reason it refuses.
+    /// </summary>
+    private static bool IsUnsupportedMacOs()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "/usr/bin/sw_vers",
+                ArgumentList = { "-productVersion" },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+
+            if (process is null)
+            {
+                return false;
+            }
+
+            var text = process.StandardOutput.ReadToEnd().Trim();
+
+            if (!process.WaitForExit(5_000))
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Already gone.
+                }
+
+                return false;
+            }
+
+            return Version.TryParse(text, out var version) && version < MinimumMacOs;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort native alert for the unsupported-macOS path: the app is a GUI process, so
+    /// writing to stderr would show the user nothing. Never throws, never blocks for long.
+    /// </summary>
+    private static void ShowMacOsVersionAlert()
+    {
+        try
+        {
+            var script =
+                "display alert \"AI CEO Orchestrator\" message \"This Mac runs a version of macOS older "
+                + "than 10.13 (High Sierra), which AI CEO Orchestrator requires. Please update macOS, "
+                + "then open the app again.\" as critical";
+
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "/usr/bin/osascript",
+                ArgumentList = { "-e", script },
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+
+            process?.WaitForExit(15_000);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // The exit code and the log already carry the outcome.
+        }
     }
 
     /// <summary>
