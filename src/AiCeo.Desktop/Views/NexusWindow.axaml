@@ -7,12 +7,7 @@
         MinWidth="1120"
         MinHeight="700"
         Background="#07080B"
-        WindowStartupLocation="CenterScreen"
-        WindowState="Normal"
-        ShowInTaskbar="True"
-        Icon="avares://AiCeo/Assets/aiceo.ico"
-        SystemDecorations="Full"
-        ExtendClientAreaToDecorationsHint="False">
+        WindowStartupLocation="CenterScreen">
 
     <!--
         The visible interface is the HTML shell (Assets/nexus.html) rendered by the platform web
