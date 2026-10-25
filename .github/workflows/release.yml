@@ -368,7 +368,7 @@ jobs:
           Installed-Size: $INSTALLED_KB
           Maintainer: Sagar Singh <sagar@users.noreply.github.com>
           Homepage: https://github.com/Sagar-79-Singh/ai-ceo
-          Depends: libx11-6, libfontconfig1, libgtk-3-0, libwebkit2gtk-4.1-0
+          Depends: libx11-6, libfontconfig1, libgtk-3-0, libwebkit2gtk-4.1-0, libnotify4
           Recommends: fonts-dejavu-core
           Description: AI CEO Orchestrator
            A cross-platform desktop AI orchestrator written in C# / .NET 10.

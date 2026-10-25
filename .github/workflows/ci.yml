@@ -104,8 +104,10 @@ jobs:
           # PhotinoX draws with the system WebView: WebKitGTK 4.1 (the .deb depends on the same
           # package). Xvfb provides the display the smoke test needs.
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 xvfb libgl1-mesa-dri fonts-dejavu-core
-          dpkg -l | grep -E "libwebkit2gtk-4.1-0|libgtk-3-0" || true
+          # libnotify4 is a shared-library dependency of PhotinoX.Native on Linux (application
+          # notifications); without it the native bridge cannot be loaded at all.
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 libnotify4 xvfb libgl1-mesa-dri fonts-dejavu-core
+          dpkg -l | grep -E "libwebkit2gtk-4.1-0|libgtk-3-0|libnotify4" || true
 
       - name: Publish (single file, self-contained)
         shell: bash
