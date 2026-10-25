@@ -56,10 +56,7 @@ public partial class App : Application
                         viewModel,
                         userSettings,
                         AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
-                        () => OpenClassicShell(desktop, viewModel))
-                    {
-                        Icon = TryLoadIcon()
-                    };
+                        () => OpenClassicShell(desktop, viewModel));
                 }
                 else
                 {
@@ -67,10 +64,13 @@ public partial class App : Application
 
                     window = new MainWindow
                     {
-                        DataContext = viewModel,
-                        Icon = TryLoadIcon()
+                        DataContext = viewModel
                     };
                 }
+
+                // The windows declare their icon in XAML; this only fills the gap if that failed
+                // (for example a trimmed resource), so the taskbar never shows a blank square.
+                window.Icon ??= TryLoadIcon();
 
                 desktop.MainWindow = window;
 
@@ -114,9 +114,10 @@ public partial class App : Application
     {
         var classic = new MainWindow
         {
-            DataContext = viewModel,
-            Icon = TryLoadIcon()
+            DataContext = viewModel
         };
+
+        classic.Icon ??= TryLoadIcon();
 
         var previous = desktop.MainWindow;
         desktop.MainWindow = classic;
@@ -225,19 +226,32 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Window/taskbar icon. Prefers the multi-resolution <c>aiceo.ico</c> (crisp at 16/24/32/48 px in
+    /// the Windows taskbar and Alt-Tab switcher) and falls back to the PNG, then to nothing: the icon
+    /// is cosmetic and must never stop the shell from starting.
+    /// </summary>
     private static WindowIcon? TryLoadIcon()
     {
-        try
+        var assemblyName = typeof(App).Assembly.GetName().Name ?? "AiCeo";
+
+        foreach (var asset in new[] { "Assets/aiceo.ico", "Assets/aiceo.png" })
         {
-            var assemblyName = typeof(App).Assembly.GetName().Name ?? "AiCeo";
-            using var stream = AssetLoader.Open(new Uri($"avares://{assemblyName}/Assets/aiceo.png"));
-            return new WindowIcon(stream);
+            try
+            {
+                using var stream = AssetLoader.Open(new Uri($"avares://{assemblyName}/{asset}"));
+                return new WindowIcon(stream);
+            }
+            catch (Exception exception) when (exception is IOException
+                                                 or ArgumentException
+                                                 or InvalidOperationException
+                                                 or NotSupportedException)
+            {
+                // Try the next format.
+            }
         }
-        catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException)
-        {
-            // The window icon is cosmetic: never fail startup over it.
-            return null;
-        }
+
+        return null;
     }
 
     /// <summary>
