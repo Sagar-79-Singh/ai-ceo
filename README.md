@@ -52,7 +52,7 @@ Download one file from the **Releases** page and run it.
 | **Windows x64 (recommended)** | `Setup-win-x64.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64.exe` |
 | Windows x86 | `Setup-win-x86.exe` | `AiCeo-win-x86.exe` |
 | Windows ARM64 | `Setup-win-arm64.exe` | `AiCeo-win-arm64.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`) | `AiCeo-linux-x64.tar.gz` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64.tar.gz` |
 | Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64.deb` | `AiCeo-linux-arm64.tar.gz` |
 | macOS Intel | `AiCeo-osx-x64.dmg` — open, drag the app to Applications | `AiCeo-osx-x64.tar.gz` |
 | macOS Apple Silicon | `AiCeo-osx-arm64.dmg` | `AiCeo-osx-arm64.tar.gz` |
@@ -81,8 +81,8 @@ macOS use right-click → **Open** the first time; on Linux `chmod +x AiCeo` if 
 dropped the bit.
 
 **Requirements:** Windows 10/11 (x64, x86 or ARM64) with the WebView2 runtime (the installer adds it
-when missing), a modern glibc Linux with `libgtk-3-0` + `libwebkit2gtk-4.1-0` (the `.deb` declares
-both), or macOS 10.13+ (Intel or Apple Silicon).
+when missing), a modern glibc Linux with `libgtk-3-0` + `libwebkit2gtk-4.1-0` + `libnotify4` (the
+`.deb` declares all three), or macOS 10.13+ (Intel or Apple Silicon).
 
 > **Windows 7 / 8 / 8.1:** the app itself has no Windows-specific dependencies any more (that was the
 > MAUI crash), but .NET 10 — the runtime baked into the executable — officially supports Windows 10
@@ -226,7 +226,8 @@ Existing agents, tasks and logs are preserved.
 
 ```bash
 # prerequisites: the .NET 10 SDK (no workload needed — PhotinoX is plain NuGet).
-# On Linux the system WebView is needed too: sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0
+# On Linux the system WebView is needed too:
+# sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libnotify4
 dotnet restore src/AiCeo.Desktop/AiCeo.Desktop.csproj
 
 # run it
