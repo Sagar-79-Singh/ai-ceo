@@ -34,6 +34,38 @@ internal sealed class TestDatabase : IDisposable
         return this;
     }
 
+    /// <summary>
+    /// Stores the LLM connection the first-run setup writes (v1.0.16). Nothing is compiled into the
+    /// build, so every test that expects a run to reach a provider has to seed one first.
+    /// </summary>
+    public TestDatabase SeedConnection(
+        LlmProvider provider = LlmProvider.OmniRoute,
+        string? baseUrl = null,
+        string apiKey = "sk-test-key-0123456789",
+        string modelId = "test-model")
+    {
+        using var db = NewContext();
+
+        var row = db.UserSettings.FirstOrDefault(settings => settings.Id == UserSettings.SingletonId);
+        if (row is null)
+        {
+            row = UserSettings.Defaults();
+            db.UserSettings.Add(row);
+        }
+
+        row.ApplySetup(new LlmSetup(provider, baseUrl, apiKey, modelId));
+        db.SaveChanges();
+        return this;
+    }
+
+    /// <summary>The singleton the services resolve, primed from the stored row (as at start-up).</summary>
+    public LlmSetupProvider Setup()
+    {
+        var provider = new LlmSetupProvider(Factory);
+        provider.RefreshAsync().GetAwaiter().GetResult();
+        return provider;
+    }
+
     /// <summary>Serialises a workspace row exactly like the UI does.</summary>
     public TestDatabase SeedWorkspace(string? rootPath, bool toolsEnabled = true)
     {
@@ -210,23 +242,31 @@ internal sealed class FakeLlmGateway : ILlmGateway
 
 internal static class TestAgents
 {
-    public static Agent Ceo(string name = "Atlas", LlmProvider provider = LlmProvider.OmniRoute, string? apiKey = null) => new()
+    /// <summary>
+    /// v1.0.16: an agent carries no model unless it also carries its own key. Without a key it uses
+    /// the connection the user saved in the first-run setup, which is what these tests seed.
+    /// </summary>
+    public static Agent Ceo(
+        string name = "Atlas",
+        LlmProvider provider = LlmProvider.OmniRoute,
+        string? apiKey = null,
+        string modelId = "") => new()
     {
         Name = name,
         Role = "Chief Executive Officer",
         SystemPrompt = "You are the CEO.",
-        ModelId = "ceo-model",
+        ModelId = modelId,
         Provider = provider,
         ApiKey = apiKey,
         IsManager = true
     };
 
-    public static Agent Worker(string name, string role, bool tools = false) => new()
+    public static Agent Worker(string name, string role, bool tools = false, string modelId = "") => new()
     {
         Name = name,
         Role = role,
         SystemPrompt = $"You are {name} the {role}.",
-        ModelId = "worker-model",
+        ModelId = modelId,
         Provider = LlmProvider.OmniRoute,
         IsManager = false,
         CanUseTools = tools

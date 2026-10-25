@@ -12,6 +12,8 @@ namespace AiCeo.Data;
 ///   <item>v1.0.2 → v1.0.3: <c>Agents.CanUseTools</c>, <c>TaskLogs.ToolName</c>, and the
 ///   <c>WorkspaceSettings</c> table</item>
 ///   <item>v1.0.4 → v1.0.5: the <c>UserSettings</c> table (theme, accent colour, font size)</item>
+///   <item>v1.0.15 → v1.0.16: <c>UserSettings.Provider</c>, <c>BaseUrl</c>, <c>ApiKey</c> and
+///   <c>ModelId</c> — the LLM connection the first-run setup stores</item>
 /// </list>
 /// Runs on every start and is a no-op once applied.
 /// </summary>
@@ -45,9 +47,22 @@ public static class SchemaUpgrader
             "Theme" TEXT NOT NULL DEFAULT 'System',
             "AccentColor" TEXT NOT NULL DEFAULT 'Green',
             "FontSize" TEXT NOT NULL DEFAULT 'Medium',
+            "Provider" TEXT NOT NULL DEFAULT 'OmniRoute',
+            "BaseUrl" TEXT NULL,
+            "ApiKey" TEXT NULL,
+            "ModelId" TEXT NULL,
             "UpdatedAt" TEXT NOT NULL
         );
         """;
+
+    /// <summary>v1.0.16: the LLM connection columns, added to an existing row without touching it.</summary>
+    private static readonly (string Column, string Ddl)[] UserSettingsColumns =
+    {
+        ("Provider", "ALTER TABLE \"UserSettings\" ADD COLUMN \"Provider\" TEXT NOT NULL DEFAULT 'OmniRoute'"),
+        ("BaseUrl", "ALTER TABLE \"UserSettings\" ADD COLUMN \"BaseUrl\" TEXT NULL"),
+        ("ApiKey", "ALTER TABLE \"UserSettings\" ADD COLUMN \"ApiKey\" TEXT NULL"),
+        ("ModelId", "ALTER TABLE \"UserSettings\" ADD COLUMN \"ModelId\" TEXT NULL")
+    };
 
     public static async Task UpgradeAsync(AppDbContext db, ILogger logger, CancellationToken cancellationToken = default)
     {
@@ -87,6 +102,11 @@ public static class SchemaUpgrader
             {
                 await ExecuteAsync(connection, UserSettingsTableDdl, cancellationToken);
                 logger.LogInformation("Schema upgrade: created UserSettings table");
+            }
+            else
+            {
+                var settingsColumns = await ReadColumnsAsync(connection, "UserSettings", cancellationToken);
+                await AddMissingAsync(connection, "UserSettings", UserSettingsColumns, settingsColumns, logger, cancellationToken);
             }
         }
         finally

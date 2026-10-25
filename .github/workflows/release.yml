@@ -1,13 +1,18 @@
 name: Release
 
-# v1.0.15 ships a portable build *and* a native installer for every platform:
-#   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
-#                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
-#   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
-#                                            → AiCeo-linux-<arch>.deb    (dpkg-deb)
-#   * macOS    osx-x64 / osx-arm64           → AiCeo-osx-<arch>.tar.gz   (portable)
-#                                            → AiCeo-osx-<arch>.dmg      (hdiutil, real .app bundle)
+# v1.0.16 ships a portable build *and* a native installer for every platform, and every file name
+# carries the version, so two releases can never be confused once they are downloaded:
+#   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>-v<version>.exe    (portable)
+#                                            → Setup-win-<arch>-v<version>.exe    (Inno Setup)
+#   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>-v<version>.tar.gz (portable)
+#                                            → AiCeo-linux-<arch>-v<version>.deb    (dpkg-deb)
+#   * macOS    osx-x64 / osx-arm64           → AiCeo-osx-<arch>-v<version>.tar.gz (portable)
+#                                            → AiCeo-osx-<arch>-v<version>.dmg      (hdiutil, .app)
 # No .zip and no .msix.
+#
+# PRODUCT_VERSION below is the single source of truth for those names. The release job fails the
+# build when it disagrees with <Version> in AiCeo.Desktop.csproj, installer.iss or the Nexus badge,
+# so a name can never advertise a version the binaries do not carry.
 on:
   push:
     tags:
@@ -22,6 +27,8 @@ env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  # v1.0.16: the version that appears in every asset name ("AiCeo-win-x64-v1.0.16.exe").
+  PRODUCT_VERSION: "1.0.16"
 
 jobs:
   # ------------------------------------------------------------------ portable binaries
@@ -31,32 +38,41 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The asset name is computed from PRODUCT_VERSION in the first step, so the version is
+        # written down once instead of seven times.
         include:
           - rid: win-x64
             os: windows-latest
-            artifact: AiCeo-win-x64.exe
           - rid: win-x86
             os: windows-latest
-            artifact: AiCeo-win-x86.exe
           - rid: win-arm64
             os: windows-latest
-            artifact: AiCeo-win-arm64.exe
           - rid: linux-x64
             os: ubuntu-latest
-            artifact: AiCeo-linux-x64.tar.gz
           - rid: linux-arm64
             os: ubuntu-latest
-            artifact: AiCeo-linux-arm64.tar.gz
           - rid: osx-x64
             os: macos-latest
-            artifact: AiCeo-osx-x64.tar.gz
           - rid: osx-arm64
             os: macos-latest
-            artifact: AiCeo-osx-arm64.tar.gz
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Name the release asset
+        id: name
+        shell: bash
+        run: |
+          set -euo pipefail
+          RID="${{ matrix.rid }}"
+          case "$RID" in
+            win-*)   EXT=".exe" ;;
+            *)       EXT=".tar.gz" ;;
+          esac
+          ASSET="AiCeo-$RID-v$PRODUCT_VERSION$EXT"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "release asset: $ASSET"
 
       - name: Install .NET 10
         uses: actions/setup-dotnet@v4
@@ -148,7 +164,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "${{ steps.locate.outputs.path }}" "dist/${{ matrix.artifact }}"
+          cp "${{ steps.locate.outputs.path }}" "dist/${{ steps.name.outputs.asset }}"
           ls -la dist
 
       - name: Assemble the release asset (.tar.gz)
@@ -160,15 +176,15 @@ jobs:
           cp "${{ steps.locate.outputs.path }}" stage/AiCeo
           chmod +x stage/AiCeo
           cp README.md stage/README.md
-          tar -czf "dist/${{ matrix.artifact }}" -C stage .
+          tar -czf "dist/${{ steps.name.outputs.asset }}" -C stage .
           rm -rf stage
           ls -la dist
 
       - name: Upload the portable asset
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: ${{ steps.name.outputs.asset }}
+          path: dist/${{ steps.name.outputs.asset }}
           if-no-files-found: error
           retention-days: 7
 
@@ -189,7 +205,7 @@ jobs:
       - name: Download the portable ${{ matrix.arch }} executable
         uses: actions/download-artifact@v4
         with:
-          name: AiCeo-win-${{ matrix.arch }}.exe
+          name: AiCeo-win-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.exe
           path: dist
 
       # v1.0.15: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
@@ -238,17 +254,27 @@ jobs:
           $LASTEXITCODE = 0
           "ISCC=$iscc" >> $env:GITHUB_ENV
 
-      - name: Compile Setup-win-${{ matrix.arch }}.exe
+      - name: Compile Setup-win-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.exe
         shell: pwsh
         run: |
           $version = (Select-String -Path "src/AiCeo.Desktop/AiCeo.Desktop.csproj" -Pattern "<Version>([^<]+)</Version>").Matches[0].Groups[1].Value
           $arch = "${{ matrix.arch }}"
-          Write-Host "building Setup-win-$arch.exe for version $version"
+          if ($version -ne "${{ env.PRODUCT_VERSION }}") {
+            Write-Host "::error title=version-drift::csproj says $version but release.yml names assets ${{ env.PRODUCT_VERSION }}"
+            exit 1
+          }
+          $source = "dist\AiCeo-win-$arch-v$version.exe"
+          Write-Host "building Setup-win-$arch-v$version.exe from $source"
 
           Get-ChildItem "dist" | Select-Object Name, Length
 
+          if (-not (Test-Path $source)) {
+            Write-Host "::error title=missing-portable::$source was not downloaded"
+            exit 1
+          }
+
           $log = Join-Path $env:RUNNER_TEMP "iscc-$arch.log"
-          & $env:ISCC "/DAppVersion=$version" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" "installer.iss" 2>&1 |
+          & $env:ISCC "/DAppVersion=$version" "/DAppArch=$arch" "/DAppSourceExe=$source" "installer.iss" 2>&1 |
             Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
             $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
@@ -261,7 +287,7 @@ jobs:
         shell: pwsh
         run: |
           $arch = "${{ matrix.arch }}"
-          $expected = "Setup-win-$arch.exe"
+          $expected = "Setup-win-$arch-v${{ env.PRODUCT_VERSION }}.exe"
           $setup = Join-Path "dist/installer" $expected
 
           Get-ChildItem "dist/installer" -ErrorAction SilentlyContinue | Select-Object Name, Length
@@ -284,11 +310,11 @@ jobs:
             exit 1
           }
 
-      - name: Upload Setup-win-${{ matrix.arch }}.exe
+      - name: Upload Setup-win-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.exe
         uses: actions/upload-artifact@v4
         with:
-          name: Setup-win-${{ matrix.arch }}.exe
-          path: dist/installer/Setup-win-${{ matrix.arch }}.exe
+          name: Setup-win-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.exe
+          path: dist/installer/Setup-win-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -313,7 +339,7 @@ jobs:
       - name: Download the portable archive
         uses: actions/download-artifact@v4
         with:
-          name: AiCeo-linux-${{ matrix.arch }}.tar.gz
+          name: AiCeo-linux-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.tar.gz
           path: dist
 
       - name: Assemble the Debian package
@@ -326,7 +352,7 @@ jobs:
           DEB_ARCH="${{ matrix.deb_arch }}"
           ROOT="$RUNNER_TEMP/pkgroot"
 
-          echo "packaging AiCeo-linux-$ARCH.deb (version $VERSION, architecture $DEB_ARCH)"
+          echo "packaging AiCeo-linux-$ARCH-v$VERSION.deb (version $VERSION, architecture $DEB_ARCH)"
 
           rm -rf "$ROOT"
           mkdir -p "$ROOT/DEBIAN" \
@@ -336,7 +362,7 @@ jobs:
                    "$ROOT/usr/share/icons/hicolor/256x256/apps" \
                    "$ROOT/usr/share/doc/aiceo"
 
-          tar -xzf "dist/AiCeo-linux-$ARCH.tar.gz" -C "$ROOT/usr/lib/aiceo"
+          tar -xzf "dist/AiCeo-linux-$ARCH-v$VERSION.tar.gz" -C "$ROOT/usr/lib/aiceo"
           rm -f "$ROOT/usr/lib/aiceo/README.md"
           chmod 755 "$ROOT/usr/lib/aiceo/AiCeo"
           ln -s /usr/lib/aiceo/AiCeo "$ROOT/usr/bin/aiceo"
@@ -393,13 +419,13 @@ jobs:
           POSTINST
           chmod 755 "$ROOT/DEBIAN/postinst"
 
-          dpkg-deb --root-owner-group --build "$ROOT" "dist/AiCeo-linux-$ARCH.deb"
+          dpkg-deb --root-owner-group --build "$ROOT" "dist/AiCeo-linux-$ARCH-v$VERSION.deb"
 
       - name: Verify the package
         shell: bash
         run: |
           set -euo pipefail
-          DEB="dist/AiCeo-linux-${{ matrix.arch }}.deb"
+          DEB="dist/AiCeo-linux-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.deb"
 
           if [ ! -f "$DEB" ]; then
             echo "::error title=missing-deb::$DEB was not produced"
@@ -421,11 +447,11 @@ jobs:
             exit 1
           fi
 
-      - name: Upload AiCeo-linux-${{ matrix.arch }}.deb
+      - name: Upload AiCeo-linux-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.deb
         uses: actions/upload-artifact@v4
         with:
-          name: AiCeo-linux-${{ matrix.arch }}.deb
-          path: dist/AiCeo-linux-${{ matrix.arch }}.deb
+          name: AiCeo-linux-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.deb
+          path: dist/AiCeo-linux-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.deb
           if-no-files-found: error
           retention-days: 7
 
@@ -450,7 +476,7 @@ jobs:
       - name: Download the portable archive
         uses: actions/download-artifact@v4
         with:
-          name: AiCeo-osx-${{ matrix.arch }}.tar.gz
+          name: AiCeo-osx-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.tar.gz
           path: dist
 
       - name: Assemble the .app bundle
@@ -484,12 +510,12 @@ jobs:
           fi
           echo "macOS floor $MIN_MACOS satisfied by the build host ($HOST_MACOS)"
 
-          echo "packaging AiCeo-osx-$ARCH.dmg (version $VERSION)"
+          echo "packaging AiCeo-osx-$ARCH-v$VERSION.dmg (version $VERSION)"
 
           rm -rf "$APP"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-          tar -xzf "dist/AiCeo-osx-$ARCH.tar.gz" -C "$APP/Contents/MacOS"
+          tar -xzf "dist/AiCeo-osx-$ARCH-v$VERSION.tar.gz" -C "$APP/Contents/MacOS"
           if [ -f "$APP/Contents/MacOS/README.md" ]; then
             mv "$APP/Contents/MacOS/README.md" "$APP/Contents/Resources/README.md"
           fi
@@ -570,12 +596,12 @@ jobs:
           # "Resource busy" on a shared macOS runner; three attempts with a short pause make the
           # job deterministic. Every attempt's output is captured so a real failure is diagnosable.
           for attempt in 1 2 3; do
-            rm -f "dist/AiCeo-osx-$ARCH.dmg"
+            rm -f "dist/AiCeo-osx-$ARCH-v$VERSION.dmg"
             if hdiutil create \
                  -volname "AI CEO Orchestrator $VERSION" \
                  -srcfolder "$STAGE" \
                  -ov -format UDZO \
-                 "dist/AiCeo-osx-$ARCH.dmg" 2>&1 | tee "$RUNNER_TEMP/hdiutil-$attempt.log"; then
+                 "dist/AiCeo-osx-$ARCH-v$VERSION.dmg" 2>&1 | tee "$RUNNER_TEMP/hdiutil-$attempt.log"; then
               echo "hdiutil succeeded on attempt $attempt"
               break
             fi
@@ -591,7 +617,7 @@ jobs:
             fi
           done
 
-          if [ ! -f "dist/AiCeo-osx-$ARCH.dmg" ]; then
+          if [ ! -f "dist/AiCeo-osx-$ARCH-v$VERSION.dmg" ]; then
             echo "::error title=dmg-missing::hdiutil reported success but produced no image"
             exit 1
           fi
@@ -600,7 +626,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DMG="dist/AiCeo-osx-${{ matrix.arch }}.dmg"
+          DMG="dist/AiCeo-osx-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.dmg"
 
           if [ ! -f "$DMG" ]; then
             echo "::error title=missing-dmg::$DMG was not produced"
@@ -621,11 +647,11 @@ jobs:
             exit 1
           fi
 
-      - name: Upload AiCeo-osx-${{ matrix.arch }}.dmg
+      - name: Upload AiCeo-osx-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.dmg
         uses: actions/upload-artifact@v4
         with:
-          name: AiCeo-osx-${{ matrix.arch }}.dmg
-          path: dist/AiCeo-osx-${{ matrix.arch }}.dmg
+          name: AiCeo-osx-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.dmg
+          path: dist/AiCeo-osx-${{ matrix.arch }}-v${{ env.PRODUCT_VERSION }}.dmg
           if-no-files-found: error
           retention-days: 7
 
@@ -655,22 +681,39 @@ jobs:
           set -euo pipefail
           ls -la ./assets
 
-          # 14 deliverables: a portable build and an installer for every platform/architecture.
+          # v1.0.16: the version in every file name must be the version the binaries carry.
+          # PRODUCT_VERSION (release.yml), <Version> (csproj), AppVersion (installer.iss) and the
+          # Nexus badge are four places that describe one number; this is where they are checked.
+          CSPROJ_VERSION=$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/AiCeo.Desktop/AiCeo.Desktop.csproj | head -1)
+          ISS_VERSION=$(sed -n 's:.*#define AppVersion "\([^"]*\)".*:\1:p' installer.iss | head -1)
+          BADGE_VERSION=$(sed -n 's:.*<span id="nx-version"[^>]*>\([^<]*\)</span>.*:\1:p' src/AiCeo.Desktop/Assets/nexus.html | head -1)
+
+          echo "version: release.yml=$PRODUCT_VERSION csproj=$CSPROJ_VERSION installer.iss=$ISS_VERSION nexus=$BADGE_VERSION"
+
+          for pair in "csproj=$CSPROJ_VERSION" "installer.iss=$ISS_VERSION" "nexus badge=$BADGE_VERSION"; do
+            if [ "${pair#*=}" != "$PRODUCT_VERSION" ] && [ "${pair#*=}" != "v$PRODUCT_VERSION" ]; then
+              echo "::error title=version-drift::${pair%%=*} says ${pair#*=} but the assets are named v$PRODUCT_VERSION"
+              exit 1
+            fi
+          done
+
+          # 14 deliverables: a portable build and an installer for every platform/architecture,
+          # each carrying the release version in its name.
           for asset in \
-            AiCeo-win-x64.exe \
-            AiCeo-win-x86.exe \
-            AiCeo-win-arm64.exe \
-            Setup-win-x64.exe \
-            Setup-win-x86.exe \
-            Setup-win-arm64.exe \
-            AiCeo-linux-x64.tar.gz \
-            AiCeo-linux-arm64.tar.gz \
-            AiCeo-linux-x64.deb \
-            AiCeo-linux-arm64.deb \
-            AiCeo-osx-x64.tar.gz \
-            AiCeo-osx-arm64.tar.gz \
-            AiCeo-osx-x64.dmg \
-            AiCeo-osx-arm64.dmg
+            AiCeo-win-x64-v$PRODUCT_VERSION.exe \
+            AiCeo-win-x86-v$PRODUCT_VERSION.exe \
+            AiCeo-win-arm64-v$PRODUCT_VERSION.exe \
+            Setup-win-x64-v$PRODUCT_VERSION.exe \
+            Setup-win-x86-v$PRODUCT_VERSION.exe \
+            Setup-win-arm64-v$PRODUCT_VERSION.exe \
+            AiCeo-linux-x64-v$PRODUCT_VERSION.tar.gz \
+            AiCeo-linux-arm64-v$PRODUCT_VERSION.tar.gz \
+            AiCeo-linux-x64-v$PRODUCT_VERSION.deb \
+            AiCeo-linux-arm64-v$PRODUCT_VERSION.deb \
+            AiCeo-osx-x64-v$PRODUCT_VERSION.tar.gz \
+            AiCeo-osx-arm64-v$PRODUCT_VERSION.tar.gz \
+            AiCeo-osx-x64-v$PRODUCT_VERSION.dmg \
+            AiCeo-osx-arm64-v$PRODUCT_VERSION.dmg
           do
             if [ ! -f "./assets/$asset" ]; then
               echo "::error title=missing-asset::$asset was not produced"
@@ -725,14 +768,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.15
-          tag_name: v1.0.15
+          name: AI CEO Orchestrator v${{ env.PRODUCT_VERSION }}
+          tag_name: v${{ env.PRODUCT_VERSION }}
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.15
+            ## AI CEO Orchestrator v${PRODUCT_VERSION}
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · PhotinoX + native WebView ·
             Nexus console) that opens in a native window — no browser, no local web server, no
@@ -744,9 +787,9 @@ jobs:
 
             | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | **x64 (recommended)** | `AiCeo-win-x64.exe` | `Setup-win-x64.exe` |
-            | x86 (32-bit) | `AiCeo-win-x86.exe` | `Setup-win-x86.exe` |
-            | ARM64 (Surface / Snapdragon) | `AiCeo-win-arm64.exe` | `Setup-win-arm64.exe` |
+            | **x64 (recommended)** | `AiCeo-win-x64-v${PRODUCT_VERSION}.exe` | `Setup-win-x64-v${PRODUCT_VERSION}.exe` |
+            | x86 (32-bit) | `AiCeo-win-x86-v${PRODUCT_VERSION}.exe` | `Setup-win-x86-v${PRODUCT_VERSION}.exe` |
+            | ARM64 (Surface / Snapdragon) | `AiCeo-win-arm64-v${PRODUCT_VERSION}.exe` | `Setup-win-arm64-v${PRODUCT_VERSION}.exe` |
 
             The installers are stock Inno Setup wizards — the same native shell, buttons and pages
             every other Windows program uses, with no custom theme or artwork. Per-user install (no
@@ -765,11 +808,11 @@ jobs:
 
             | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | x64 | `AiCeo-linux-x64.tar.gz` | `AiCeo-linux-x64.deb` |
-            | ARM64 | `AiCeo-linux-arm64.tar.gz` | `AiCeo-linux-arm64.deb` |
+            | x64 | `AiCeo-linux-x64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-linux-x64-v${PRODUCT_VERSION}.deb` |
+            | ARM64 | `AiCeo-linux-arm64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-linux-arm64-v${PRODUCT_VERSION}.deb` |
 
-            Portable: `tar -xzf AiCeo-linux-x64.tar.gz && ./AiCeo`. Debian/Ubuntu:
-            `sudo apt install ./AiCeo-linux-x64.deb` — installs to `/usr/lib/aiceo`, adds the
+            Portable: `tar -xzf AiCeo-linux-x64-v${PRODUCT_VERSION}.tar.gz && ./AiCeo`. Debian/Ubuntu:
+            `sudo apt install ./AiCeo-linux-x64-v${PRODUCT_VERSION}.deb` — installs to `/usr/lib/aiceo`, adds the
             `aiceo` command, a desktop entry and the icon. The package **depends** on `libgtk-3-0`
             and `libwebkit2gtk-4.1-0`, so `apt` resolves the window toolkit and the web engine for
             the Nexus surface instead of leaving the app to fall back.
@@ -778,8 +821,8 @@ jobs:
 
             | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | Intel | `AiCeo-osx-x64.tar.gz` | `AiCeo-osx-x64.dmg` |
-            | Apple Silicon | `AiCeo-osx-arm64.tar.gz` | `AiCeo-osx-arm64.dmg` |
+            | Intel | `AiCeo-osx-x64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-osx-x64-v${PRODUCT_VERSION}.dmg` |
+            | Apple Silicon | `AiCeo-osx-arm64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-osx-arm64-v${PRODUCT_VERSION}.dmg` |
 
             The `.dmg` contains a real `AI CEO Orchestrator.app` bundle (icon, versioned `Info.plist`,
             ad-hoc signature) plus an **Applications** shortcut: open the image, drag the app across.
@@ -804,40 +847,55 @@ jobs:
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.15 — Avalonia is gone, PhotinoX hosts the native WebView
+            ### What's new in v1.0.16 — your key, your model, readable output
 
-            v1.0.15 replaces the entire managed UI stack. **Avalonia is removed**: no Avalonia
-            packages, no XAML files, no managed renderer and no compositor between the window and the
-            page. The shell is a **PhotinoX** native window around the WebView the operating system
-            already ships — WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux.
+            v1.0.16 removes the last hardcoded credentials. Nothing in this build carries an API key
+            or a model id: on first launch the console is **blocked** by a setup sheet that asks for
+            the four values the app needs — **provider** (OmniRoute, OpenAI, Gemini or any
+            OpenAI-compatible server), **base URL**, **API key** and **model**. Saving writes them to
+            the `UserSettings` row of the local SQLite database and unlocks the UI in the very next
+            snapshot; every agent, the health probe and the orchestrator read that one connection.
 
-            - **The invisible window cannot happen any more.** `PhotinoApplication.Run(window)` shows
-              the window and pumps the native message loop in the same call, so the window that is
-              created is the window that is shown. The v1.0.11–v1.0.13 workarounds
-              (`WindowPresentation`, forced `Show()`/`Activate()`, the deferred presentation contract,
-              the `Avalonia.Platform.WebView` availability probe) are deleted along with the shell they
-              existed to patch.
-            - **The start-up freeze cannot happen any more.** The window appears first; the database,
-              the agent list and the provider probe then run on a background task
-              (`PhotinoApplication` → `Created` → `NexusPresenter.Start()`). There is no
-              `.Result`/`.Wait()` on the UI path and no UI work before the first frame.
-            - **Native interop instead of script evaluation.** Page→host commands arrive as
-              `WebMessageReceived` messages (`window.external.sendMessage`), and host→page snapshots
-              are sent with `SendWebMessage` (`window.external.receiveMessage`). Nothing is spliced
-              into JavaScript source any more, and the page is loaded by the window itself
-              (`LoadString`) with its stylesheet inlined, so no `file://` access is involved.
-            - **The folder picker is native.** *Select Workspace Folder* uses
-              `PhotinoWindow.ShowOpenFolder` — the Win32 folder dialog, GTK's chooser or `NSOpenPanel`,
-              depending on the OS.
-            - **The installer got simpler.** The Visual C++ 2015-2022 Redistributable check is gone —
-              PhotinoX uses the WebView the system provides, so it is not a dependency any more. The
-              WebView2 check stays exactly as it was, including the **109** line for Windows 7 / 8 /
-              8.1 and the "declining cancels the install" contract.
+            - **No key, no model, no run.** `LlmSetupProvider` is the single source of truth. A fresh
+              install reports *not configured*, the dispatch button goes inert and the orchestrator
+              refuses to spend a single token until the sheet has been completed.
+            - **Nothing is baked in.** The seeded gateway key and model, every `DefaultModel` catalog
+              entry, the seeded `ModelId` values and the fallback key are deleted. A model is
+              something the user chooses, never something the binary assumes.
+            - **Editable later.** Settings → **Connection** shows the masked key, the provider, the
+              base URL and the model, and reopens the same sheet at any time. A blank key field keeps
+              the stored key; a blank base URL falls back to the provider default.
+            - **Readable AI output.** The final-answer card and every feed card are solid
+              (`bg-obsidian-850/95` instead of a 5 %-tinted surface over the WebGL canvas), the
+              prompt-box placeholder is `slate-400` at full opacity instead of `slate-500`, and body
+              text is pinned at `text-slate-100` / `text-opacity-100`. Answers stay legible on every
+              accent preset and in light mode.
+            - **Versioned file names.** Every asset carries the release version —
+              `AiCeo-win-x64-v${PRODUCT_VERSION}.exe`, `Setup-win-arm64-v${PRODUCT_VERSION}.exe`,
+              `AiCeo-linux-arm64-v${PRODUCT_VERSION}.deb`, `AiCeo-osx-x64-v${PRODUCT_VERSION}.dmg` —
+              so two releases can never be confused once downloaded. The release job fails when
+              `release.yml`, `AiCeo.Desktop.csproj`, `installer.iss` and the Nexus badge disagree
+              about the number.
 
-            CI proves the new shell on every push: the Linux job runs the published single-file binary
-            on Xvfb and asserts that the native window is created, the WebKitGTK web view loads the
-            Nexus page, the page's `ready` handshake reaches the host, and a settings command from the
-            page is stored and reflected in the next snapshot.
+            CI drives the new path end to end: the Linux smoke test asserts that a fresh database
+            reports *setup required*, that a `saveConnection` command validates, persists and flips
+            the snapshot to `configured: true`, and that an invalid submission is rejected without
+            touching the stored connection.
+
+            ### Previous release — v1.0.15, Avalonia is gone, PhotinoX hosts the native WebView
+
+            - **The managed UI stack is deleted.** No Avalonia packages, XAML or compositor: the shell
+              is a **PhotinoX** native window around the WebView the operating system already ships —
+              WebView2, WKWebView or WebKitGTK 4.1.
+            - **The window always appears** — `PhotinoApplication.Run(window)` shows it and pumps the
+              native message loop in one call; the database, the agents and the provider probe run
+              afterwards on a background task, so there is no start-up freeze either.
+            - **Native messaging instead of script evaluation** — page→host through
+              `window.external.sendMessage`, host→page through `SendWebMessage`; the page is loaded
+              with `LoadString` and its stylesheet inlined, so no `file://` access is involved.
+            - **The folder picker is native** (`ShowOpenFolder`), and the Visual C++ redistributable
+              check is gone; the WebView2 check, including the **109** line for Windows 7 / 8 / 8.1,
+              is unchanged.
 
             **Attribution.** Releases are recorded with the official Claude Code footer:
             `🤖 Generated with Claude Code` and
@@ -903,7 +961,7 @@ jobs:
             The release pipeline is a matrix that produces a portable build *and* a native installer
             for all seven targets:
 
-            - **Three Inno Setup installers** (`Setup-win-x64/x86/arm64.exe`), each compiled against
+            - **Three Inno Setup installers** (`Setup-win-<arch>-v<version>.exe`), each compiled against
               its own executable with the matching `ArchitecturesAllowed` guard.
             - **Two Debian packages**, assembled with `dpkg-deb` from the published binary: launcher
               in `/usr/bin`, desktop entry, icon, docs and dependency metadata.
@@ -922,7 +980,7 @@ jobs:
 
             ### 32-bit Windows note
 
-            `AiCeo-win-x86.exe` and `Setup-win-x86.exe` are still built and published, but the native
+            `AiCeo-win-x86-v${PRODUCT_VERSION}.exe` and `Setup-win-x86-v${PRODUCT_VERSION}.exe` are still built and published, but the native
             window/WebView bridge that PhotinoX ships is x64 / ARM64 only, so the 32-bit build cannot
             open the Nexus window — it writes that reason to `crash.log` instead of failing obscurely.
             A 32-bit Windows 10 installation on 64-bit hardware runs the **x64** build.
@@ -932,7 +990,7 @@ jobs:
             17763) and newer only, so that is the floor for the application itself. `Setup.exe` will
             still run on Windows 7 SP1 / 8 / 8.1: it installs the WebView2 **109** runtime that those
             systems support and says plainly that the app needs Windows 10 1809 or newer.
-            `AiCeo-win-x86.exe` is the right build for 32-bit Windows 10 machines.
+            `AiCeo-win-x86-v${PRODUCT_VERSION}.exe` is the right build for 32-bit Windows 10 machines.
 
             ### Verify the download
             `SHA256SUMS.txt` (and a `.sha256` per file) is attached to the release.

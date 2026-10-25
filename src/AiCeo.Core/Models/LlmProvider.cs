@@ -20,12 +20,17 @@ public enum LlmProvider
     Custom = 3
 }
 
-/// <summary>Static facts about one provider: defaults, env var, and UI hint.</summary>
+/// <summary>
+/// Static facts about one provider: where it lives, which environment variable can supply the key,
+/// and what to tell the user.
+///
+/// v1.0.16 removed <c>DefaultModel</c>: a model is now always something the user chooses in the
+/// first-run setup (or on a single agent), never a value baked into the build.
+/// </summary>
 public sealed record LlmProviderInfo(
     LlmProvider Provider,
     string DisplayName,
     string DefaultBaseUrl,
-    string DefaultModel,
     string ApiKeyEnvironmentVariable,
     string Hint,
     bool RequiresApiKey)
@@ -41,52 +46,42 @@ public static class LlmProviderCatalog
     public const string OpenAIBaseUrl = "https://api.openai.com/v1";
     public const string GeminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
 
-    public const string OmniRouteDefaultModel = "gh/gpt-5.4-nano";
-    public const string OpenAIDefaultModel = "gpt-4o-mini";
-    public const string GeminiDefaultModel = "gemini-2.5-flash";
-
     public static IReadOnlyList<LlmProviderInfo> All { get; } = new[]
     {
         new LlmProviderInfo(
             LlmProvider.OmniRoute,
             "OmniRoute",
             OmniRouteBaseUrl,
-            OmniRouteDefaultModel,
             "OMNIROUTE_KEY",
-            "Local gateway on port 20128. Models look like gh/gpt-5.4-nano.",
-            RequiresApiKey: false),
+            "Local gateway on port 20128. Enter the model id your gateway exposes.",
+            RequiresApiKey: true),
         new LlmProviderInfo(
             LlmProvider.OpenAI,
             "OpenAI",
             OpenAIBaseUrl,
-            OpenAIDefaultModel,
             "OPENAI_API_KEY",
-            "Direct to api.openai.com. Models look like gpt-4o-mini.",
+            "Direct to api.openai.com. Enter the model id from your OpenAI dashboard.",
             RequiresApiKey: true),
         new LlmProviderInfo(
             LlmProvider.Gemini,
             "Gemini",
             GeminiBaseUrl,
-            GeminiDefaultModel,
             "GEMINI_API_KEY",
-            "Google's OpenAI-compatible endpoint. Models look like gemini-2.5-flash.",
+            "Google's OpenAI-compatible endpoint. Enter the Gemini model id.",
             RequiresApiKey: true),
         new LlmProviderInfo(
             LlmProvider.Custom,
             "Custom",
             string.Empty,
-            string.Empty,
             "CUSTOM_API_KEY",
             "Any OpenAI-compatible server (Ollama, vLLM, Azure proxy…). Base URL is required.",
-            RequiresApiKey: false)
+            RequiresApiKey: true)
     };
 
     public static LlmProviderInfo Get(LlmProvider provider)
         => All.First(info => info.Provider == provider);
 
     public static string DefaultBaseUrlFor(LlmProvider provider) => Get(provider).DefaultBaseUrl;
-
-    public static string DefaultModelFor(LlmProvider provider) => Get(provider).DefaultModel;
 
     public static string DisplayNameFor(LlmProvider provider) => Get(provider).DisplayName;
 

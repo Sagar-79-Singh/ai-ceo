@@ -14,14 +14,25 @@ namespace AiCeo.Tests;
 /// </summary>
 public class OrchestratorTopologyTests
 {
+    /// <summary>
+    /// v1.0.16: a run needs a saved provider connection. Nothing is compiled into the build any
+    /// more, so the tests seed the same row the first-run setup writes; <paramref name="configure"/>
+    /// lets one test start from an empty install.
+    /// </summary>
     private static AgentOrchestrator CreateOrchestrator(
         TestDatabase database,
         FakeLlmGateway gateway,
-        TempWorkspace? workspace = null)
+        TempWorkspace? workspace = null,
+        bool configure = true)
     {
         if (workspace is not null)
         {
             database.SeedWorkspace(workspace.Root);
+        }
+
+        if (configure)
+        {
+            database.SeedConnection();
         }
 
         var workspaceService = new WorkspaceService(database.Factory);
@@ -32,6 +43,7 @@ public class OrchestratorTopologyTests
             gateway,
             tools,
             workspaceService,
+            database.Setup(),
             MsOptions.Create(new OmniRouteOptions()),
             NullLogger<AgentOrchestrator>.Instance);
     }
@@ -435,6 +447,36 @@ public class OrchestratorTopologyTests
         var toolCalls = task.Logs.Count(log => log.Action == LogActions.Tool);
         Assert.Equal(AgentOrchestrator.MaxToolRounds, toolCalls);
         Assert.Equal("stopped", task.FinalOutput);
+    }
+
+    [Fact]
+    public async Task An_unconfigured_install_is_sent_to_the_setup_screen_before_any_token_is_spent()
+    {
+        using var database = TestDatabase.Create();
+        database.SeedAgents(TestAgents.Ceo(), TestAgents.Worker("Scout", "Researcher"));
+
+        var gateway = new FakeLlmGateway();
+        var orchestrator = CreateOrchestrator(database, gateway, configure: false);
+
+        var exception = await Assert.ThrowsAsync<LlmException>(() => orchestrator.RunAsync("Launch a product"));
+
+        Assert.Contains("setup screen", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(gateway.Calls);
+        Assert.Empty(await TaskToolLogs(database));
+    }
+
+    [Fact]
+    public async Task The_saved_connection_supplies_the_model_for_every_agent()
+    {
+        using var database = TestDatabase.Create();
+        database.SeedAgents(TestAgents.Ceo(), TestAgents.Worker("Scout", "Researcher"));
+
+        var gateway = new FakeLlmGateway().ThenPlan("""[{"role":"Researcher","instructions":"Look"}]""");
+        await CreateOrchestrator(database, gateway).RunAsync("Launch a product");
+
+        Assert.NotEmpty(gateway.Calls);
+        Assert.All(gateway.Calls, call => Assert.Equal("test-model", call.ModelId));
+        Assert.All(gateway.Calls, call => Assert.Equal("sk-test-key-0123456789", call.ApiKey));
     }
 
     private static List<TaskLog> TaskToolLogs(TestDatabase database)
