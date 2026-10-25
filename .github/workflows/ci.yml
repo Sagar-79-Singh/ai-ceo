@@ -1,11 +1,13 @@
 name: CI
 
-# v1.0.15 is a PhotinoX desktop app: a native window hosting the operating system's own WebView
+# v1.0.16 is a PhotinoX desktop app: a native window hosting the operating system's own WebView
 # (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux), so the pipeline does:
-#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema),
+#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema, LLM connection),
 #   2. the desktop head built and published as a single file on Linux (real executable, booted
 #      headlessly through --self-test, plus the --smoke-ui run on Xvfb: the native window, the
-#      WebKitGTK web view, the page→host "ready" handshake and a settings command round-trip),
+#      WebKitGTK web view, the page→host "ready" handshake, a settings command round-trip, and the
+#      v1.0.16 first-run connection flow — no connection ⇒ setup required, saveConnection ⇒
+#      configured, an invalid submission ⇒ rejected),
 #   3. the same on Windows, producing the standalone .exe users download, and compiling
 #      installer.iss for x64 / x86 / arm64 with Inno Setup so every installer script is validated on every push.
 on:
@@ -209,6 +211,23 @@ jobs:
             tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi
+          # v1.0.16: a fresh database must report "setup required", the setup sheet's command must
+          # persist a connection, and an invalid submission must be rejected without side effects.
+          if ! grep -q "first-run setup required = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=setup-required::a fresh install did not report that the first-run setup is required"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "connection round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=connection-failed::saveConnection did not persist the LLM connection"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "invalid setup rejected = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=connection-validation::an incomplete connection was accepted"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
 
           # Crash logging: with no display server the native window cannot be created. The binary
           # must exit non-zero AND leave a crash.log with the stack trace next to itself (the app
@@ -347,8 +366,12 @@ jobs:
           }
           Write-Host "ISCC: $iscc"
 
+          # v1.0.16: every artefact carries the version, exactly as release.yml names it.
+          $version = (Select-String -Path "src/AiCeo.Desktop/AiCeo.Desktop.csproj" -Pattern "<Version>([^<]+)</Version>").Matches[0].Groups[1].Value
+          Write-Host "version: $version"
+
           New-Item -ItemType Directory -Force -Path "dist" | Out-Null
-          Copy-Item "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe" "dist/AiCeo-win-x64.exe" -Force
+          Copy-Item "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe" "dist/AiCeo-win-x64-v$version.exe" -Force
 
           # The installer embeds the WebView2 Evergreen bootstrapper when it is present. Fetch it so
           # the [Files]/[Code] branches for the bundled prerequisite are exercised on every push.
@@ -364,19 +387,19 @@ jobs:
           # branches (ArchitecturesAllowed / ArchitecturesInstallIn64BitMode) and Inno Setup's
           # ARM64 support still have to compile, so every installer architecture is validated.
           foreach ($arch in @("x86", "arm64")) {
-            $stub = Join-Path "dist" "AiCeo-win-$arch.exe"
+            $stub = Join-Path "dist" "AiCeo-win-$arch-v$version.exe"
             [System.IO.File]::WriteAllBytes($stub, [byte[]](0x4D, 0x5A) + (New-Object byte[] 2048))
           }
 
           foreach ($arch in @("x64", "x86", "arm64")) {
-            Write-Host "compiling Setup-win-$arch.exe"
+            Write-Host "compiling Setup-win-$arch-v$version.exe"
             $log = Join-Path $env:RUNNER_TEMP "iscc-$arch.log"
-            & $iscc "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" "installer.iss" 2>&1 |
+            & $iscc "/DAppVersion=$version" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v$version.exe" "installer.iss" 2>&1 |
               Tee-Object -FilePath $log
             if ($LASTEXITCODE -ne 0) {
               $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
                 ForEach-Object { $_.Line.Trim() }) -join " | "
-              Write-Host "::error title=iscc-failed::Setup-win-$arch.exe failed: $($errors.Substring(0, [Math]::Min(1600, $errors.Length)))"
+              Write-Host "::error title=iscc-failed::Setup-win-$arch-v$version.exe failed: $($errors.Substring(0, [Math]::Min(1600, $errors.Length)))"
               exit 1
             }
           }
@@ -384,7 +407,7 @@ jobs:
           Get-ChildItem "dist/installer" | Select-Object Name, Length
 
           foreach ($arch in @("x64", "x86", "arm64")) {
-            $setup = "dist/installer/Setup-win-$arch.exe"
+            $setup = "dist/installer/Setup-win-$arch-v$version.exe"
             if (-not (Test-Path $setup)) {
               Write-Host "::error title=missing-installer::$setup was not produced"
               exit 1
@@ -392,9 +415,10 @@ jobs:
           }
 
           # The x64 installer wraps the real application; the other two only carry stubs.
-          $sizeMb = [Math]::Round((Get-Item "dist/installer/Setup-win-x64.exe").Length / 1MB, 1)
-          Write-Host "installer compiled: Setup-win-x64.exe ($sizeMb MB)"
-          if ((Get-Item "dist/installer/Setup-win-x64.exe").Length -lt 5MB) {
+          $real = "dist/installer/Setup-win-x64-v$version.exe"
+          $sizeMb = [Math]::Round((Get-Item $real).Length / 1MB, 1)
+          Write-Host "installer compiled: Setup-win-x64-v$version.exe ($sizeMb MB)"
+          if ((Get-Item $real).Length -lt 5MB) {
             Write-Host "::error title=small-installer::the installer does not contain the application"
             exit 1
           }

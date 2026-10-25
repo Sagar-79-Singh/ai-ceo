@@ -12,12 +12,18 @@ public sealed class AgentHealthService
 {
     private readonly AgentDirectory _directory;
     private readonly ILlmGateway _gateway;
+    private readonly LlmSetupProvider _setup;
     private readonly OmniRouteOptions _options;
 
-    public AgentHealthService(AgentDirectory directory, ILlmGateway gateway, IOptions<OmniRouteOptions> options)
+    public AgentHealthService(
+        AgentDirectory directory,
+        ILlmGateway gateway,
+        LlmSetupProvider setup,
+        IOptions<OmniRouteOptions> options)
     {
         _directory = directory;
         _gateway = gateway;
+        _setup = setup;
         _options = options.Value;
     }
 
@@ -45,14 +51,30 @@ public sealed class AgentHealthService
 
     public async Task<ProviderHealth> CheckAsync(Agent agent, CancellationToken cancellationToken = default)
     {
-        if (!LlmConnections.TryResolve(agent, _options, out var connection, out var error) || connection is null)
+        var setup = _setup.Current;
+
+        // v1.0.16: nothing to probe until the user has been through the setup screen. Say so instead
+        // of dialling a provider with a key that does not exist.
+        if (!setup.IsConfigured && string.IsNullOrWhiteSpace(agent.ApiKey))
         {
             return new ProviderHealth(
                 false,
+                "No provider connection yet — open the setup screen and enter your API key and model.",
+                setup.ProviderName,
+                setup.EffectiveBaseUrl,
+                "not set");
+        }
+
+        if (!LlmConnections.TryResolve(agent, setup, _options, out var connection, out var error) || connection is null)
+        {
+            var (provider, baseUrl, _) = LlmConnections.Effective(agent, setup, _options);
+
+            return new ProviderHealth(
+                false,
                 error ?? "Provider is not configured",
-                LlmProviderCatalog.DisplayNameFor(agent.Provider),
-                agent.BaseUrl ?? LlmProviderCatalog.DefaultBaseUrlFor(agent.Provider),
-                agent.ModelId);
+                LlmProviderCatalog.DisplayNameFor(provider),
+                baseUrl,
+                LlmConnections.ResolveModel(agent, setup, provider));
         }
 
         var probe = LlmCall.Probe(
