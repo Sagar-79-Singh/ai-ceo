@@ -473,21 +473,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # v1.0.16: `hdiutil create` failed with "No space left on device" on a hosted macOS runner
-      # that had barely a gigabyte free after the toolchain caches. The image needs several
-      # gigabytes of scratch, so the job reclaims the biggest preinstalled consumers first and
-      # prints the result; nothing here is used by a .NET desktop build.
+      # v1.0.16: `hdiutil create` kept failing with "No space left on device" on the hosted macOS
+      # images — they ship every Xcode release and the simulator runtimes, which leaves too little
+      # scratch for the compressed image. A .NET desktop build needs none of it: hdiutil, sips,
+      # iconutil and codesign all live in /usr/bin. The cleanup is reported as an annotation (job
+      # logs are not readable from every environment) and the job fails fast if it is still tight.
       - name: Free disk space
         shell: bash
         run: |
           set -euo pipefail
-          echo "before:"; df -h /
-          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes 2>/dev/null || true
-          sudo rm -rf /Library/Developer/CoreSimulator/Caches 2>/dev/null || true
-          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches 2>/dev/null || true
-          sudo rm -rf ~/Library/Caches/Homebrew ~/Library/Caches/pip ~/Library/Caches/ms-playwright 2>/dev/null || true
-          sudo rm -rf "$RUNNER_TEMP"/* 2>/dev/null || true
-          echo "after:"; df -h /
+          echo "before: $(df -h / | tail -1)"
+
+          sudo rm -rf /Applications/Xcode*.app
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches
+          sudo rm -rf ~/Library/Caches/Homebrew ~/Library/Caches/pip
+          sudo rm -rf "$RUNNER_TEMP"/*
+
+          FREE_MB=$(df -m / | awk 'NR==2{print $4}')
+          echo "after: $(df -h / | tail -1)"
+          echo "::notice title=disk-space::${FREE_MB} MB free after cleanup"
+
+          if [ "$FREE_MB" -lt 3072 ]; then
+            echo "::error title=low-disk::only ${FREE_MB} MB free; hdiutil needs at least 3 GB of scratch"
+            exit 1
+          fi
 
       - name: Download the portable archive
         uses: actions/download-artifact@v4
@@ -611,37 +622,76 @@ jobs:
           cp -R "$APP" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
 
-          # hdiutil detaches its scratch devices asynchronously and occasionally reports
-          # "Resource busy" on a shared macOS runner; three attempts with a short pause make the
-          # job deterministic. Every attempt's output is captured so a real failure is diagnosable.
+          # v1.0.16: `hdiutil create -srcfolder` sizes its scratch image from an internal estimate
+          # and failed twice with "could not access .../Contents/MacOS/AiCeo - No space left on
+          # device" on hosted runners that had hundreds of gigabytes free (the diagnostic job
+          # reports the same runners with 163 GB available). The image is now sized explicitly from
+          # the payload — twice its size plus 512 MB of slack — mounted, filled with ditto and then
+          # converted to UDZO: the two-step recipe Apple documents, with no size heuristic left to
+          # guess wrong. Every step is echoed so the next failure is diagnosable from annotations.
+          PAYLOAD_MB=$(du -sm "$APP" | cut -f1)
+          echo "payload: ${PAYLOAD_MB} MB in $(find "$APP" | wc -l | tr -d ' ') entries"
+          if [ "$PAYLOAD_MB" -gt 1024 ]; then
+            echo "::error title=oversized-bundle::the .app is ${PAYLOAD_MB} MB; a single-file build should be far smaller"
+            exit 1
+          fi
+          IMAGE_MB=$(( PAYLOAD_MB * 2 + 512 ))
+          RW="$RUNNER_TEMP/AiCeo-$ARCH-rw.dmg"
+          MNT="$RUNNER_TEMP/AiCeo-$ARCH-mnt"
+          VOLNAME="AI CEO Orchestrator $VERSION"
+          DMG="dist/AiCeo-osx-$ARCH-v$VERSION.dmg"
+
+          build_image() {
+            rm -f "$RW"
+            # No -format here: hdiutil only accepts -format together with -srcfolder/-srcdevice.
+            # A blank image created from -size is read/write (UDRW) by default, which is what the
+            # attach/ditto/convert sequence needs.
+            hdiutil create -size "${IMAGE_MB}m" -fs HFS+ -volname "$VOLNAME" -ov "$RW"
+            mkdir -p "$MNT"
+            hdiutil attach "$RW" -nobrowse -noverify -mountpoint "$MNT"
+            ditto "$STAGE/" "$MNT/"
+            if [ ! -f "$MNT/AI CEO Orchestrator.app/Contents/MacOS/AiCeo" ]; then
+              echo "::error title=empty-image::the staged .app is missing from the mounted image"
+              return 1
+            fi
+            sync
+            hdiutil detach "$MNT" -force
+            rm -f "$DMG"
+            hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$DMG"
+          }
+
+          # A shared runner can still report "Resource busy" while a previous device detaches; three
+          # attempts with a short pause keep the job deterministic. Each attempt is captured so a
+          # real failure reaches an annotation.
           for attempt in 1 2 3; do
-            df -h / | tail -1
-            rm -f "dist/AiCeo-osx-$ARCH-v$VERSION.dmg"
-            if hdiutil create \
-                 -volname "AI CEO Orchestrator $VERSION" \
-                 -srcfolder "$STAGE" \
-                 -ov -format UDZO \
-                 "dist/AiCeo-osx-$ARCH-v$VERSION.dmg" 2>&1 | tee "$RUNNER_TEMP/hdiutil-$attempt.log"; then
+            echo "--- attempt $attempt: ${IMAGE_MB} MB image, $(df -m / | awk 'NR==2{print $4}') MB free"
+            hdiutil detach "$MNT" -force >/dev/null 2>&1 || true
+            if build_image 2>&1 | tee "$RUNNER_TEMP/hdiutil-$attempt.log"; then
               echo "hdiutil succeeded on attempt $attempt"
               break
             fi
 
             echo "::warning title=hdiutil-retry::attempt $attempt failed"
-            hdiutil detach "/Volumes/AI CEO Orchestrator $VERSION" -force >/dev/null 2>&1 || true
+            hdiutil detach "$MNT" -force >/dev/null 2>&1 || true
+            hdiutil detach "$VOLNAME" -force >/dev/null 2>&1 || true
             sleep 5
 
             if [ "$attempt" = "3" ]; then
-              echo "disk space at failure:"; df -h /
+              echo "disk space at failure: $(df -h / | tail -1)"
               DETAIL=$(tail -c 2000 "$RUNNER_TEMP/hdiutil-$attempt.log" | tr '\n' '|' | tr -d '\r')
               echo "::error title=dmg-failed::${DETAIL:0:3000}"
               exit 1
             fi
           done
 
-          if [ ! -f "dist/AiCeo-osx-$ARCH-v$VERSION.dmg" ]; then
+          rm -rf "$MNT" "$RW" "$STAGE"
+
+          if [ ! -f "$DMG" ]; then
             echo "::error title=dmg-missing::hdiutil reported success but produced no image"
             exit 1
           fi
+
+          echo "image: $(du -h "$DMG" | cut -f1) ($(stat -f%z "$DMG") bytes)"
 
       - name: Verify the image
         shell: bash
