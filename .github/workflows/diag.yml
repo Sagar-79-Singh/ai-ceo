@@ -35,29 +35,59 @@ jobs:
           FREE_MB=$(df -m / | awk 'NR==2{print $4}')
           echo "::notice title=after-cleanup::${FREE_MB} MB free ($(df -h / | tail -1))"
 
-      - name: Build a 200 MB compressed image the way release.yml does
+      - name: A - the existing hdiutil create -srcfolder recipe
         shell: bash
         run: |
-          set -euo pipefail
-          STAGE="$RUNNER_TEMP/stage"
-          MNT="$RUNNER_TEMP/mnt"
-          RW="$RUNNER_TEMP/rw.dmg"
-          rm -rf "$STAGE" "$MNT"
-          mkdir -p "$STAGE"
-          for i in $(seq 1 40); do
-            dd if=/dev/zero of="$STAGE/part-$i.bin" bs=1m count=5 status=none
-          done
+          set -uo pipefail
+          STAGE="$RUNNER_TEMP/stage-a"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          for i in $(seq 1 40); do dd if=/dev/zero of="$STAGE/part-$i.bin" bs=1m count=5 status=none; done
           ln -s /Applications "$STAGE/Applications"
-          PAYLOAD_MB=$(du -sm "$STAGE" | cut -f1)
-          IMAGE_MB=$(( PAYLOAD_MB * 2 + 512 ))
-          echo "::notice title=payload::${PAYLOAD_MB} MB payload, ${IMAGE_MB} MB image"
-          hdiutil create -size "${IMAGE_MB}m" -fs HFS+ -volname "AI CEO Orchestrator 1.0.16" -format UDRW -ov "$RW"
+          if OUT=$(hdiutil create -volname "AI CEO Orchestrator 1.0.16" -srcfolder "$STAGE" -ov -format UDZO "$RUNNER_TEMP/a.dmg" 2>&1); then
+            echo "::notice title=A-ok::$(stat -f%z "$RUNNER_TEMP/a.dmg") bytes"
+          else
+            echo "::error title=A-failed::$(echo "$OUT" | tail -c 1200 | tr '\n' '|')"
+          fi
+
+      - name: B - explicit read/write image, step by step
+        shell: bash
+        run: |
+          set -uo pipefail
+          STAGE="$RUNNER_TEMP/stage-b"
+          MNT="$RUNNER_TEMP/mnt-b"
+          RW="$RUNNER_TEMP/b-rw.dmg"
+          rm -rf "$STAGE" "$MNT" "$RW"; mkdir -p "$STAGE"
+          for i in $(seq 1 40); do dd if=/dev/zero of="$STAGE/part-$i.bin" bs=1m count=5 status=none; done
+          ln -s /Applications "$STAGE/Applications"
+
+          step() {   # step <name> <command...>
+            local name="$1"; shift
+            local out
+            if out=$("$@" 2>&1); then
+              echo "::notice title=B-$name-ok::$(echo "$out" | tr '\n' '|' | tail -c 400)"
+            else
+              echo "::error title=B-$name-failed::$(echo "$out" | tail -c 1200 | tr '\n' '|')"
+              return 1
+            fi
+          }
+
+          step create hdiutil create -size 912m -fs HFS+ -volname "AI CEO Orchestrator 1.0.16" -format UDRW -ov "$RW" || exit 0
+          ls -l "$RW" | tr -s ' ' | cut -d' ' -f5,9 | sed 's/^/::notice title=B-rwsize::/' || true
           mkdir -p "$MNT"
-          hdiutil attach "$RW" -nobrowse -noverify -mountpoint "$MNT"
-          ditto "$STAGE/" "$MNT/"
-          sync
-          du -sh "$MNT"
-          hdiutil detach "$MNT" -force
-          hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$RUNNER_TEMP/out.dmg"
-          hdiutil verify "$RUNNER_TEMP/out.dmg"
-          echo "::notice title=image::$(stat -f%z "$RUNNER_TEMP/out.dmg") bytes, koly=$(tail -c 512 "$RUNNER_TEMP/out.dmg" | head -c 4), free $(df -m / | awk 'NR==2{print $4}') MB"
+          step attach hdiutil attach "$RW" -nobrowse -noverify -mountpoint "$MNT" || exit 0
+          step ditto ditto "$STAGE/" "$MNT/" || { hdiutil detach "$MNT" -force || true; exit 0; }
+          echo "::notice title=B-mounted::$(du -sh "$MNT" | cut -f1) used, $(df -m "$MNT" | awk 'NR==2{print $4}') MB free in image"
+          step detach hdiutil detach "$MNT" -force || exit 0
+          step convert hdiutil convert "$RW" -format UDZO -imagekey zlib-level=9 -o "$RUNNER_TEMP/b.dmg" || exit 0
+          step verify hdiutil verify "$RUNNER_TEMP/b.dmg" || exit 0
+          echo "::notice title=B-final::$(stat -f%z "$RUNNER_TEMP/b.dmg") bytes"
+
+      - name: C - free space while the real payload is staged
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h / | tail -1
+          df -h "$RUNNER_TEMP" | tail -1
+          echo "::notice title=C-tmpdir::RUNNER_TEMP=$RUNNER_TEMP free=$(df -m "$RUNNER_TEMP" | awk 'NR==2{print $4}') MB"
+          echo "::notice title=C-tmproot::TMPDIR=$TMPDIR free=$(df -m "${TMPDIR:-/tmp}" | awk 'NR==2{print $4}') MB"
+          mount | grep -E " on / " | sed 's/^/::notice title=C-mount::/'
