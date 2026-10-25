@@ -366,8 +366,12 @@ jobs:
           }
           Write-Host "ISCC: $iscc"
 
+          # v1.0.16: every artefact carries the version, exactly as release.yml names it.
+          $version = (Select-String -Path "src/AiCeo.Desktop/AiCeo.Desktop.csproj" -Pattern "<Version>([^<]+)</Version>").Matches[0].Groups[1].Value
+          Write-Host "version: $version"
+
           New-Item -ItemType Directory -Force -Path "dist" | Out-Null
-          Copy-Item "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe" "dist/AiCeo-win-x64.exe" -Force
+          Copy-Item "src/AiCeo.Desktop/bin/Release/net10.0/win-x64/publish/AiCeo.exe" "dist/AiCeo-win-x64-v$version.exe" -Force
 
           # The installer embeds the WebView2 Evergreen bootstrapper when it is present. Fetch it so
           # the [Files]/[Code] branches for the bundled prerequisite are exercised on every push.
@@ -383,19 +387,19 @@ jobs:
           # branches (ArchitecturesAllowed / ArchitecturesInstallIn64BitMode) and Inno Setup's
           # ARM64 support still have to compile, so every installer architecture is validated.
           foreach ($arch in @("x86", "arm64")) {
-            $stub = Join-Path "dist" "AiCeo-win-$arch.exe"
+            $stub = Join-Path "dist" "AiCeo-win-$arch-v$version.exe"
             [System.IO.File]::WriteAllBytes($stub, [byte[]](0x4D, 0x5A) + (New-Object byte[] 2048))
           }
 
           foreach ($arch in @("x64", "x86", "arm64")) {
-            Write-Host "compiling Setup-win-$arch.exe"
+            Write-Host "compiling Setup-win-$arch-v$version.exe"
             $log = Join-Path $env:RUNNER_TEMP "iscc-$arch.log"
-            & $iscc "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" "installer.iss" 2>&1 |
+            & $iscc "/DAppVersion=$version" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v$version.exe" "installer.iss" 2>&1 |
               Tee-Object -FilePath $log
             if ($LASTEXITCODE -ne 0) {
               $errors = (Select-String -Path $log -Pattern "Error|error" | Select-Object -First 6 |
                 ForEach-Object { $_.Line.Trim() }) -join " | "
-              Write-Host "::error title=iscc-failed::Setup-win-$arch.exe failed: $($errors.Substring(0, [Math]::Min(1600, $errors.Length)))"
+              Write-Host "::error title=iscc-failed::Setup-win-$arch-v$version.exe failed: $($errors.Substring(0, [Math]::Min(1600, $errors.Length)))"
               exit 1
             }
           }
@@ -403,7 +407,7 @@ jobs:
           Get-ChildItem "dist/installer" | Select-Object Name, Length
 
           foreach ($arch in @("x64", "x86", "arm64")) {
-            $setup = "dist/installer/Setup-win-$arch.exe"
+            $setup = "dist/installer/Setup-win-$arch-v$version.exe"
             if (-not (Test-Path $setup)) {
               Write-Host "::error title=missing-installer::$setup was not produced"
               exit 1
@@ -411,9 +415,10 @@ jobs:
           }
 
           # The x64 installer wraps the real application; the other two only carry stubs.
-          $sizeMb = [Math]::Round((Get-Item "dist/installer/Setup-win-x64.exe").Length / 1MB, 1)
-          Write-Host "installer compiled: Setup-win-x64.exe ($sizeMb MB)"
-          if ((Get-Item "dist/installer/Setup-win-x64.exe").Length -lt 5MB) {
+          $real = "dist/installer/Setup-win-x64-v$version.exe"
+          $sizeMb = [Math]::Round((Get-Item $real).Length / 1MB, 1)
+          Write-Host "installer compiled: Setup-win-x64-v$version.exe ($sizeMb MB)"
+          if ((Get-Item $real).Length -lt 5MB) {
             Write-Host "::error title=small-installer::the installer does not contain the application"
             exit 1
           }
