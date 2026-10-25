@@ -462,7 +462,7 @@ public class OrchestratorTopologyTests
 
         Assert.Contains("setup screen", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(gateway.Calls);
-        Assert.Empty(await TaskToolLogs(database));
+        Assert.Empty(TaskToolLogs(database));
     }
 
     [Fact]

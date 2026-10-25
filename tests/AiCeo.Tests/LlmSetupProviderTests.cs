@@ -130,13 +130,13 @@ public class LlmSetupProviderTests
     }
 
     [Fact]
-    public void Clear_forgets_the_in_memory_value_only()
+    public async Task Clear_forgets_the_in_memory_value_only()
     {
         using var database = TestDatabase.Create();
         var provider = new LlmSetupProvider(database.Factory);
 
         database.SeedConnection();
-        provider.RefreshAsync().GetAwaiter().GetResult();
+        await provider.RefreshAsync();
         Assert.True(provider.IsConfigured);
 
         provider.Clear();
