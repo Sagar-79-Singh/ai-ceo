@@ -63,16 +63,23 @@ public partial class NexusWindow : Window
         {
             var pageUri = NexusAssets.EnsureExtracted(out var directory);
 
+            Program.Trace($"NEXUS: page extracted to {directory}");
+
             _presenter = new NexusPresenter(_viewModel, _settings, _runtime, ExecuteScript);
 
+            // Handing the URL to the adapter is what talks to WebView2 / WKWebView / WebKitGTK.
+            // On a machine where that runtime is missing this throws anything from DllNotFoundException
+            // to COMException, and because this handler is async void an escaping exception would kill
+            // the process. Everything is caught here and turned into the in-window fallback panel.
             Surface.Source = pageUri;
 
             await _presenter.InitializeAsync();
 
-            Console.WriteLine($"NEXUS: surface loaded from {directory}");
+            Program.Trace($"NEXUS: surface loaded from {pageUri.LocalPath}");
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            Program.WriteCrashLog(exception, "NEXUS surface");
             ShowFallback(exception);
         }
     }
@@ -125,6 +132,13 @@ public partial class NexusWindow : Window
     {
         Surface.IsVisible = false;
         FallbackPanel.IsVisible = true;
-        FallbackReason.Text = $"The embedded web engine reported: {exception.Message}";
+
+        var hint = OperatingSystem.IsWindows()
+            ? " Install the free Microsoft Edge WebView2 Runtime (the installer offers it), or use the classic interface below."
+            : " Use the classic interface below.";
+
+        FallbackReason.Text = $"The embedded web engine reported: {exception.GetType().Name}: {exception.Message}.{hint}";
+
+        Program.Trace("NEXUS: fallback panel shown (" + exception.GetType().Name + ")");
     }
 }

@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.9 ships a portable build *and* a native installer for every platform:
+# v1.0.10 ships a portable build *and* a native installer for every platform:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
 #                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
 #   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
@@ -191,6 +191,28 @@ jobs:
         with:
           name: AiCeo-win-${{ matrix.arch }}.exe
           path: dist
+
+      # v1.0.10: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
+      # when the runtime is missing (the usual reason an installed build looks dead). A CDN hiccup
+      # must not fail the release — installer.iss degrades to a download link when the file is absent.
+      - name: Fetch the WebView2 Evergreen bootstrapper
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $target = Join-Path "dist" "MicrosoftEdgeWebView2Setup.exe"
+          foreach ($attempt in 1..3) {
+            try {
+              Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $target -UseBasicParsing -TimeoutSec 120
+              if ((Get-Item $target).Length -gt 1MB) {
+                Write-Host "WebView2 bootstrapper: $((Get-Item $target).Length) bytes"
+                exit 0
+              }
+            } catch {
+              Write-Host "attempt $attempt failed: $($_.Exception.Message)"
+              Start-Sleep -Seconds 5
+            }
+          }
+          Write-Host "::warning title=webview2-bootstrapper::could not download the WebView2 bootstrapper; the installer will link to the download page instead"
 
       - name: Install Inno Setup via Chocolatey
         shell: pwsh
@@ -640,14 +662,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.9
-          tag_name: v1.0.9
+          name: AI CEO Orchestrator v1.0.10
+          tag_name: v1.0.10
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.9
+            ## AI CEO Orchestrator v1.0.10
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
             opens in a native window — no browser, no local web server. Workers can read, write and
@@ -665,7 +687,9 @@ jobs:
 
             The installers are compiled with Inno Setup in the app's dark modern wizard: per-user
             install (no UAC prompt, administrator override available), desktop and Start-menu
-            shortcuts, and a clean entry in *Apps & features*.
+            shortcuts, and a clean entry in *Apps & features*. `Setup.exe` also carries the Microsoft
+            Edge **WebView2** Evergreen bootstrapper and installs the runtime silently when it is
+            missing — the usual reason a freshly installed copy appeared not to start.
 
             ### Linux
 
@@ -698,27 +722,50 @@ jobs:
             `~/.local/share/AiCeoOrchestrator` or
             `~/Library/Application Support/AiCeoOrchestrator` — overridable with `AICEO_DB_PATH`.
 
+            If the app ever exits without showing a window, `crash.log` and `startup.log` in
+            `%APPDATA%\AiCeoOrchestrator` (also written next to the executable and in `%TEMP%`) record
+            the failing exception and the last start-up step it reached.
+
             Windows SmartScreen may warn because the builds are not code-signed: **More info → Run
             anyway**. On macOS, if Gatekeeper blocks the ad-hoc signed app, right-click → **Open** the
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.9 — native window controls
+            ### What's new in v1.0.10 — the installed build launches again
 
-            - **Real OS window chrome.** Both windows now ask for `SystemDecorations="Full"` with
-              `ExtendClientAreaToDecorationsHint="False"`, so Windows draws its minimise / maximise /
-              close buttons, macOS draws its real traffic lights and Linux gets the desktop's own
-              title bar. The fake red/amber/green dots that used to be painted inside the HTML header
-              are gone.
-            - **Taskbar / dock icon.** The window icon is now declared in XAML
-              (`Icon="avares://AiCeo/Assets/aiceo.ico"`) and the multi-resolution `aiceo.ico`
-              (16 / 24 / 32 / 48 / 64 / 128 / 256 px) is embedded as an `AvaloniaResource`, so the
-              taskbar, Alt-Tab switcher and macOS dock show the app icon instead of a blank square.
-              The startup loader prefers the ICO and falls back to the PNG.
-            - **Version badge** in the app reads `v1.0.9`.
+            The v1.0.9 `Setup.exe` could install successfully and then do nothing when started. Three
+            separate causes are fixed:
 
-            Unchanged from v1.0.8: the gear-shaped **Settings** button, `Enter` to dispatch /
-            `Shift` + `Enter` for a newline (IME-safe), and the amber **CHECKING…** provider state.
+            - **WebView2 runtime prerequisite.** `Setup.exe` now carries the Microsoft Edge WebView2
+              Evergreen bootstrapper. If the runtime is missing it is installed silently before the
+              wizard finishes, so the Nexus surface has an engine to draw with. The prerequisite is
+              optional by design: if it cannot be installed, the app still starts on its native shell
+              and the installer explains what to install.
+            - **Working directory.** The post-install launch and both shortcuts now run with
+              `WorkingDir = {app}`. A self-contained single-file app resolves its extracted native
+              payload relative to the working directory, and Inno/Explorer otherwise start it in
+              `System32`.
+            - **Native libraries in the bundle.** `PublishSingleFile`, `SelfContained` and
+              `IncludeNativeLibrariesForSelfExtract` are now declared in the project file, not only on
+              the CI command line, so `libSkiaSharp`, `libHarfBuzzSharp` and the WebView2 loader are
+              always extracted and resolvable — however the binary was published.
+
+            **Diagnostics.** Any unhandled startup exception is now written to
+            `%APPDATA%\AiCeoOrchestrator\crash.log` (and beside the executable and in `%TEMP%`), with
+            the process path, base directory, data directory and whether the process is a single-file
+            bundle. A lightweight `startup.log` breadcrumb records every launch, so a silent exit leaves
+            evidence. The Nexus window can no longer take the process down: if the web host fails for
+            any reason it shows an in-window explanation and offers the classic interface.
+
+            Everything from v1.0.9 is intact: native OS window chrome, the taskbar/dock icon, the gear
+            **Settings** button, `Enter` to dispatch, and the amber **CHECKING…** provider state.
+
+            ### Previous release — v1.0.9, native window controls
+
+            - **Real OS window chrome** — `SystemDecorations="Full"`, real title bars everywhere, no
+              more fake traffic lights in the HTML header.
+            - **Taskbar / dock icon** — `Icon="avares://AiCeo/Assets/aiceo.ico"` with the
+              multi-resolution ICO embedded as an `AvaloniaResource`.
 
             ### Previous release — v1.0.8, dispatch with Enter
 

@@ -14,15 +14,19 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.9 — native window controls
+## What's new in v1.0.10 — the installed build launches
 
 | Area | Change |
 | --- | --- |
-| **Native OS window chrome** | Both windows set `SystemDecorations="Full"` and `ExtendClientAreaToDecorationsHint="False"`: Windows draws its own minimise / maximise / close buttons, macOS draws its real traffic lights and Linux uses the desktop's title bar. The hand-painted red/amber/green dots were removed from `nexus.html`. |
-| **Taskbar / dock icon** | The window icon is declared in XAML (`Icon="avares://AiCeo/Assets/aiceo.ico"`) and the multi-resolution `aiceo.ico` (16 → 256 px) is embedded as an `AvaloniaResource`, so the Windows taskbar, Alt-Tab switcher and the macOS dock show the app icon. The startup loader prefers the ICO and falls back to the PNG. |
-| **Version** | `1.0.9` in both `.csproj` files, the assembly/file version, the installer metadata, the Nexus badge and the release notes. |
+| **WebView2 prerequisite** | `Setup.exe` now embeds the Microsoft Edge WebView2 Evergreen bootstrapper and installs it silently when the runtime is missing — the most likely reason an installed copy failed to start while the portable `.exe` worked. It is optional: if it cannot be installed the app still opens on its native shell, and the installer says so. |
+| **Working directory** | The post-install launch and both shortcuts run with `WorkingDir = {app}`; a self-contained single-file app resolves its extracted native payload relative to the working directory, and Inno/Explorer otherwise start it in `System32`. |
+| **Native libraries** | `PublishSingleFile`, `SelfContained` and `IncludeNativeLibrariesForSelfExtract` are declared in `AiCeo.Desktop.csproj` (conditioned on a RID so plain `dotnet build` still works), guaranteeing `libSkiaSharp`, `libHarfBuzzSharp` and the WebView2 loader are extracted and found however the binary is published. |
+| **Crash diagnostics** | Unhandled startup exceptions are written to `%APPDATA%\AiCeoOrchestrator\crash.log` — plus the executable's folder and `%TEMP%` — with process path, base/data directory and whether the build is a single-file bundle. A `startup.log` breadcrumb records every launch, so a silent exit still leaves evidence. |
+| **Hardened start-up** | The Nexus window can no longer take the process down: any failure in the web host (missing runtime, adapter error) is caught, logged and shown as an in-window explanation with a one-click switch to the classic interface. |
+| **Version** | `1.0.10` in both `.csproj` files, the assembly/file version, the installer metadata, the Nexus badge and the release notes. |
 
 ### Older releases
+- **v1.0.9** — native OS window chrome (no more fake traffic lights) and the taskbar/dock icon fix.
 - **v1.0.8** — gear-shaped Settings button, `Enter` to dispatch (`Shift` + `Enter` for a newline, IME-safe), amber provider `CHECKING…` state.
 - **v1.0.7** — portable build *and* native installer on every platform: 3 Inno Setup installers, 2 `.deb`, 2 `.dmg`.
 - **v1.0.6** — Nexus interface: embedded HTML/Tailwind/WebGL surface, settings modal, graceful fallback.
@@ -49,6 +53,11 @@ Download one file from the **Releases** page and run it.
 
 Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
+`Setup-win-*.exe` also installs the Microsoft Edge **WebView2** runtime when it is missing — the
+Nexus interface draws itself with it, and its absence is the usual reason an installed copy looked
+dead while the portable `.exe` worked. The prerequisite is optional: if it cannot be installed the
+app still opens on its native shell and the installer points at the download page.
+
 Then, in the sidebar, click **Select Workspace Folder** and choose the folder agents may work in.
 
 The binaries are self-contained (the .NET runtime is inside), so nothing else has to be installed.
@@ -74,8 +83,10 @@ Nothing is written next to the executable — it may sit in `~/Downloads` or on 
 | Linux | `~/.local/share/AiCeoOrchestrator/aiceo.db` | `…/logs/aiceo.log` |
 | macOS | `~/Library/Application Support/AiCeoOrchestrator/aiceo.db` | `…/logs/aiceo.log` |
 
-`AICEO_DB_PATH` overrides the database location. A startup failure writes `crash.log` beside the
-executable (falling back to the temp directory when that folder is read-only).
+`AICEO_DB_PATH` overrides the database location. A startup failure writes `crash.log` to
+`%APPDATA%\AiCeoOrchestrator` (or the equivalent per-user folder), beside the executable and in the
+temp directory, together with a `startup.log` breadcrumb trail — so an app that exits without a
+window still leaves a record of how far it got.
 
 ---
 
@@ -219,7 +230,7 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 mkdir -p dist
 for arch in x64 x86 arm64; do
   cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
-  ISCC.exe "/DAppVersion=1.0.9" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
+  ISCC.exe "/DAppVersion=1.0.10" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
 done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
@@ -270,7 +281,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.9** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v1.0.10** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
