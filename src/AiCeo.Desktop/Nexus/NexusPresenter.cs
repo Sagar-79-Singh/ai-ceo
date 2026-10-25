@@ -1,10 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json;
-using AiCeo.Desktop.Theme;
 using AiCeo.Desktop.ViewModels;
 using AiCeo.Models;
 using AiCeo.Services;
-using Avalonia.Threading;
 
 namespace AiCeo.Desktop.Nexus;
 
@@ -12,24 +10,34 @@ namespace AiCeo.Desktop.Nexus;
 /// The bridge between the C# orchestrator and the HTML shell.
 ///
 /// Direction 1 — C# → page: <see cref="BuildState"/> renders the whole view model (workspace,
-/// agents, feed, banner, settings) as one JSON snapshot which the window evaluates as
-/// <c>window.nexusReceive(…)</c>. Pushes are debounced, so a burst of feed lines costs one repaint.
+/// agents, feed, banner, settings) as one JSON snapshot, which is handed to the page as
+/// <c>{"type":"state","state":…}</c> through <c>PhotinoWindow.SendWebMessage</c>. Pushes are
+/// debounced, so a burst of feed lines costs one repaint.
 ///
-/// Direction 2 — page → C#: <see cref="HandleMessageAsync"/> understands the handful of commands
-/// the page can send (dispatch, pick workspace, edit agents, change theme …) and routes each one to
-/// the same view model methods the native shell uses. No orchestration logic lives here.
+/// Direction 2 — page → C#: <see cref="HandleMessageAsync"/> understands the handful of commands the
+/// page can send (dispatch, pick workspace, edit agents, change theme …) and routes each one to the
+/// same view model methods the app has always used. No orchestration logic lives here.
+///
+/// v1.0.15 sends messages through PhotinoX's native web-message channel
+/// (<c>PhotinoWindow.SendWebMessage</c> → <c>window.external.receiveMessage</c>) instead of
+/// evaluating script in an Avalonia WebView. Nothing is string-substituted into JavaScript any
+/// more: the page parses JSON.
 /// </summary>
 public sealed class NexusPresenter : IDisposable
 {
     private static readonly TimeSpan PushDelay = TimeSpan.FromMilliseconds(90);
 
+    /// <summary>How long the smoke test waits for the page to announce itself.</summary>
+    internal static readonly TimeSpan PageReadyTimeout = TimeSpan.FromSeconds(30);
+
     private readonly MainViewModel _viewModel;
     private readonly UserSettingsService _settings;
     private readonly AppRuntimeInfo _runtime;
-    private readonly Action<string> _dispatch;
+    private readonly Action<string> _sendWebMessage;
     private readonly HashSet<FeedItemViewModel> _watchedFeedItems = new();
+    private readonly Timer _pushTimer;
+    private readonly TaskCompletionSource<bool> _pageReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private readonly DispatcherTimer _pushTimer;
     private UserSettingsSnapshot _preferences = UserSettingsSnapshot.Default;
     private bool _disposed;
 
@@ -37,22 +45,38 @@ public sealed class NexusPresenter : IDisposable
         MainViewModel viewModel,
         UserSettingsService settings,
         AppRuntimeInfo runtime,
-        Action<string> dispatch)
+        Action<string> sendWebMessage)
     {
         _viewModel = viewModel;
         _settings = settings;
         _runtime = runtime;
-        _dispatch = dispatch;
+        _sendWebMessage = sendWebMessage;
 
-        _pushTimer = new DispatcherTimer { Interval = PushDelay };
-        _pushTimer.Tick += (_, _) =>
+        // A thread-pool timer rather than a UI-thread DispatcherTimer: the tick only schedules a
+        // push, and Push() marshals itself onto the message loop. Nothing waits on the UI thread.
+        _pushTimer = new Timer(_ => Push(), state: null, Timeout.Infinite, Timeout.Infinite);
+
+        _viewModel.PropertyChanged += OnViewModelChanged;
+        _viewModel.Feed.CollectionChanged += OnFeedChanged;
+
+        foreach (var item in _viewModel.Feed)
         {
-            _pushTimer.Stop();
-            Push();
-        };
+            Watch(item);
+        }
     }
 
-    /// <summary>Loads the saved preferences and starts streaming state to the page.</summary>
+    /// <summary>True once the page has sent its first <c>ready</c> command.</summary>
+    internal bool IsPageReady => _pageReady.Task.IsCompletedSuccessfully;
+
+    /// <summary>Completes when the page announces itself, or when the timeout elapses.</summary>
+    internal Task<bool> WaitForPageAsync(CancellationToken cancellationToken = default)
+        => _pageReady.Task.WaitAsync(PageReadyTimeout, cancellationToken);
+
+    /// <summary>
+    /// Loads the saved preferences and pushes the first snapshot. Called from the background
+    /// start-up task once the native window exists, so the window is on screen before any database
+    /// work starts — the start-up stall this release removes.
+    /// </summary>
     public async Task InitializeAsync()
     {
         try
@@ -62,14 +86,6 @@ public sealed class NexusPresenter : IDisposable
         catch (Exception exception) when (exception is InvalidOperationException or IOException or System.Data.Common.DbException)
         {
             _preferences = UserSettingsSnapshot.Default;
-        }
-
-        _viewModel.PropertyChanged += OnViewModelChanged;
-        _viewModel.Feed.CollectionChanged += OnFeedChanged;
-
-        foreach (var item in _viewModel.Feed)
-        {
-            Watch(item);
         }
 
         Push();
@@ -128,15 +144,15 @@ public sealed class NexusPresenter : IDisposable
             return;
         }
 
-        if (!Dispatcher.UIThread.CheckAccess())
+        if (!UiThread.CheckAccess())
         {
-            Dispatcher.UIThread.Post(Push);
+            UiThread.Post(Push);
             return;
         }
 
-        var json = BuildState();
-        var literal = JsonSerializer.Serialize(json);
-        _dispatch($"window.nexusReceive && window.nexusReceive({literal});");
+        // The snapshot is embedded as raw JSON, so the page receives one message and parses it
+        // once. Nothing is concatenated into JavaScript source.
+        Send("{\"type\":\"state\",\"state\":" + BuildState() + "}");
     }
 
     /// <summary>Coalesces rapid changes (feed bursts, health pings) into a single repaint.</summary>
@@ -147,14 +163,14 @@ public sealed class NexusPresenter : IDisposable
             return;
         }
 
-        if (!Dispatcher.UIThread.CheckAccess())
+        try
         {
-            Dispatcher.UIThread.Post(SchedulePush);
-            return;
+            _pushTimer.Change(PushDelay, Timeout.InfiniteTimeSpan);
         }
-
-        _pushTimer.Stop();
-        _pushTimer.Start();
+        catch (ObjectDisposedException)
+        {
+            // Shutting down.
+        }
     }
 
     /// <summary>
@@ -195,6 +211,10 @@ public sealed class NexusPresenter : IDisposable
             switch (type)
             {
                 case "ready":
+                    _pageReady.TrySetResult(true);
+                    Push();
+                    break;
+
                 case "refresh":
                     Push();
                     break;
@@ -247,6 +267,29 @@ public sealed class NexusPresenter : IDisposable
         Push();
     }
 
+    /// <summary>
+    /// Entry point for the native web-message handler. Runs on the message-loop thread and never
+    /// lets an exception escape into the native callback.
+    /// </summary>
+    internal async void Accept(string? message)
+    {
+        if (!UiThread.CheckAccess())
+        {
+            UiThread.Post(() => Accept(message));
+            return;
+        }
+
+        try
+        {
+            await HandleMessageAsync(message);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Program.WriteCrashLog(exception, "Nexus command");
+            Console.WriteLine("NEXUS: command failed: " + exception.Message);
+        }
+    }
+
     private async Task GuardAsync(Func<Task> action)
     {
         try
@@ -267,8 +310,7 @@ public sealed class NexusPresenter : IDisposable
 
         _preferences = new UserSettingsSnapshot(theme, accent, fontSize);
 
-        // Repaint the Avalonia shell too, so switching back to the classic UI keeps the choice.
-        ThemeManager.Apply(_preferences);
+        // The page repaints itself from these values; the host only stores them.
         Push();
 
         try
@@ -337,8 +379,25 @@ public sealed class NexusPresenter : IDisposable
 
     private void Toast(string message, bool isError)
     {
-        var literal = JsonSerializer.Serialize(message);
-        _dispatch($"window.nexusToast && window.nexusToast({literal}, {(isError ? "true" : "false")});");
+        var text = JsonSerializer.Serialize(message);
+        Send($"{{\"type\":\"toast\",\"text\":{text},\"isError\":{(isError ? "true" : "false")}}}");
+    }
+
+    private void Send(string message)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _sendWebMessage(message);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException or IOException)
+        {
+            // The engine has not initialised yet or the window is closing: the next push catches up.
+        }
     }
 
     // ----------------------------------------------------------------------------------- mapping
@@ -411,7 +470,7 @@ public sealed class NexusPresenter : IDisposable
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs args)
     {
         // The composer keeps its own text; echoing it back on every keystroke would fight the caret.
-        if (args.PropertyName is nameof(MainViewModel.Prompt) or nameof(MainViewModel.IsSettingsOpen))
+        if (args.PropertyName is nameof(MainViewModel.Prompt))
         {
             return;
         }
@@ -447,7 +506,16 @@ public sealed class NexusPresenter : IDisposable
         }
 
         _disposed = true;
-        _pushTimer.Stop();
+
+        try
+        {
+            _pushTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            _pushTimer.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already gone.
+        }
 
         _viewModel.PropertyChanged -= OnViewModelChanged;
         _viewModel.Feed.CollectionChanged -= OnFeedChanged;
@@ -458,5 +526,6 @@ public sealed class NexusPresenter : IDisposable
         }
 
         _watchedFeedItems.Clear();
+        _pageReady.TrySetCanceled();
     }
 }

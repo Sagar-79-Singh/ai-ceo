@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace AiCeo.DependencyInjection;
 
 /// <summary>
-/// Registers everything the app needs, independent of the desktop shell. The Avalonia desktop
+/// Registers everything the app needs, independent of the desktop shell. The PhotinoX desktop
 /// host and the tests both call <see cref="AddAiCeoCore"/>, so there is one wiring to maintain.
 /// </summary>
 public static class CoreServiceCollectionExtensions
@@ -35,7 +35,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton(new AppRuntimeInfo(
             databasePath,
             typeof(CoreServiceCollectionExtensions).Assembly
-                .GetName().Version?.ToString(3) ?? "1.0.13"));
+                .GetName().Version?.ToString(3) ?? "1.0.15"));
 
         // The gateway caches OpenAI clients per endpoint+key, so it is a singleton.
         services.AddSingleton<ILlmGateway, LlmGateway>();
