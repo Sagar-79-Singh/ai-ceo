@@ -14,16 +14,16 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.8 — dispatch with Enter
+## What's new in v1.0.9 — native window controls
 
 | Area | Change |
 | --- | --- |
-| **Settings is discoverable** | The title-bar button is now a **gear** with a visible `Settings` label instead of an unlabelled sliders glyph. |
-| **Enter dispatches** | `Enter` sends the prompt to the CEO, `Shift` + `Enter` inserts a newline, and IME composition is respected (a confirmed Japanese/Chinese candidate never fires a run). The dock labels the new shortcut instead of the old `Ctrl` + `Enter`. |
-| **Provider CHECKING state** | While the health probe is in flight — and until the first answer arrives — the telemetry dot is **amber** and the badge reads `CHECKING…` rather than flashing a false `OFFLINE`. Green = last probe answered, red = it failed. |
-| **Version** | `1.0.8` in both `.csproj` files, the assembly/file version, the installer metadata, the Nexus badge and the release notes. |
+| **Native OS window chrome** | Both windows set `SystemDecorations="Full"` and `ExtendClientAreaToDecorationsHint="False"`: Windows draws its own minimise / maximise / close buttons, macOS draws its real traffic lights and Linux uses the desktop's title bar. The hand-painted red/amber/green dots were removed from `nexus.html`. |
+| **Taskbar / dock icon** | The window icon is declared in XAML (`Icon="avares://AiCeo/Assets/aiceo.ico"`) and the multi-resolution `aiceo.ico` (16 → 256 px) is embedded as an `AvaloniaResource`, so the Windows taskbar, Alt-Tab switcher and the macOS dock show the app icon. The startup loader prefers the ICO and falls back to the PNG. |
+| **Version** | `1.0.9` in both `.csproj` files, the assembly/file version, the installer metadata, the Nexus badge and the release notes. |
 
 ### Older releases
+- **v1.0.8** — gear-shaped Settings button, `Enter` to dispatch (`Shift` + `Enter` for a newline, IME-safe), amber provider `CHECKING…` state.
 - **v1.0.7** — portable build *and* native installer on every platform: 3 Inno Setup installers, 2 `.deb`, 2 `.dmg`.
 - **v1.0.6** — Nexus interface: embedded HTML/Tailwind/WebGL surface, settings modal, graceful fallback.
 - **v1.0.5** — custom dark Inno Setup installer, settings page (theme / accent / text size) persisted in `UserSettings`.
@@ -170,7 +170,7 @@ src/AiCeo.Desktop/         Avalonia UI desktop head (Windows · Linux · macOS)
   Program.cs               entry point: global try/catch + crash.log
   App.axaml(.cs)           token-based styles, DI bootstrap, startup-failure window
   Theme/ThemeManager.cs    writes a ThemePalette into the application resources
-  Views/NexusWindow.axaml  the v1.0.6 window: hosts the embedded HTML surface
+  Views/NexusWindow.axaml  the main window (native decorations): hosts the embedded HTML surface
   Views/MainWindow.axaml   the previous native shell (fallback, and CI smoke tests)
   Nexus/                   NexusAssets (extracts the page), NexusPresenter (state + commands),
                            NexusAvailability (is a web engine usable?), NexusState (the JSON contract)
@@ -219,7 +219,7 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 mkdir -p dist
 for arch in x64 x86 arm64; do
   cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
-  ISCC.exe "/DAppVersion=1.0.8" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
+  ISCC.exe "/DAppVersion=1.0.9" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
 done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
@@ -270,7 +270,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.8** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v1.0.9** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
