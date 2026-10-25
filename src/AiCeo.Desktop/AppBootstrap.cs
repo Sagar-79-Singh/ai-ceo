@@ -28,6 +28,11 @@ internal static class AppBootstrap
 
     internal static ILoggerFactory LoggerFactory { get; private set; } = null!;
 
+    /// <summary>
+    /// Builds the container. Cheap and synchronous: it touches no database, so it is safe to run
+    /// before the window is created. The blocking half of start-up lives in
+    /// <see cref="PrepareDatabase"/>.
+    /// </summary>
     internal static void Initialize()
     {
         var dataDirectory = AppPaths.DataDirectory();
@@ -51,6 +56,19 @@ internal static class AppBootstrap
         // its own DbContext from the factory.
         _scope = root.CreateScope();
         Services = _scope.ServiceProvider;
+    }
+
+    /// <summary>
+    /// Creates and upgrades the SQLite database. This is the only blocking step in start-up, so
+    /// v1.0.15 runs it on a background task *after* the window is on screen. It never throws: a
+    /// failure is recorded in <see cref="StartupWarning"/> and shown as a banner by the view model.
+    /// </summary>
+    internal static void PrepareDatabase()
+    {
+        if (Services is null)
+        {
+            Initialize();
+        }
 
         var logger = LoggerFactory.CreateLogger("Startup");
 
@@ -72,6 +90,7 @@ internal static class AppBootstrap
     internal static IEnumerable<string> RunDiagnostics()
     {
         Initialize();
+        PrepareDatabase();
 
         yield return $"database: {DatabasePath}";
         yield return $"database exists: {File.Exists(DatabasePath)}";

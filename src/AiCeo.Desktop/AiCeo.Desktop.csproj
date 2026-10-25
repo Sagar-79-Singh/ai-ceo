@@ -11,17 +11,14 @@
 
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator with a local workspace and tool-using agents.</Description>
-    <Version>1.0.13</Version>
-    <AssemblyVersion>1.0.13.0</AssemblyVersion>
-    <FileVersion>1.0.13.0</FileVersion>
+    <Version>1.0.15</Version>
+    <AssemblyVersion>1.0.15.0</AssemblyVersion>
+    <FileVersion>1.0.15.0</FileVersion>
 
-    <!-- The icon shown in Explorer/taskbar. Windows-only; ignored by the other targets. -->
+    <!-- The icon shown in Explorer/taskbar. Windows-only; ignored by the other targets. PhotinoX
+         also picks it up for the native window, so no window-icon plumbing is needed. -->
     <ApplicationIcon>Assets/aiceo.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-
-    <!-- Reflection bindings: no compile-time x:DataType requirements in the views. -->
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
 
     <!-- Shipping as one file on machines without ICU installed. -->
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -33,9 +30,9 @@
 
     These live in the project file (not only on the CI command line) so a local `dotnet publish -r
     <rid>` produces exactly the artefact the installers package. IncludeNativeLibrariesForSelfExtract
-    matters most: Avalonia's native payload — libSkiaSharp, libHarfBuzzSharp, the WebView2 loader and
-    friends — is extracted to a temp folder at run time and resolved from there. Without it the
-    bundle cannot find its own native libraries, which is exactly the class of failure that shows up
+    matters most: PhotinoX.Native (PhotinoX.Native.dll / .so / .dylib, plus WebView2Loader.dll on
+    Windows) is extracted to a temp folder at run time and resolved from there. Without it the
+    bundle cannot find its own native library, which is exactly the class of failure that shows up
     as "the portable build runs but the installed build does nothing".
 
     They are conditioned on a RuntimeIdentifier because the SDK rejects a self-contained build
@@ -48,13 +45,17 @@
     <IncludeAllContentForSelfExtract>false</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
+  <!--
+    v1.0.15: PhotinoX is the entire UI stack. It is a thin .NET wrapper around the WebView the OS
+    already ships — WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux — so there is no
+    XAML, no managed renderer and no compositor between the window and the page. That is what
+    removes the invisible-window and start-up-freeze class of bug for good.
+
+    Version 5.3.5 is the current published line (PhotinoX.Native 5.3.5 ships the per-RID native
+    library for win-x64/win-arm64/linux-x64/linux-arm64/osx-x64/osx-arm64).
+  -->
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.22" Condition="'$(Configuration)' == 'Debug'" />
-    <!-- Native web surface for the Nexus shell. 11.4.1 is the Avalonia 11 line (12.x needs Avalonia 12). -->
-    <PackageReference Include="Avalonia.Controls.WebView" Version="11.4.1" />
+    <PackageReference Include="PhotinoX" Version="5.3.5" />
   </ItemGroup>
 
   <ItemGroup>
@@ -62,12 +63,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Everything in Assets/ (nexus.html, nexus.css, theme.css, aiceo.png) ships as an avares://
-         resource. The icon is listed separately so it is unambiguous that aiceo.ico — used by both
-         <ApplicationIcon> for the .exe and Icon="avares://AiCeo/Assets/aiceo.ico" for the window —
-         is embedded; it is excluded from the glob to avoid a duplicate item. -->
-    <AvaloniaResource Include="Assets\**" Exclude="Assets\aiceo.ico" />
-    <AvaloniaResource Include="Assets\aiceo.ico" />
+    <!-- The Nexus shell ships inside the assembly. Only the page and its compiled stylesheet are
+         embedded: NexusAssets reads them from the manifest resource stream, inlines the stylesheet
+         into the document and hands the result to the native WebView. Nothing is written to disk
+         and no file:// access is required, which is what keeps the surface identical on all three
+         engines. aiceo.ico is used by <ApplicationIcon> above (and by the installer). -->
+    <EmbeddedResource Include="Assets\nexus.html" />
+    <EmbeddedResource Include="Assets\nexus.css" />
   </ItemGroup>
 
 </Project>

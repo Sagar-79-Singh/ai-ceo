@@ -1,7 +1,3 @@
-using AiCeo.Desktop.Theme;
-using AiCeo.Models;
-using Avalonia.Media;
-
 namespace AiCeo.Desktop.ViewModels;
 
 /// <summary>What a feed line represents.</summary>
@@ -41,7 +37,7 @@ public sealed class FeedItemViewModel : ObservableObject
         {
             if (SetProperty(ref _isPending, value))
             {
-                OnPropertyChanged(nameof(DelegationTitle), nameof(PendingDotBrush));
+                OnPropertyChanged(nameof(DelegationTitle));
             }
         }
     }
@@ -76,17 +72,6 @@ public sealed class FeedItemViewModel : ObservableObject
         FeedKind.ToolResult => Failed ? "refused / failed" : "result",
         _ => string.Empty
     };
-
-    public IBrush ToolOutputBrush => Failed
-        ? ThemeBrushes.Get(UiTheme.Danger, "#FFB3B3")
-        : ThemeBrushes.Get(UiTheme.TextBody, "#C7D6E8");
-
-    public IBrush PendingDotBrush => IsPending
-        ? ThemeBrushes.Get(UiTheme.Warn, "#FFC46B")
-        : ThemeBrushes.Get(UiTheme.Ok, "#5EE0B0");
-
-    /// <summary>Re-reads the themed brushes after a theme change.</summary>
-    public void RefreshTheme() => OnPropertyChanged(nameof(ToolOutputBrush), nameof(PendingDotBrush));
 
     public string HeaderText => Kind switch
     {

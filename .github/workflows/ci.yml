@@ -1,11 +1,11 @@
 name: CI
 
-# v1.0.13 is a cross-platform Avalonia desktop app whose UI is an embedded HTML surface, so the
-# pipeline does:
-#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema, theme tokens),
+# v1.0.15 is a PhotinoX desktop app: a native window hosting the operating system's own WebView
+# (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux), so the pipeline does:
+#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema),
 #   2. the desktop head built and published as a single file on Linux (real executable, booted
-#      headlessly through --self-test, plus the --smoke-ui window, settings panel and bundled Nexus
-#      page/stylesheet extraction on Xvfb),
+#      headlessly through --self-test, plus the --smoke-ui run on Xvfb: the native window, the
+#      WebKitGTK web view, the page→host "ready" handshake and a settings command round-trip),
 #   3. the same on Windows, producing the standalone .exe users download, and compiling
 #      installer.iss for x64 / x86 / arm64 with Inno Setup so every installer script is validated on every push.
 on:
@@ -97,6 +97,16 @@ jobs:
       - name: Restore
         run: dotnet restore src/AiCeo.Desktop/AiCeo.Desktop.csproj -r linux-x64
 
+      - name: Install the WebKitGTK runtime and a virtual display
+        shell: bash
+        run: |
+          set -euo pipefail
+          # PhotinoX draws with the system WebView: WebKitGTK 4.1 (the .deb depends on the same
+          # package). Xvfb provides the display the smoke test needs.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-0 libgtk-3-0 xvfb libgl1-mesa-dri fonts-dejavu-core
+          dpkg -l | grep -E "libwebkit2gtk-4.1-0|libgtk-3-0" || true
+
       - name: Publish (single file, self-contained)
         shell: bash
         run: |
@@ -152,32 +162,48 @@ jobs:
             exit 1
           fi
 
-          echo "ui smoke test (headless X server)"
-          if command -v xvfb-run > /dev/null 2>&1; then
-            xvfb-run -a "$ROOT/AiCeo" --smoke-ui 2>&1 | tee "$RUNNER_TEMP/uismoke.log"
-            UI_CODE=${PIPESTATUS[0]}
-          else
-            sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
-            xvfb-run -a "$ROOT/AiCeo" --smoke-ui 2>&1 | tee "$RUNNER_TEMP/uismoke.log"
-            UI_CODE=${PIPESTATUS[0]}
-          fi
+          echo "ui smoke test (native window + WebKitGTK on a headless X server)"
+          # Software rendering: the runner has no GPU, and WebKitGTK would otherwise fail to
+          # composite its web view inside Xvfb.
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1
+          export WEBKIT_DISABLE_DMABUF_RENDERER=1
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export GDK_BACKEND=x11
+          export NO_AT_BRIDGE=1
+          export LANG=C.UTF-8
+
+          timeout 180 xvfb-run -a "$ROOT/AiCeo" --smoke-ui 2>&1 | tee "$RUNNER_TEMP/uismoke.log"
+          UI_CODE=${PIPESTATUS[0]}
 
           echo "ui smoke exit code: $UI_CODE"
           if [ "$UI_CODE" -ne 0 ]; then
-            echo "::error title=ui-smoke-failed::the Avalonia window could not be created"
+            echo "::error title=ui-smoke-failed::the native window or its web view could not be created"
             [ -f "$ROOT/crash.log" ] && tail -60 "$ROOT/crash.log"
             exit 1
           fi
           if ! grep -q "UI SMOKE OK" "$RUNNER_TEMP/uismoke.log"; then
             echo "::error title=ui-smoke-report::UI SMOKE OK was not reported"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          # The page must have talked to the host and a command must have travelled back.
+          if ! grep -q "page bridge ready = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=bridge-failed::the Nexus page never reached the host over the native web-message bridge"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "settings round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=command-failed::a page command did not reach the host snapshot"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi
 
-          # Crash logging: with no display, Avalonia cannot start. The binary must exit non-zero
-          # AND leave a crash.log with the stack trace next to itself.
+          # Crash logging: with no display server the native window cannot be created. The binary
+          # must exit non-zero AND leave a crash.log with the stack trace next to itself (the app
+          # checks DISPLAY/WAYLAND_DISPLAY itself, so this is deterministic on every runner).
           echo "crash-log check (no display)"
           rm -f "$ROOT/crash.log"
-          env -u DISPLAY -u WAYLAND_DISPLAY AICEO_DB_PATH="$AICEO_DB_PATH" "$ROOT/AiCeo" > "$RUNNER_TEMP/nodisplay.log" 2>&1
+          env -u DISPLAY -u WAYLAND_DISPLAY AICEO_DB_PATH="$AICEO_DB_PATH" timeout 60 "$ROOT/AiCeo" > "$RUNNER_TEMP/nodisplay.log" 2>&1
           CRASH_CODE=$?
           echo "exit code without a display: $CRASH_CODE"
 
@@ -199,7 +225,7 @@ jobs:
             echo "::error title=bad-crash-log::crash.log is missing the startup report header"
             exit 1
           fi
-          if ! grep -qE "at Avalonia|X11|display|Exception" "$ROOT/crash.log"; then
+          if ! grep -qE "at AiCeo|at Photino|X11|display|Exception" "$ROOT/crash.log"; then
             echo "::error title=no-stack::crash.log has no stack trace"
             exit 1
           fi

@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.13 ships a portable build *and* a native installer for every platform:
+# v1.0.15 ships a portable build *and* a native installer for every platform:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
 #                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
 #   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
@@ -192,7 +192,7 @@ jobs:
           name: AiCeo-win-${{ matrix.arch }}.exe
           path: dist
 
-      # v1.0.13: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
+      # v1.0.15: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
       # when the runtime is missing (the usual reason an installed build looks dead). A CDN hiccup
       # must not fail the release — installer.iss degrades to a download link when the file is absent.
       - name: Fetch the WebView2 Evergreen bootstrapper
@@ -375,9 +375,9 @@ jobs:
            You brief one CEO agent, which plans the work, delegates to a single
            worker at a time inside the folder you choose, and reports back.
            .
-           The interface is the Nexus HTML/WebGL console rendered inside a
-           native window; the app falls back to its plain Avalonia shell when
-           no WebKitGTK runtime is available.
+           The interface is the Nexus HTML/WebGL console rendered by the
+           system WebView (WebKitGTK 4.1) inside a native window provided by
+           PhotinoX.
           CONTROL
 
           cat > "$ROOT/DEBIAN/postinst" <<'POSTINST'
@@ -435,7 +435,7 @@ jobs:
     needs: publish
     runs-on: macos-latest
     env:
-      # v1.0.13: the oldest macOS this image supports (High Sierra). Declared once, used by the
+      # v1.0.15: the oldest macOS this image supports (High Sierra). Declared once, used by the
       # bundle's Info.plist and by the two checks in the packaging script.
       MIN_MACOS: "10.13"
     strategy:
@@ -462,7 +462,7 @@ jobs:
           ARCH="${{ matrix.arch }}"
           APP="$RUNNER_TEMP/AI CEO Orchestrator.app"
 
-          # v1.0.13: this image targets macOS 10.13 (High Sierra) or later. The version declared
+          # v1.0.15: this image targets macOS 10.13 (High Sierra) or later. The version declared
           # in Info.plist below is the floor LaunchServices enforces; this check makes sure the
           # image is never built on — or labelled for — anything older.
           version_ge() {   # version_ge <have> <need> -> true when have >= need
@@ -701,18 +701,18 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.13
-          tag_name: v1.0.13
+          name: AI CEO Orchestrator v1.0.15
+          tag_name: v1.0.15
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.13
+            ## AI CEO Orchestrator v1.0.15
 
-            A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
-            opens in a native window — no browser, no local web server. Workers can read, write and
-            run commands inside a folder you choose.
+            A **cross-platform desktop** AI orchestrator (.NET 10 · PhotinoX + native WebView ·
+            Nexus console) that opens in a native window — no browser, no local web server, no
+            bundled UI toolkit. Workers can read, write and run commands inside a folder you choose.
 
             Every platform now ships **both** a portable build and a native installer.
 
@@ -733,7 +733,8 @@ jobs:
             - **Microsoft Edge WebView2 Runtime** — Windows 10/11 get the current Evergreen
               bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the last runtime
               that supports them. Declining this prompt cancels the installation.
-            - **Visual C++ 2015-2022 Redistributable** — prompted for, never forced.
+            - **Visual C++ 2015-2022 Redistributable** — no longer checked: PhotinoX uses the WebView
+              the system already provides, so the redistributable is not a dependency of this build.
             - **.NET is not checked** — the executable is published with `--self-contained true`.
 
             ### Linux
@@ -779,35 +780,59 @@ jobs:
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.13 — the window always appears, and WebView2 never blocks it
+            ### What's new in v1.0.15 — Avalonia is gone, PhotinoX hosts the native WebView
 
-            The app could keep running with its taskbar button and never show a window. Fixed at the
-            two places that can cause it:
+            v1.0.15 replaces the entire managed UI stack. **Avalonia is removed**: no Avalonia
+            packages, no XAML files, no managed renderer and no compositor between the window and the
+            page. The shell is a **PhotinoX** native window around the WebView the operating system
+            already ships — WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux.
 
-            - **The window is built and assigned first.** `OnFrameworkInitializationCompleted` now
-              constructs the shell and sets `desktop.MainWindow` before the one call on that path that
-              blocks (the saved theme, which is a SQLite read). There is therefore always a window for
-              the lifetime to show, whatever happens afterwards.
-            - **Both windows show and activate themselves.** `PresentWindow()` clears a `FullScreen`
-              or `Minimized` state, forces `ShowInTaskbar="True"` and `Topmost="False"`, then calls
-              `Show()` and `Activate()`. It is called from the window itself, from `App` right after
-              the `Opened` handler is attached, and from the classic-shell switch — so visibility never
-              depends on a single lifetime call. Both windows also declare
-              `WindowStartupLocation="CenterScreen"` and `WindowState="Normal"`; no
-              `WindowState="FullScreen"` anywhere, which is a known way to make a window never appear.
-            - **WebView2 initialisation is fully asynchronous.** Page extraction moved to the thread
-              pool, navigation and script calls are awaited, and the `Opened` handler has no `.Result`
-              or `.Wait()` on any WebView2 call — the deadlock that froze the interface is impossible
-              by construction. The window is on screen before the browser engine is touched at all.
+            - **The invisible window cannot happen any more.** `PhotinoApplication.Run(window)` shows
+              the window and pumps the native message loop in the same call, so the window that is
+              created is the window that is shown. The v1.0.11–v1.0.13 workarounds
+              (`WindowPresentation`, forced `Show()`/`Activate()`, the deferred presentation contract,
+              the `Avalonia.Platform.WebView` availability probe) are deleted along with the shell they
+              existed to patch.
+            - **The start-up freeze cannot happen any more.** The window appears first; the database,
+              the agent list and the provider probe then run on a background task
+              (`PhotinoApplication` → `Created` → `NexusPresenter.Start()`). There is no
+              `.Result`/`.Wait()` on the UI path and no UI work before the first frame.
+            - **Native interop instead of script evaluation.** Page→host commands arrive as
+              `WebMessageReceived` messages (`window.external.sendMessage`), and host→page snapshots
+              are sent with `SendWebMessage` (`window.external.receiveMessage`). Nothing is spliced
+              into JavaScript source any more, and the page is loaded by the window itself
+              (`LoadString`) with its stylesheet inlined, so no `file://` access is involved.
+            - **The folder picker is native.** *Select Workspace Folder* uses
+              `PhotinoWindow.ShowOpenFolder` — the Win32 folder dialog, GTK's chooser or `NSOpenPanel`,
+              depending on the OS.
+            - **The installer got simpler.** The Visual C++ 2015-2022 Redistributable check is gone —
+              PhotinoX uses the WebView the system provides, so it is not a dependency any more. The
+              WebView2 check stays exactly as it was, including the **109** line for Windows 7 / 8 /
+              8.1 and the "declining cancels the install" contract.
 
-            **Attribution.** Releases are now recorded with the official Claude Code footer:
+            CI proves the new shell on every push: the Linux job runs the published single-file binary
+            on Xvfb and asserts that the native window is created, the WebKitGTK web view loads the
+            Nexus page, the page's `ready` handshake reaches the host, and a settings command from the
+            page is stored and reflected in the next snapshot.
+
+            **Attribution.** Releases are recorded with the official Claude Code footer:
             `🤖 Generated with Claude Code` and
             `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`.
 
-            Everything from earlier releases is intact: the Nexus surface and its providers, the
-            workspace guardrail and tool loop, the stock installer wizard with its OS-aware WebView2 /
-            VC++ prerequisite checks, the `.deb` dependencies on `libgtk-3-0` and
-            `libwebkit2gtk-4.1-0`, and the macOS 10.13 floor.
+            Everything from earlier releases is intact: the Nexus surface and its providers, strict
+            star topology with one worker at a time, the workspace guardrail and tool loop, the stock
+            installer wizard with its OS-aware WebView2 prerequisite, the `.deb` dependencies on
+            `libgtk-3-0` and `libwebkit2gtk-4.1-0`, and the macOS 10.13 floor.
+
+            ### Previous release — v1.0.13, the window always appears
+
+            - **The window was built and assigned first** — `desktop.MainWindow` before the one call
+              on that path that blocks (the saved theme, a SQLite read).
+            - **Both windows showed and activated themselves** — `PresentWindow()` cleared a
+              `FullScreen`/`Minimized` state, forced `ShowInTaskbar="True"` and `Topmost="False"`, then
+              called `Show()` and `Activate()`.
+            - **WebView2 initialisation was fully asynchronous** — page extraction on the thread pool,
+              awaited navigation, no `.Result`/`.Wait()` on any WebView2 call.
 
             ### Previous release — v1.0.12, start-up reverted and smart installers
 
@@ -820,7 +845,7 @@ jobs:
 
             ### Previous release — v1.0.11, the window is guaranteed to appear
 
-            - **No blocking on the UI thread** — the theme row was read before Avalonia started.
+            - **No blocking on the UI thread** — the theme row was read before the shell started.
             - **The shell showed and activated itself** — `WindowPresentation.PrepareForDisplay`.
             - **Oversized windows were fitted to the monitor.**
             - **`Co-authored-by: Claude <noreply@anthropic.com>`** on the release commit.
@@ -838,7 +863,7 @@ jobs:
             - **Real OS window chrome** — `SystemDecorations="Full"`, real title bars everywhere, no
               more fake traffic lights in the HTML header.
             - **Taskbar / dock icon** — `Icon="avares://AiCeo/Assets/aiceo.ico"` with the
-              multi-resolution ICO embedded as an `AvaloniaResource`.
+              multi-resolution ICO embedded in the executable.
 
             ### Previous release — v1.0.8, dispatch with Enter
 
@@ -871,6 +896,13 @@ jobs:
             workspace-confined `list_files` / `read_file` / `write_file` / `run_command` tool loop,
             and the Nexus interface with its offline-bundled Tailwind/WebGL surface.
 
+            ### 32-bit Windows note
+
+            `AiCeo-win-x86.exe` and `Setup-win-x86.exe` are still built and published, but the native
+            window/WebView bridge that PhotinoX ships is x64 / ARM64 only, so the 32-bit build cannot
+            open the Nexus window — it writes that reason to `crash.log` instead of failing obscurely.
+            A 32-bit Windows 10 installation on 64-bit hardware runs the **x64** build.
+
             ### Windows 7 / 8 note
             .NET 10 — bundled inside these executables — officially supports Windows 10 1809 (build
             17763) and newer only, so that is the floor for the application itself. `Setup.exe` will
@@ -888,7 +920,7 @@ jobs:
             assets/*.sha256
             assets/SHA256SUMS.txt
 
-      # v1.0.13: record the release with the official Claude Code attribution footer.
+      # v1.0.15: record the release with the official Claude Code attribution footer.
       #
       # The commit is made by the GitHub Actions bot as an empty commit on main, carrying the exact
       # default Claude Code footer:
