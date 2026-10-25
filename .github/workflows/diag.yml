@@ -1,5 +1,8 @@
 name: Diagnostics (temporary)
 on:
+  push:
+    paths:
+      - '.github/workflows/diag.yml'
   workflow_dispatch:
 jobs:
   diag:
@@ -38,8 +41,10 @@ jobs:
           set -euo pipefail
           STAGE="$RUNNER_TEMP/stage"
           mkdir -p "$STAGE"
-          dd if=/dev/zero of="$STAGE/big.bin" bs=1m count=200 status=none
-          echo "::notice title=stage::$(du -h "$STAGE/big.bin" | cut -f1)"
+          for i in $(seq 1 40); do
+            dd if=/dev/zero of="$STAGE/part-$i.bin" bs=1m count=5 status=none
+          done
+          echo "::notice title=stage::$(du -sh "$STAGE" | cut -f1) in $(ls -1 "$STAGE" | wc -l) files"
           hdiutil create -volname "AI CEO Orchestrator 1.0.16" -srcfolder "$STAGE" -ov -format UDZO "$RUNNER_TEMP/out.dmg"
           ls -l "$RUNNER_TEMP/out.dmg"
           echo "::notice title=image::$(ls -l "$RUNNER_TEMP/out.dmg" | awk '{print $5}') bytes, free now $(df -m / | awk 'NR==2{print $4}') MB"
