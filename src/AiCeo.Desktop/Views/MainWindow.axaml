@@ -7,6 +7,8 @@
         MinWidth="1020"
         MinHeight="680"
         WindowStartupLocation="CenterScreen"
+        WindowState="Normal"
+        ShowInTaskbar="True"
         Background="{DynamicResource AppBg}"
         Icon="avares://AiCeo/Assets/aiceo.ico"
         SystemDecorations="Full"

@@ -32,7 +32,11 @@ public partial class App : Application
 
                 // Paint with the saved preferences before the window is created, so the chosen theme
                 // is what the very first frame shows (no dark flash when light is selected).
-                ApplySavedTheme(userSettings);
+                //
+                // v1.0.11: the snapshot was read from SQLite here — on the UI thread, milliseconds
+                // before the window had to be shown. It is now loaded in Program.Main before Avalonia
+                // starts, so this is a pure in-memory paint: no await, no .Result, no deadlock.
+                ApplyInitialTheme();
 
                 var viewModel = new MainViewModel(
                     AppBootstrap.GetRequiredService<AgentDirectory>(),
@@ -104,18 +108,37 @@ public partial class App : Application
                     });
                 }
 
-                // Loading agents/workspace touches SQLite, so it runs after the window exists.
+                // Loading agents/workspace touches SQLite, so it runs after the window exists. The
+                // handler is guarded: an async void event handler that throws takes the whole process
+                // down, and this one runs after the window is already on screen.
                 window.Opened += async (_, _) =>
                 {
                     Program.Trace($"window opened: {window.GetType().Name}");
-                    await viewModel.InitializeAsync();
-                    Program.Trace("view model initialised");
 
-                    if (Program.SmokeTestMode && window is MainWindow classicWindow)
+                    try
                     {
-                        await RunSmokeTestAsync(classicWindow, viewModel);
+                        await viewModel.InitializeAsync().ConfigureAwait(true);
+                        Program.Trace("view model initialised");
+
+                        if (Program.SmokeTestMode && window is MainWindow classicWindow)
+                        {
+                            await RunSmokeTestAsync(classicWindow, viewModel);
+                        }
+                    }
+                    catch (Exception exception) when (exception is not OutOfMemoryException)
+                    {
+                        // The window stays usable: the banner explains what failed.
+                        Program.WriteCrashLog(exception, "view model initialisation");
+                        Program.Trace("view model initialisation failed: " + exception.GetType().Name);
+                        viewModel.ReportStartupFailure(exception);
                     }
                 };
+
+                // v1.0.11: show and activate the shell explicitly rather than relying only on the
+                // lifetime's ShowMainWindow(). If that call was swallowed the process stayed alive
+                // with a taskbar button and nothing on screen. This runs after the Opened handler is
+                // attached above, so showing the window here also starts the async initialisation.
+                WindowPresentation.PrepareForDisplay(window);
             }
             catch (Exception exception)
             {
@@ -144,7 +167,7 @@ public partial class App : Application
         var previous = desktop.MainWindow;
         desktop.MainWindow = classic;
 
-        classic.Show();
+        WindowPresentation.PrepareForDisplay(classic);
         previous?.Close();
     }
 
@@ -234,16 +257,21 @@ public partial class App : Application
         window.Close();
     }
 
-    /// <summary>Applies the stored theme, falling back to the default palette on any database issue.</summary>
-    private static void ApplySavedTheme(UserSettingsService userSettings)
+    /// <summary>
+    /// Applies the theme that <see cref="AppBootstrap.Preload"/> already read, falling back to the
+    /// defaults. Deliberately synchronous: it only writes the resource dictionary, so there is
+    /// nothing to await and no way to stall the thread that is starting the UI.
+    /// </summary>
+    private static void ApplyInitialTheme()
     {
         try
         {
-            ThemeManager.Apply(userSettings.GetAsync().GetAwaiter().GetResult());
+            ThemeManager.Apply(AppBootstrap.PreloadedSettings ?? UserSettingsSnapshot.Default);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException or System.Data.Common.DbException)
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            // A broken database must not stop the shell from starting; InitializeAsync reports it.
+            // A broken palette must never stop the shell: paint the defaults and keep going.
+            Program.WriteCrashLog(exception, "theme (startup)");
             ThemeManager.Apply(UserSettingsSnapshot.Default);
         }
     }

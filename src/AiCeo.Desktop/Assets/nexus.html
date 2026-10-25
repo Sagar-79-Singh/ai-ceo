@@ -134,7 +134,7 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.10</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.11</span>
       </span>
     </div>
   </div>
@@ -887,7 +887,7 @@
     var icon = el('nx-dispatch-icon');
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
     if (dispatch) dispatch.classList.toggle('opacity-60', false);
-    text('nx-version', s.version ? 'v' + s.version : 'v1.0.10');
+    text('nx-version', s.version ? 'v' + s.version : 'v1.0.11');
     text('nx-footer', s.footer || 'sqlite: aiceo.db');
     var banner = el('nx-banner');
     if (banner) {
