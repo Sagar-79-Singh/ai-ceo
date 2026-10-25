@@ -643,7 +643,10 @@ jobs:
 
           build_image() {
             rm -f "$RW"
-            hdiutil create -size "${IMAGE_MB}m" -fs HFS+ -volname "$VOLNAME" -format UDRW -ov "$RW"
+            # No -format here: hdiutil only accepts -format together with -srcfolder/-srcdevice.
+            # A blank image created from -size is read/write (UDRW) by default, which is what the
+            # attach/ditto/convert sequence needs.
+            hdiutil create -size "${IMAGE_MB}m" -fs HFS+ -volname "$VOLNAME" -ov "$RW"
             mkdir -p "$MNT"
             hdiutil attach "$RW" -nobrowse -noverify -mountpoint "$MNT"
             ditto "$STAGE/" "$MNT/"
