@@ -1,7 +1,6 @@
 using System.Text;
 using AiCeo.Data;
 using AiCeo.DependencyInjection;
-using AiCeo.Models;
 using AiCeo.Options;
 using AiCeo.Services;
 using AiCeo.Tools;
@@ -29,26 +28,8 @@ internal static class AppBootstrap
 
     internal static ILoggerFactory LoggerFactory { get; private set; } = null!;
 
-    /// <summary>
-    /// The theme/accent/text-size row, read once before the Avalonia dispatcher exists.
-    ///
-    /// v1.0.11: the shell used to fetch this from SQLite on the UI thread during
-    /// <c>OnFrameworkInitializationCompleted</c>, which blocks the thread that is about to show the
-    /// window. Reading it earlier — while there is no <see cref="SynchronizationContext"/> to deadlock
-    /// on — lets the window be created and shown without a single blocking call on the UI thread.
-    /// </summary>
-    internal static UserSettingsSnapshot? PreloadedSettings { get; private set; }
-
-    /// <summary>True once the container exists, so the pre-start and in-app calls cannot double-build it.</summary>
-    internal static bool IsInitialized => _scope is not null;
-
     internal static void Initialize()
     {
-        if (IsInitialized)
-        {
-            return;
-        }
-
         var dataDirectory = AppPaths.DataDirectory();
         DatabasePath = DatabasePaths.ResolveFromEnvironment(dataDirectory);
 
@@ -82,32 +63,6 @@ internal static class AppBootstrap
         {
             StartupWarning = $"The database could not be prepared: {exception.Message}";
             logger.LogError(exception, "Database initialisation failed ({Path})", DatabasePath);
-        }
-    }
-
-    /// <summary>
-    /// Prepares the database and reads the saved appearance, so the window can be shown immediately
-    /// when the Avalonia lifetime starts. Never throws: a broken profile must not stop the launch.
-    /// </summary>
-    internal static void Preload()
-    {
-        try
-        {
-            Initialize();
-
-            PreloadedSettings = GetRequiredService<UserSettingsService>()
-                .GetAsync()
-                .GetAwaiter()
-                .GetResult();
-
-            Program.Trace(
-                $"settings preloaded: theme={PreloadedSettings.Theme} accent={PreloadedSettings.AccentColor} "
-                + $"font={PreloadedSettings.FontSize}");
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
-        {
-            PreloadedSettings = null;
-            Program.Trace("settings could not be preloaded; the default palette will be used: " + exception.GetType().Name);
         }
     }
 

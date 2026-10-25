@@ -1,40 +1,40 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — custom Inno Setup script (v1.0.11)
+;  AI CEO Orchestrator — Inno Setup script (v1.0.12)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=1.0.11 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
+;      ISCC.exe /DAppVersion=1.0.12 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
 ;
-;  The release workflow downloads Inno Setup through Chocolatey, drops the published
-;  AiCeo-win-x64.exe into dist\ and compiles this file; the resulting Setup.exe is attached to
-;  the GitHub Release.
-;
-;  Design notes
-;    * WizardStyle=modern with a hand-painted #1E1E2E palette: the wizard, notebook pages,
-;      buttons and labels are recoloured in [Code] so the installer matches the app's dark UI.
-;    * Custom wizard artwork (installer\wizard-large.bmp / wizard-small.bmp) instead of the
-;      stock blue Inno bitmaps.
-;    * Themed welcome / finished copy.
-;    * A custom slim progress bar (track + accent fill + percentage) replaces the stock VCL
-;      progress gauge, which cannot be recoloured.
-;    * Per-user install into %LOCALAPPDATA%\Programs — no UAC prompt; an administrator can
-;      still choose "install for all users" from the dialog.
+;  v1.0.12 design
+;    * A stock Inno Setup wizard — no custom palette, no hand-painted controls, no custom
+;      artwork, no altered [Messages]. It looks and behaves exactly like the native installer
+;      every other Windows program uses, which is also what makes it accessible and DPI-safe.
+;    * Smart prerequisites, checked before any file is copied:
+;        - Microsoft Edge WebView2 Runtime. If it is missing the version of Windows decides
+;          which bootstrapper is used: Windows 10/11 get the current Evergreen bootstrapper,
+;          while Windows 7 / 8 / 8.1 get the 109 line (109.0.1518.x, the last runtime that
+;          supports those systems). The user is asked; declining aborts the installation.
+;        - Microsoft Visual C++ 2015-2022 Redistributable (x64 / x86 / arm64). Prompted for,
+;          never forced: the app is self-contained, so a missing redistributable can only cost
+;          a native component, never the launch.
+;        - .NET is deliberately NOT checked: the executable is published with
+;          --self-contained true and carries the runtime inside it.
+;    * Per-user install into %LOCALAPPDATA%\Programs — no UAC prompt; an administrator can still
+;      choose "install for all users" from the dialog.
 ;    * Desktop shortcut (opt-out task) and Start-menu shortcuts are always created.
-;    * v1.0.11: the Microsoft Edge WebView2 Evergreen runtime is installed silently when the app's
-;      web surface needs it and it is missing (the bootstrapper is embedded in Setup.exe when the
-;      release workflow supplies it). Both shortcuts and the post-install launch run with
-;      WorkingDir = {app}, because a self-contained single-file app resolves its extracted native
-;      payload relative to the working directory on some Windows configurations.
+;    * Both shortcuts and the post-install launch run with WorkingDir = {app}, because a
+;      self-contained single-file app resolves its extracted native payload relative to the
+;      working directory.
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.0.11"
+  #define AppVersion "1.0.12"
 #endif
 
 ; The Evergreen WebView2 bootstrapper. The release workflow drops it next to the published
-; executable; when it is absent (a bare local compile) the installer simply skips the optional
-; prerequisite and points the user at the download page instead of failing to build.
+; executable; when it is absent (a bare local compile) the prerequisite step downloads one
+; instead, and a machine that already has the runtime never pays for either.
 #ifndef WebView2Bootstrapper
   #define WebView2Bootstrapper "dist\MicrosoftEdgeWebView2Setup.exe"
 #endif
@@ -102,12 +102,9 @@ DefaultGroupName={#AppName}
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
-; The wizard look.
+; The stock modern wizard. No WizardImageFile / WizardSmallImageFile override, no recolouring:
+; this is the same native shell Windows users see for every other application.
 WizardStyle=modern
-WizardImageFile=installer\wizard-large.bmp
-WizardSmallImageFile=installer\wizard-small.bmp
-WizardImageStretch=no
-WizardResizable=no
 DisableWelcomePage=no
 DisableProgramGroupPage=no
 
@@ -126,8 +123,11 @@ RestartApplications=no
 SetupLogging=yes
 AllowNoIcons=yes
 
-; .NET 10 (bundled in the executable) requires Windows 10 1809 / Server 2019 or newer.
-MinVersion=10.0.17763
+; Windows 7 SP1 is the floor for the *installer* so the legacy branch below can actually run
+; there and install the WebView2 109 runtime. The application itself is .NET 10 and therefore
+; needs Windows 10 1809 or newer; the prerequisite step says so in plain language on anything
+; older instead of failing silently later.
+MinVersion=6.1sp1
 ArchitecturesAllowed={#AppArchAllowed}
 #ifdef AppArch64Mode
 ArchitecturesInstallIn64BitMode={#AppArch64Mode}
@@ -136,22 +136,6 @@ ArchitecturesInstallIn64BitMode={#AppArch64Mode}
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Messages]
-WelcomeLabel1=Welcome to the AI CEO Orchestrator
-WelcomeLabel2=This wizard installs {#AppName} {#AppVersion} — a native desktop AI orchestrator.%n%nYou brief one CEO agent. It plans the work, delegates to a single worker at a time inside the folder you choose, and reports back with the final answer.%n%nEverything installs into your own user profile: no administrator rights, no services, no registry sprawl.
-FinishedHeadingLabel=Your AI CEO is installed
-FinishedLabel={#AppName} is ready. Launch it from the Start menu or the desktop shortcut, then choose a workspace folder — that folder is the only place the workers may touch.%n%nYour data (agents, keys, task history, theme) lives in %APPDATA%\AiCeoOrchestrator.
-SelectDirDesc=Where should {#AppName} live?
-SelectDirLabel3=Setup will install {#AppName} into the following folder.
-SelectProgramGroupDesc=Where should Setup place the Start-menu shortcuts?
-SelectProgramGroupLabel=Setup will create the program shortcuts in the following Start-menu folder.
-SelectTasksDesc=Which additional shortcuts do you want?
-SelectTasksLabel2=Select the additional shortcuts Setup should create while installing {#AppName}.
-ReadyLabel1=Setup is ready to install {#AppName}
-ReadyLabel2a=Click Install to start the installation, or click Back to review or change any settings.
-InstallingLabel=Installing {#AppName} — briefing the board…
-FinishedLabelNoIcons=Setup has finished installing {#AppName} on your computer.
-
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
@@ -159,20 +143,20 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#AppSourceExe}"; DestDir: "{app}"; DestName: "{#AppExeName}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion isreadme
 #ifdef IncludeWebView2Bootstrapper
-; dontcopy: the bytes stay inside Setup.exe until ExtractTemporaryFile pulls them into {tmp}, so a
-; machine that already has the runtime never pays for them.
+; dontcopy: the bytes stay inside Setup.exe until they are needed, so a machine that already has
+; the runtime never pays for them.
 Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebView2Setup.exe"; Flags: dontcopy
 #endif
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "Plan, delegate and deliver — one CEO agent, one worker at a time."
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
 ; WorkingDir is explicit: the app extracts its bundled native libraries (Skia, HarfBuzz, the
 ; WebView2 loader) relative to the working directory, and Explorer/Inno otherwise start it in
-; System32. Running it there is exactly the kind of thing that makes an installed build look dead.
+; System32.
 Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
@@ -182,269 +166,203 @@ Type: files; Name: "{app}\startup.log"
 
 [Code]
 const
-  { TColor is $00BBGGRR (reversed byte order), so the right-hand comments show the real hex.
-    Do not write highlighted hashes here: ISPP would treat them as inline directives. }
-  DarkBg      = $2E1E1E;   { app background: 30 30 46 }
-  DarkPanel   = $1F1414;   { field background: 20 20 31 }
-  DarkTrack   = $3C2A2A;   { progress groove: 42 42 60 }
-  AccentColor = $B0E05E;   { mint accent }
-  AccentDeep  = $444A1D;   { deep accent edge }
-  TextPrimary = $FBF2EA;   { near-white }
-  TextBody    = $E6D6C9;   { body text }
-  TextMuted   = $BDA38E;   { muted text }
-
-  { The Evergreen "WebView2 Runtime" product GUID. Its presence under EdgeUpdate\Clients with a
-    non-empty pv value means the runtime is installed (per-machine or per-user). }
+  { The Evergreen "WebView2 Runtime" product GUID. A non-empty pv value under
+    EdgeUpdate\Clients\<GUID> means the runtime is installed (per-machine or per-user). }
   WebView2ClientGuid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
 
+  { Windows 10 / 11: the current Evergreen bootstrapper. }
+  WebView2LatestUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
+
+  { Windows 7 / 8 / 8.1: the same Evergreen bootstrapper, which Microsoft pins to the 109 line
+    (109.0.1518.x) on those systems — 109 is the last WebView2 runtime that supports them, and
+    fixed versions newer than 109 refuse to start there. Microsoft's announcement of the 109
+    cut-off is why this branch exists at all. }
+  WebView2LegacyUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
+  WebView2LegacyLabel = '109.0.1518.x (the last WebView2 runtime that supports Windows 7 / 8 / 8.1)';
+
+  { Visual C++ 2015-2022 Redistributable, per architecture. }
+  VCRedistX64Url = 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
+  VCRedistX86Url = 'https://aka.ms/vs/17/release/vc_redist.x86.exe';
+  VCRedistArm64Url = 'https://aka.ms/vs/17/release/vc_redist.arm64.exe';
+
+  WebView2BootstrapperName = 'MicrosoftEdgeWebView2Setup.exe';
+  DownloadPageUrl = 'https://developer.microsoft.com/microsoft-edge/webview2/';
+
 var
-  ProgressTrack: TPanel;
-  ProgressFill: TPanel;
-  ProgressLabel: TNewStaticText;
-  WelcomeNote: TNewStaticText;
+  { Filled in by the prerequisite step; kept in a global so the helpers stay small. }
+  WebView2InstallerPath: String;
 
-{ ------------------------------------------------------------------ WebView2 runtime }
+{ ------------------------------------------------------------------ detection }
 
-function WebView2KeyHasVersion(RootKey: Integer; const SubKey: String): Boolean;
+function RegHasVersion(RootKey: Integer; const SubKey: String): Boolean;
 var
   Version: String;
 begin
   Result := RegQueryStringValue(RootKey, SubKey + '\' + WebView2ClientGuid, 'pv', Version)
             and (Version <> '');
+  if Result then
+    Log('WebView2 runtime found under ' + SubKey + ': ' + Version);
 end;
 
 function IsWebView2RuntimeInstalled: Boolean;
 begin
-  { Per-user install (the common one on Windows 10/11 desktops). }
-  Result := WebView2KeyHasVersion(HKCU, 'Software\Microsoft\EdgeUpdate\Clients');
+  { Per-user install — the common one on Windows 10/11 desktops. }
+  Result := RegHasVersion(HKCU, 'Software\Microsoft\EdgeUpdate\Clients');
   if Result then
     exit;
 
-  { Per-machine installs: 64-bit view first, then the 32-bit / WOW6432Node view. }
-  Result := WebView2KeyHasVersion(HKLM, 'Software\Microsoft\EdgeUpdate\Clients');
+  { Per-machine installs: the native view first, then the 32-bit view. }
+  Result := RegHasVersion(HKLM, 'Software\Microsoft\EdgeUpdate\Clients');
   if Result then
     exit;
 
-  Result := WebView2KeyHasVersion(HKLM, 'Software\WOW6432Node\Microsoft\EdgeUpdate\Clients');
+  Result := RegHasVersion(HKLM, 'Software\WOW6432Node\Microsoft\EdgeUpdate\Clients');
 end;
 
-{ Runs the bundled Evergreen bootstrapper. Returns its exit code, or -1 when it could not run.
-  0 = installed, 1 = already installed, 2 = reboot required, 3 = failed. }
-function InstallWebView2Runtime: Integer;
+function WindowsMajor: Integer;
 var
-  ExitCode: Integer;
-  Bootstrapper: String;
+  Version: TWindowsVersion;
 begin
-  Result := -1;
+  GetWindowsVersionEx(Version);
+  Result := Version.Major;
+end;
 
-#ifdef IncludeWebView2Bootstrapper
-  Bootstrapper := ExpandConstant('{tmp}\MicrosoftEdgeWebView2Setup.exe');
+function WindowsMinor: Integer;
+var
+  Version: TWindowsVersion;
+begin
+  GetWindowsVersionEx(Version);
+  Result := Version.Minor;
+end;
 
-  { The entry in [Files] is flagged dontcopy, so pull it out of Setup.exe on demand. }
-  if not FileExists(Bootstrapper) then
-    ExtractTemporaryFile('MicrosoftEdgeWebView2Setup.exe');
+{ True on Windows 10 and 11 (and Server 2016+), false on 7 / 8 / 8.1 and older. }
+function IsModernWindows: Boolean;
+begin
+  Result := WindowsMajor >= 10;
+end;
 
-  if not FileExists(Bootstrapper) then
-  begin
-    Log('WebView2 runtime: the bootstrapper could not be extracted');
-    exit;
-  end;
+{ True below Windows 10 1809 (build 17763), where the .NET 10 runtime inside the app cannot
+  start. Nothing here blocks the install; it only tells the truth early. }
+function IsOlderThanSupportedWindows: Boolean;
+var
+  Version: TWindowsVersion;
+begin
+  GetWindowsVersionEx(Version);
+  Result := (Version.Major < 10)
+            or ((Version.Major = 10) and (Version.Build < 17763));
+end;
 
-  WizardForm.StatusLabel.Caption := 'Installing the Microsoft Edge WebView2 runtime…';
+{ The 2015-2022 redistributables share one ABI and one key, 14.0\VC\Runtimes\<arch>, and each
+  writes a "Version" string ("14.38.33135.00") whether it was installed per-machine or bundled
+  with another product. }
+function VCRedistPresentIn(RootKey: Integer; const Prefix, Arch: String): Boolean;
+var
+  Version: String;
+begin
+  Result := RegQueryStringValue(
+      RootKey, Prefix + 'Microsoft\VisualStudio\14.0\VC\Runtimes\' + Arch, 'Version', Version)
+    and (Version <> '');
 
-  if Exec(Bootstrapper, '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
-    Result := ExitCode
-  else
-    Log('WebView2 runtime: the bootstrapper could not be started');
+  if Result then
+    Log('Visual C++ redistributable found (' + Arch + '): ' + Version);
+end;
+
+function IsVCRedistInstalled: Boolean;
+begin
+  { The native view first, then the 32-bit view for an installer or a product that registered
+    there. Either architecture is good enough: it only has to supply the shared CRT. }
+  Result := VCRedistPresentIn(HKLM, 'Software\', 'x64')
+            or VCRedistPresentIn(HKLM, 'Software\WOW6432Node\', 'x64')
+            or VCRedistPresentIn(HKLM, 'Software\', 'x86')
+            or VCRedistPresentIn(HKLM, 'Software\WOW6432Node\', 'x86')
+            or VCRedistPresentIn(HKLM, 'Software\', 'arm64');
+end;
+
+function VCRedistUrl: String;
+begin
+#if AppArch == "x86"
+  Result := VCRedistX86Url;
+#elif AppArch == "arm64"
+  Result := VCRedistArm64Url;
 #else
-  Log('WebView2 runtime: no bootstrapper was bundled with this installer');
+  Result := VCRedistX64Url;
 #endif
 end;
 
-{ ------------------------------------------------------------------ painting helpers }
-
-procedure PaintWizard;
-var
-  Index: Integer;
+function VCRedistFileName: String;
 begin
-  with WizardForm do
+#if AppArch == "x86"
+  Result := 'vc_redist.x86.exe';
+#elif AppArch == "arm64"
+  Result := 'vc_redist.arm64.exe';
+#else
+  Result := 'vc_redist.x64.exe';
+#endif
+end;
+
+{ ------------------------------------------------------------------ acquisition }
+
+{ Returns the path of the WebView2 bootstrapper in the temporary folder, extracting the copy embedded in
+  Setup.exe when the release workflow supplied one and downloading it otherwise. }
+function AcquireWebView2Bootstrapper(const Url: String): Boolean;
+begin
+  WebView2InstallerPath := ExpandConstant('{tmp}\') + WebView2BootstrapperName;
+  Result := FileExists(WebView2InstallerPath);
+
+#ifdef IncludeWebView2Bootstrapper
+  if not Result then
   begin
-    Color := DarkBg;
-    Font.Name := 'Segoe UI';
-    Font.Size := 10;
-
-    MainPanel.Color := DarkBg;
-
-    for Index := 0 to OuterNotebook.PageCount - 1 do
-    begin
-      OuterNotebook.Pages[Index].Color := DarkBg;
+    try
+      ExtractTemporaryFile(WebView2BootstrapperName);
+    except
+      Log('WebView2 runtime: the bundled bootstrapper could not be extracted: ' + GetExceptionMessage);
     end;
 
-    { The inner notebook holds the modern style's content pages. }
-    for Index := 0 to InnerNotebook.PageCount - 1 do
-    begin
-      InnerNotebook.Pages[Index].Color := DarkBg;
+    Result := FileExists(WebView2InstallerPath);
+  end;
+#endif
+
+  if not Result then
+  begin
+    try
+      Log('WebView2 runtime: downloading the bootstrapper from ' + Url);
+      DownloadTemporaryFile(Url, WebView2BootstrapperName, '', nil);
+    except
+      Log('WebView2 runtime: the download failed: ' + GetExceptionMessage);
     end;
 
-    { Belt and braces: name the pages explicitly as well. }
-    WelcomePage.Color := DarkBg;
-    InnerPage.Color := DarkBg;
-    FinishedPage.Color := DarkBg;
-    LicensePage.Color := DarkBg;
-    PasswordPage.Color := DarkBg;
-    InfoBeforePage.Color := DarkBg;
-    UserInfoPage.Color := DarkBg;
-    SelectDirPage.Color := DarkBg;
-    SelectComponentsPage.Color := DarkBg;
-    SelectProgramGroupPage.Color := DarkBg;
-    SelectTasksPage.Color := DarkBg;
-    ReadyPage.Color := DarkBg;
-    PreparingPage.Color := DarkBg;
-    InstallingPage.Color := DarkBg;
-    InfoAfterPage.Color := DarkBg;
-
-    PageNameLabel.Font.Color := TextPrimary;
-    PageNameLabel.Font.Size := 15;
-    PageDescriptionLabel.Font.Color := TextMuted;
-
-    WelcomeLabel1.Font.Color := AccentColor;
-    WelcomeLabel1.Font.Size := 18;
-    WelcomeLabel1.Font.Style := [fsBold];
-    WelcomeLabel2.Font.Color := TextBody;
-
-    SelectDirLabel.Font.Color := TextBody;
-    SelectDirBrowseLabel.Font.Color := AccentColor;
-    SelectStartMenuFolderLabel.Font.Color := TextBody;
-    SelectStartMenuFolderBrowseLabel.Font.Color := AccentColor;
-    SelectTasksLabel.Font.Color := TextBody;
-    ReadyLabel.Font.Color := TextBody;
-
-    FinishedHeadingLabel.Font.Color := AccentColor;
-    FinishedHeadingLabel.Font.Size := 16;
-    FinishedHeadingLabel.Font.Style := [fsBold];
-    FinishedLabel.Font.Color := TextBody;
-
-    DiskSpaceLabel.Font.Color := TextMuted;
-    StatusLabel.Font.Color := TextMuted;
-    FilenameLabel.Font.Color := TextMuted;
-    BeveledLabel.Font.Color := TextMuted;
-
-    ReadyMemo.Color := DarkPanel;
-    ReadyMemo.Font.Color := TextBody;
-
-    DirEdit.Color := DarkPanel;
-    DirEdit.Font.Color := TextPrimary;
-    GroupEdit.Color := DarkPanel;
-    GroupEdit.Font.Color := TextPrimary;
-    ComponentsList.Color := DarkPanel;
-    ComponentsList.Font.Color := TextBody;
-    TasksList.Color := DarkPanel;
-    TasksList.Font.Color := TextBody;
-    RunList.Color := DarkPanel;
-    RunList.Font.Color := TextBody;
-    NoIconsCheck.Font.Color := TextBody;
-
-    YesRadio.Font.Color := TextBody;
-    NoRadio.Font.Color := TextBody;
-
-    NextButton.Font.Color := TextPrimary;
-    BackButton.Font.Color := TextPrimary;
-    CancelButton.Font.Color := TextMuted;
+    Result := FileExists(WebView2InstallerPath);
   end;
 end;
 
-procedure BuildProgressBar;
+{ Downloads a file into the temporary folder and returns its path ('' on failure). }
+function AcquireInstaller(const Url, FileName: String): String;
 begin
-  { Track: the empty groove, sitting exactly where Inno's own gauge sits. }
-  ProgressTrack := TPanel.Create(WizardForm);
-  ProgressTrack.Parent := WizardForm.InstallingPage;
-  ProgressTrack.BevelOuter := bvNone;
-  ProgressTrack.BevelInner := bvNone;
-  ProgressTrack.Color := DarkTrack;
-  ProgressTrack.SetBounds(
-    WizardForm.ProgressGauge.Left,
-    WizardForm.ProgressGauge.Top,
-    WizardForm.ProgressGauge.Width,
-    10);
+  Result := ExpandConstant('{tmp}\') + FileName;
 
-  { Fill: the accent bar that grows. }
-  ProgressFill := TPanel.Create(WizardForm);
-  ProgressFill.Parent := WizardForm.InstallingPage;
-  ProgressFill.BevelOuter := bvNone;
-  ProgressFill.BevelInner := bvNone;
-  ProgressFill.Color := AccentColor;
-  ProgressFill.SetBounds(
-    WizardForm.ProgressGauge.Left,
-    WizardForm.ProgressGauge.Top,
-    0,
-    10);
+  if FileExists(Result) then
+    exit;
 
-  { Percentage readout to the right of the bar. }
-  ProgressLabel := TNewStaticText.Create(WizardForm);
-  ProgressLabel.Parent := WizardForm.InstallingPage;
-  ProgressLabel.AutoSize := False;
-  ProgressLabel.Caption := '0 %';
-  ProgressLabel.Color := TextMuted;
-  ProgressLabel.Font.Color := AccentColor;
-  ProgressLabel.SetBounds(
-    WizardForm.ProgressGauge.Left + WizardForm.ProgressGauge.Width + 6,
-    WizardForm.ProgressGauge.Top - 2,
-    44,
-    16);
+  try
+    Log('downloading ' + Url);
+    DownloadTemporaryFile(Url, FileName, '', nil);
+  except
+    Log('download failed: ' + GetExceptionMessage);
+  end;
 
-  { The stock gauge cannot be recoloured, so it steps aside. }
-  WizardForm.ProgressGauge.Visible := False;
-
-  { A small signature line under the welcome copy. }
-  WelcomeNote := TNewStaticText.Create(WizardForm);
-  WelcomeNote.Parent := WizardForm.WelcomePage;
-  WelcomeNote.AutoSize := False;
-  WelcomeNote.Caption := 'AI CEO  ·  v1.0.11  ·  {#AppArchLabel}  ·  strictly one worker at a time';
-  WelcomeNote.Font.Color := TextMuted;
-  WelcomeNote.Font.Size := 8;
-  WelcomeNote.SetBounds(0, WizardForm.WelcomeLabel2.Top + WizardForm.WelcomeLabel2.Height + 12, 420, 30);
-  WelcomeNote.WordWrap := True;
+  if not FileExists(Result) then
+    Result := '';
 end;
 
-{ ------------------------------------------------------------------ wizard events }
+{ ------------------------------------------------------------------ prerequisites }
 
-procedure InitializeWizard;
-begin
-  PaintWizard;
-  BuildProgressBar;
-end;
-
-procedure CurPageChanged(CurPageID: Integer);
-begin
-  { Modern style repaints the notebook on page changes; re-apply our palette each time. }
-  PaintWizard;
-end;
-
-procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+{ Returns True when the installation may continue. Declining the WebView2 prompt aborts, as
+  requested; every other outcome keeps the installer usable. }
+function EnsureWebView2: Boolean;
 var
-  Percent: Integer;
+  Url, RuntimeLabel, Question: String;
+  ResultCode: Integer;
 begin
-  if MaxProgress <= 0 then
-  begin
-    Percent := 0;
-  end
-  else
-  begin
-    Percent := (CurProgress * 100) div MaxProgress;
-  end;
-
-  if (ProgressTrack <> nil) and (ProgressFill <> nil) and (ProgressLabel <> nil) then
-  begin
-    ProgressFill.Width := (ProgressTrack.Width * Percent) div 100;
-    ProgressLabel.Caption := IntToStr(Percent) + ' %';
-  end;
-end;
-
-function InitializeSetup: Boolean;
-var
-  ErrorCode: Integer;
-begin
-  { Never block the install: without the runtime the app still runs, on its native Avalonia shell. }
   Result := True;
 
   if IsWebView2RuntimeInstalled then
@@ -453,52 +371,164 @@ begin
     exit;
   end;
 
-#ifdef IncludeWebView2Bootstrapper
-  Log('WebView2 runtime: missing; the bundled Evergreen bootstrapper installs it silently after the files are copied');
-#else
-  Log('WebView2 runtime: missing and no bootstrapper was bundled with this build');
-  if not WizardSilent and (MsgBox('The Microsoft Edge WebView2 runtime is not installed.' + #13#10#13#10 +
-      'AI CEO Orchestrator uses it to draw its Nexus interface. Without it the app still starts, ' +
-      'but falls back to its simpler native interface.' + #13#10#13#10 +
-      'Open Microsoft''s download page now?',
-      mbConfirmation, MB_YESNO) = IDYES) then
+  if IsModernWindows then
   begin
-    ShellExec('open', 'https://developer.microsoft.com/microsoft-edge/webview2/', '', '', SW_SHOW, ewNoWait, ErrorCode);
+    Url := WebView2LatestUrl;
+    RuntimeLabel := 'the current WebView2 runtime';
+  end
+  else
+  begin
+    { Windows 7 / 8 / 8.1: 109 is the last runtime line that runs there. }
+    Url := WebView2LegacyUrl;
+    RuntimeLabel := WebView2LegacyLabel;
+    Log('WebView2 runtime: legacy Windows detected (' + IntToStr(WindowsMajor) + '.' + IntToStr(WindowsMinor) + '), using the 109 line');
   end;
-#endif
-end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  ResultCode: Integer;
-begin
-  if CurStep <> ssPostInstall then
+  if WizardSilent then
+  begin
+    Log('WebView2 runtime: missing; installing ' + RuntimeLabel + ' without prompting');
+  end
+  else
+  begin
+    Question :=
+      'Microsoft Edge WebView2 Runtime is required.' + #13#10#13#10 +
+      '{#AppName} draws its Nexus interface with it. It is not installed on this computer, so ' +
+      'Setup will install ' + RuntimeLabel + ' now.' + #13#10#13#10 +
+      'Download size is a few megabytes. Continue?' + #13#10#13#10 +
+      'Choosing No cancels the installation.';
+
+    if MsgBox(Question, mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Log('WebView2 runtime: the user declined the prerequisite');
+      Result := False;
+      exit;
+    end;
+  end;
+
+  if not AcquireWebView2Bootstrapper(Url) then
+  begin
+    Log('WebView2 runtime: the bootstrapper could not be obtained');
+    Result := False;
+
+    if not WizardSilent then
+      MsgBox(
+        'The WebView2 runtime could not be downloaded.' + #13#10#13#10 +
+        'Install it manually from ' + DownloadPageUrl + ' and run this setup again.',
+        mbError, MB_OK);
+
     exit;
+  end;
 
-  if IsWebView2RuntimeInstalled then
+  if not Exec(WebView2InstallerPath, '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log('WebView2 runtime: the bootstrapper could not be started');
+    Result := False;
     exit;
+  end;
 
-  ResultCode := InstallWebView2Runtime;
   Log('WebView2 bootstrapper exit code: ' + IntToStr(ResultCode));
 
-  if ResultCode = 3 then
+  { 0 = installed, 1 = already installed and up to date, 2 = installed, reboot required. }
+  if (ResultCode = 0) or (ResultCode = 1) or (ResultCode = 2) then
   begin
-    { Optional prerequisite: warn, never fail the installation. }
+    Result := True;
+    exit;
+  end;
+
+  Result := IsWebView2RuntimeInstalled;
+
+  if Result then
+    Log('WebView2 runtime: present after the bootstrapper ran, despite exit code ' + IntToStr(ResultCode))
+  else
+    Log('WebView2 runtime: the bootstrapper reported failure (' + IntToStr(ResultCode) + ')');
+end;
+
+{ Prompted, never required: the app is self-contained, so this only restores native components
+  (the WebView2 loader among them) that some configurations rely on. }
+function EnsureVCRedist: Boolean;
+var
+  RedistPath, RedistUrl: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+
+  if IsVCRedistInstalled then
+  begin
+    Log('Visual C++ redistributable: already installed');
+    exit;
+  end;
+
+  if not WizardSilent then
+  begin
+    if MsgBox(
+      'Microsoft Visual C++ 2015-2022 Redistributable is not installed.' + #13#10#13#10 +
+      'It supplies native components that some Windows configurations need. {#AppName} can be ' +
+      'installed without it, but installing it now is recommended.' + #13#10#13#10 +
+      'Download and install it now?',
+      mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Log('Visual C++ redistributable: the user declined; continuing');
+      exit;
+    end;
+  end;
+
+  RedistUrl := VCRedistUrl;
+  RedistPath := AcquireInstaller(RedistUrl, VCRedistFileName);
+
+  if RedistPath = '' then
+  begin
+    Log('Visual C++ redistributable: the installer could not be downloaded; continuing');
+    exit;
+  end;
+
+  if not Exec(RedistPath, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log('Visual C++ redistributable: the installer could not be started; continuing');
+    exit;
+  end;
+
+  Log('Visual C++ redistributable exit code: ' + IntToStr(ResultCode));
+
+  { 0 / 1638 / 3010 = installed, a newer one already present, or a reboot is pending. Anything
+    else is reported but never blocks the installation. }
+  if (ResultCode <> 0) and (ResultCode <> 1638) and (ResultCode <> 3010) and (ResultCode <> 5100) then
+  begin
     if not WizardSilent then
-      MsgBox('The WebView2 runtime could not be installed automatically.' + #13#10#13#10 +
-             'The application is installed and will start, using its native interface. You can add ' +
-             'the runtime later from https://developer.microsoft.com/microsoft-edge/webview2/',
-             mbInformation, MB_OK);
+      MsgBox(
+        'The Visual C++ redistributable could not be installed automatically (code '
+        + IntToStr(ResultCode) + ').' + #13#10#13#10 +
+        '{#AppName} installs anyway; you can add the redistributable later from ' +
+        'https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist',
+        mbInformation, MB_OK);
   end;
 end;
 
-function ShouldSkipPage(PageID: Integer): Boolean;
-begin
-  { Nothing to ask a single-user install about the program group beyond its name. }
-  Result := False;
-end;
+{ ------------------------------------------------------------------ wizard events }
 
-procedure DeinitializeSetup;
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Notice: String;
 begin
-  { Controls are owned by the wizard form, so nothing to free here. }
+  Result := '';
+
+  if IsOlderThanSupportedWindows and not WizardSilent then
+  begin
+    Notice :=
+      'This computer runs an older version of Windows.' + #13#10#13#10 +
+      '{#AppName} is built on .NET 10 and needs Windows 10 version 1809 (build 17763) or newer. ' +
+      'Setup will install the version of the WebView2 runtime that this system supports, but the ' +
+      'application itself may not start here.';
+    MsgBox(Notice, mbInformation, MB_OK);
+  end;
+
+  if not EnsureWebView2 then
+  begin
+    Result :=
+      'The Microsoft Edge WebView2 Runtime is required and was not installed, so Setup stopped. '
+      + 'Install it from ' + DownloadPageUrl + ' and run this setup again.';
+    exit;
+  end;
+
+  { Prompted only; a decline or a failure is logged and the installation continues. }
+  EnsureVCRedist;
 end;

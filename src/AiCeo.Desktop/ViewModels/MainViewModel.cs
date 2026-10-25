@@ -315,19 +315,6 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Forwarded from the platform colour-scheme watcher.</summary>
     public void OnSystemThemeChanged() => Settings?.OnSystemThemeChanged();
 
-    /// <summary>
-    /// v1.0.11: reports a failure that happened after the window was already shown (the database or
-    /// the workspace could not be read). The window stays usable instead of the process dying inside
-    /// an async event handler.
-    /// </summary>
-    public void ReportStartupFailure(Exception exception)
-    {
-        SetBanner(
-            "Start-up could not finish loading your data: " + exception.Message
-            + " — the details are in crash.log next to the application.",
-            isError: true);
-    }
-
     private void OnThemeChanged(object? sender, ThemePalette palette)
     {
         if (Dispatcher.UIThread.CheckAccess())
