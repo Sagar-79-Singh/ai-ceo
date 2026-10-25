@@ -71,7 +71,7 @@ jobs:
             fi
           }
 
-          step create hdiutil create -size 912m -fs HFS+ -volname "AI CEO Orchestrator 1.0.16" -format UDRW -ov "$RW" || exit 0
+          step create hdiutil create -size 912m -fs HFS+ -volname "AI CEO Orchestrator 1.0.16" -ov "$RW" || exit 0
           ls -l "$RW" | tr -s ' ' | cut -d' ' -f5,9 | sed 's/^/::notice title=B-rwsize::/' || true
           mkdir -p "$MNT"
           step attach hdiutil attach "$RW" -nobrowse -noverify -mountpoint "$MNT" || exit 0
