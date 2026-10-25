@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.8 ships a portable build *and* a native installer for every platform:
+# v1.0.9 ships a portable build *and* a native installer for every platform:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
 #                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
 #   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
@@ -640,14 +640,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.8
-          tag_name: v1.0.8
+          name: AI CEO Orchestrator v1.0.9
+          tag_name: v1.0.9
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.8
+            ## AI CEO Orchestrator v1.0.9
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
             opens in a native window — no browser, no local web server. Workers can read, write and
@@ -703,22 +703,31 @@ jobs:
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.8 — dispatch with Enter
+            ### What's new in v1.0.9 — native window controls
 
-            Four ergonomics fixes in the Nexus console:
+            - **Real OS window chrome.** Both windows now ask for `SystemDecorations="Full"` with
+              `ExtendClientAreaToDecorationsHint="False"`, so Windows draws its minimise / maximise /
+              close buttons, macOS draws its real traffic lights and Linux gets the desktop's own
+              title bar. The fake red/amber/green dots that used to be painted inside the HTML header
+              are gone.
+            - **Taskbar / dock icon.** The window icon is now declared in XAML
+              (`Icon="avares://AiCeo/Assets/aiceo.ico"`) and the multi-resolution `aiceo.ico`
+              (16 / 24 / 32 / 48 / 64 / 128 / 256 px) is embedded as an `AvaloniaResource`, so the
+              taskbar, Alt-Tab switcher and macOS dock show the app icon instead of a blank square.
+              The startup loader prefers the ICO and falls back to the PNG.
+            - **Version badge** in the app reads `v1.0.9`.
+
+            Unchanged from v1.0.8: the gear-shaped **Settings** button, `Enter` to dispatch /
+            `Shift` + `Enter` for a newline (IME-safe), and the amber **CHECKING…** provider state.
+
+            ### Previous release — v1.0.8, dispatch with Enter
 
             - **Settings is discoverable.** The sliders glyph became a **gear** icon with a visible
-              `Settings` label, so the theme/accent/text-size panel is no longer hidden behind an
-              unlabelled button in the title bar.
-            - **Enter dispatches.** `Enter` now sends the prompt to the CEO and `Shift` + `Enter`
-              inserts a newline (IME composition is respected, so confirming a Japanese/Chinese
-              candidate never fires a run). The dock spells the shortcut out instead of the old
-              `Ctrl` + `Enter` hint.
-            - **Provider CHECKING state.** While the health probe is in flight — and until the first
-              answer arrives — the telemetry dot turns **amber** and the badge reads `CHECKING…`,
-              instead of flashing a false `OFFLINE`. Green means the last probe answered, red means
-              it failed.
-            - **Version badge** in the title bar reads `v1.0.8`.
+              `Settings` label in the title bar.
+            - **Enter dispatches.** `Enter` sends the prompt to the CEO and `Shift` + `Enter` inserts a
+              newline; IME composition is respected.
+            - **Provider CHECKING state.** The telemetry dot turns amber and the badge reads
+              `CHECKING…` while the health probe is in flight.
 
             ### Previous release — v1.0.7, installers everywhere
 

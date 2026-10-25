@@ -127,19 +127,14 @@
 </head>
 <body class="text-slate-200 font-sans h-screen flex flex-col overflow-hidden antialiased selection:bg-mint-500/25 selection:text-mint-400">
 
-<!-- ============================================================== TITLE BAR -->
+<!-- ============================================== IN-APP TELEMETRY STRIP (the OS draws the real title bar) -->
 <header class="h-10 w-full bg-obsidian-900 border-b border-obsidian-750/90 flex items-center justify-between px-3 select-none text-xs text-slate-400 z-50 backdrop-blur-md">
   <div class="flex items-center space-x-2.5">
-    <div class="flex items-center space-x-1.5 mr-2">
-      <span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
-      <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
-      <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
-    </div>
     <div class="flex items-center space-x-2 text-slate-300">
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.8</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.9</span>
       </span>
     </div>
   </div>
@@ -892,7 +887,7 @@
     var icon = el('nx-dispatch-icon');
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
     if (dispatch) dispatch.classList.toggle('opacity-60', false);
-    text('nx-version', s.version ? 'v' + s.version : 'v1.0.8');
+    text('nx-version', s.version ? 'v' + s.version : 'v1.0.9');
     text('nx-footer', s.footer || 'sqlite: aiceo.db');
     var banner = el('nx-banner');
     if (banner) {

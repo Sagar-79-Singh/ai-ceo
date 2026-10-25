@@ -11,9 +11,9 @@
 
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator with a local workspace and tool-using agents.</Description>
-    <Version>1.0.8</Version>
-    <AssemblyVersion>1.0.8.0</AssemblyVersion>
-    <FileVersion>1.0.8.0</FileVersion>
+    <Version>1.0.9</Version>
+    <AssemblyVersion>1.0.9.0</AssemblyVersion>
+    <FileVersion>1.0.9.0</FileVersion>
 
     <!-- The icon shown in Explorer/taskbar. Windows-only; ignored by the other targets. -->
     <ApplicationIcon>Assets/aiceo.ico</ApplicationIcon>
@@ -42,7 +42,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
+    <!-- Everything in Assets/ (nexus.html, nexus.css, theme.css, aiceo.png) ships as an avares://
+         resource. The icon is listed separately so it is unambiguous that aiceo.ico — used by both
+         <ApplicationIcon> for the .exe and Icon="avares://AiCeo/Assets/aiceo.ico" for the window —
+         is embedded; it is excluded from the glob to avoid a duplicate item. -->
+    <AvaloniaResource Include="Assets\**" Exclude="Assets\aiceo.ico" />
+    <AvaloniaResource Include="Assets\aiceo.ico" />
   </ItemGroup>
 
 </Project>
