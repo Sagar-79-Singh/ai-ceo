@@ -32,11 +32,7 @@ public partial class App : Application
 
                 // Paint with the saved preferences before the window is created, so the chosen theme
                 // is what the very first frame shows (no dark flash when light is selected).
-                //
-                // v1.0.11: the snapshot was read from SQLite here — on the UI thread, milliseconds
-                // before the window had to be shown. It is now loaded in Program.Main before Avalonia
-                // starts, so this is a pure in-memory paint: no await, no .Result, no deadlock.
-                ApplyInitialTheme();
+                ApplySavedTheme(userSettings);
 
                 var viewModel = new MainViewModel(
                     AppBootstrap.GetRequiredService<AgentDirectory>(),
@@ -48,53 +44,33 @@ public partial class App : Application
                     AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                     AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
 
-                Program.Trace("services ready; choosing the shell");
-
                 // v1.0.6: the Nexus shell (embedded HTML/WebGL) is the default interface. Machines
                 // without a usable web engine — and the CI smoke run — get the native Avalonia shell.
-                //
-                // v1.0.10: the web host is now created defensively. An installed copy on a machine
-                // without the WebView2 runtime used to die inside the WebView adapter before a single
-                // window existed, which looked like "the app does not launch". Any failure here falls
-                // back to the plain Avalonia shell instead.
                 Window window;
 
                 if (!Program.SmokeTestMode && NexusAvailability.IsSupported)
                 {
-                    Program.Trace($"NEXUS: web surface selected ({NexusAvailability.Reason})");
+                    Console.WriteLine($"NEXUS: using the web surface ({NexusAvailability.Reason})");
 
-                    try
+                    window = new NexusWindow(
+                        viewModel,
+                        userSettings,
+                        AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
+                        () => OpenClassicShell(desktop, viewModel))
                     {
-                        window = new NexusWindow(
-                            viewModel,
-                            userSettings,
-                            AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
-                            () => OpenClassicShell(desktop, viewModel));
-                    }
-                    catch (Exception exception) when (exception is not OutOfMemoryException)
-                    {
-                        Program.WriteCrashLog(exception, "NexusWindow construction");
-                        Program.Trace("NEXUS: web surface failed to construct; using the classic shell");
-
-                        window = new MainWindow
-                        {
-                            DataContext = viewModel
-                        };
-                    }
+                        Icon = TryLoadIcon()
+                    };
                 }
                 else
                 {
-                    Program.Trace($"NEXUS: classic shell ({NexusAvailability.Reason})");
+                    Console.WriteLine($"NEXUS: classic shell ({NexusAvailability.Reason})");
 
                     window = new MainWindow
                     {
-                        DataContext = viewModel
+                        DataContext = viewModel,
+                        Icon = TryLoadIcon()
                     };
                 }
-
-                // The windows declare their icon in XAML; this only fills the gap if that failed
-                // (for example a trimmed resource), so the taskbar never shows a blank square.
-                window.Icon ??= TryLoadIcon();
 
                 desktop.MainWindow = window;
 
@@ -108,37 +84,16 @@ public partial class App : Application
                     });
                 }
 
-                // Loading agents/workspace touches SQLite, so it runs after the window exists. The
-                // handler is guarded: an async void event handler that throws takes the whole process
-                // down, and this one runs after the window is already on screen.
+                // Loading agents/workspace touches SQLite, so it runs after the window exists.
                 window.Opened += async (_, _) =>
                 {
-                    Program.Trace($"window opened: {window.GetType().Name}");
+                    await viewModel.InitializeAsync();
 
-                    try
+                    if (Program.SmokeTestMode && window is MainWindow classicWindow)
                     {
-                        await viewModel.InitializeAsync().ConfigureAwait(true);
-                        Program.Trace("view model initialised");
-
-                        if (Program.SmokeTestMode && window is MainWindow classicWindow)
-                        {
-                            await RunSmokeTestAsync(classicWindow, viewModel);
-                        }
-                    }
-                    catch (Exception exception) when (exception is not OutOfMemoryException)
-                    {
-                        // The window stays usable: the banner explains what failed.
-                        Program.WriteCrashLog(exception, "view model initialisation");
-                        Program.Trace("view model initialisation failed: " + exception.GetType().Name);
-                        viewModel.ReportStartupFailure(exception);
+                        await RunSmokeTestAsync(classicWindow, viewModel);
                     }
                 };
-
-                // v1.0.11: show and activate the shell explicitly rather than relying only on the
-                // lifetime's ShowMainWindow(). If that call was swallowed the process stayed alive
-                // with a taskbar button and nothing on screen. This runs after the Opened handler is
-                // attached above, so showing the window here also starts the async initialisation.
-                WindowPresentation.PrepareForDisplay(window);
             }
             catch (Exception exception)
             {
@@ -159,15 +114,14 @@ public partial class App : Application
     {
         var classic = new MainWindow
         {
-            DataContext = viewModel
+            DataContext = viewModel,
+            Icon = TryLoadIcon()
         };
-
-        classic.Icon ??= TryLoadIcon();
 
         var previous = desktop.MainWindow;
         desktop.MainWindow = classic;
 
-        WindowPresentation.PrepareForDisplay(classic);
+        classic.Show();
         previous?.Close();
     }
 
@@ -257,51 +211,33 @@ public partial class App : Application
         window.Close();
     }
 
-    /// <summary>
-    /// Applies the theme that <see cref="AppBootstrap.Preload"/> already read, falling back to the
-    /// defaults. Deliberately synchronous: it only writes the resource dictionary, so there is
-    /// nothing to await and no way to stall the thread that is starting the UI.
-    /// </summary>
-    private static void ApplyInitialTheme()
+    /// <summary>Applies the stored theme, falling back to the default palette on any database issue.</summary>
+    private static void ApplySavedTheme(UserSettingsService userSettings)
     {
         try
         {
-            ThemeManager.Apply(AppBootstrap.PreloadedSettings ?? UserSettingsSnapshot.Default);
+            ThemeManager.Apply(userSettings.GetAsync().GetAwaiter().GetResult());
         }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or System.Data.Common.DbException)
         {
-            // A broken palette must never stop the shell: paint the defaults and keep going.
-            Program.WriteCrashLog(exception, "theme (startup)");
+            // A broken database must not stop the shell from starting; InitializeAsync reports it.
             ThemeManager.Apply(UserSettingsSnapshot.Default);
         }
     }
 
-    /// <summary>
-    /// Window/taskbar icon. Prefers the multi-resolution <c>aiceo.ico</c> (crisp at 16/24/32/48 px in
-    /// the Windows taskbar and Alt-Tab switcher) and falls back to the PNG, then to nothing: the icon
-    /// is cosmetic and must never stop the shell from starting.
-    /// </summary>
     private static WindowIcon? TryLoadIcon()
     {
-        var assemblyName = typeof(App).Assembly.GetName().Name ?? "AiCeo";
-
-        foreach (var asset in new[] { "Assets/aiceo.ico", "Assets/aiceo.png" })
+        try
         {
-            try
-            {
-                using var stream = AssetLoader.Open(new Uri($"avares://{assemblyName}/{asset}"));
-                return new WindowIcon(stream);
-            }
-            catch (Exception exception) when (exception is IOException
-                                                 or ArgumentException
-                                                 or InvalidOperationException
-                                                 or NotSupportedException)
-            {
-                // Try the next format.
-            }
+            var assemblyName = typeof(App).Assembly.GetName().Name ?? "AiCeo";
+            using var stream = AssetLoader.Open(new Uri($"avares://{assemblyName}/Assets/aiceo.png"));
+            return new WindowIcon(stream);
         }
-
-        return null;
+        catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException)
+        {
+            // The window icon is cosmetic: never fail startup over it.
+            return null;
+        }
     }
 
     /// <summary>
