@@ -566,11 +566,35 @@ jobs:
           cp -R "$APP" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
 
-          hdiutil create \
-            -volname "AI CEO Orchestrator $VERSION" \
-            -srcfolder "$STAGE" \
-            -ov -format UDZO \
-            "dist/AiCeo-osx-$ARCH.dmg"
+          # hdiutil detaches its scratch devices asynchronously and occasionally reports
+          # "Resource busy" on a shared macOS runner; three attempts with a short pause make the
+          # job deterministic. Every attempt's output is captured so a real failure is diagnosable.
+          for attempt in 1 2 3; do
+            rm -f "dist/AiCeo-osx-$ARCH.dmg"
+            if hdiutil create \
+                 -volname "AI CEO Orchestrator $VERSION" \
+                 -srcfolder "$STAGE" \
+                 -ov -format UDZO \
+                 "dist/AiCeo-osx-$ARCH.dmg" 2>&1 | tee "$RUNNER_TEMP/hdiutil-$attempt.log"; then
+              echo "hdiutil succeeded on attempt $attempt"
+              break
+            fi
+
+            echo "::warning title=hdiutil-retry::attempt $attempt failed"
+            hdiutil detach "/Volumes/AI CEO Orchestrator $VERSION" -force >/dev/null 2>&1 || true
+            sleep 5
+
+            if [ "$attempt" = "3" ]; then
+              DETAIL=$(tail -c 2000 "$RUNNER_TEMP/hdiutil-$attempt.log" | tr '\n' '|' | tr -d '\r')
+              echo "::error title=dmg-failed::${DETAIL:0:3000}"
+              exit 1
+            fi
+          done
+
+          if [ ! -f "dist/AiCeo-osx-$ARCH.dmg" ]; then
+            echo "::error title=dmg-missing::hdiutil reported success but produced no image"
+            exit 1
+          fi
 
       - name: Verify the image
         shell: bash
