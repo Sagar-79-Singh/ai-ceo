@@ -45,6 +45,16 @@ internal static class Program
                 return SelfTest.Run();
             }
 
+            // v1.0.11: everything that touches SQLite happens here, before Avalonia installs its
+            // dispatcher and SynchronizationContext. The shell used to read the theme row on the UI
+            // thread during startup; if an await inside that read resumes on the dispatcher, the
+            // blocking bridge freezes the thread that is about to show the window — the app keeps
+            // running (and keeps its taskbar button) with nothing on screen. Preparing the container
+            // and the saved appearance first means the window can be created and shown with no
+            // blocking call on the UI thread at all.
+            AppBootstrap.Preload();
+            Trace($"database ready: {AppBootstrap.DatabasePath} (warning: {AppBootstrap.StartupWarning ?? "none"})");
+
             // UI smoke test used by CI: builds the real window (XAML + DI + database) on a virtual
             // display, closes it after a couple of seconds and exits 0.
             SmokeTestMode = args.Any(argument => string.Equals(argument, "--smoke-ui", StringComparison.OrdinalIgnoreCase));

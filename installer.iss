@@ -1,10 +1,10 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — custom Inno Setup script (v1.0.10)
+;  AI CEO Orchestrator — custom Inno Setup script (v1.0.11)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=1.0.10 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
+;      ISCC.exe /DAppVersion=1.0.11 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64.exe installer.iss
 ;
 ;  The release workflow downloads Inno Setup through Chocolatey, drops the published
 ;  AiCeo-win-x64.exe into dist\ and compiles this file; the resulting Setup.exe is attached to
@@ -21,7 +21,7 @@
 ;    * Per-user install into %LOCALAPPDATA%\Programs — no UAC prompt; an administrator can
 ;      still choose "install for all users" from the dialog.
 ;    * Desktop shortcut (opt-out task) and Start-menu shortcuts are always created.
-;    * v1.0.10: the Microsoft Edge WebView2 Evergreen runtime is installed silently when the app's
+;    * v1.0.11: the Microsoft Edge WebView2 Evergreen runtime is installed silently when the app's
 ;      web surface needs it and it is missing (the bootstrapper is embedded in Setup.exe when the
 ;      release workflow supplies it). Both shortcuts and the post-install launch run with
 ;      WorkingDir = {app}, because a self-contained single-file app resolves its extracted native
@@ -29,7 +29,7 @@
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.0.10"
+  #define AppVersion "1.0.11"
 #endif
 
 ; The Evergreen WebView2 bootstrapper. The release workflow drops it next to the published
@@ -399,7 +399,7 @@ begin
   WelcomeNote := TNewStaticText.Create(WizardForm);
   WelcomeNote.Parent := WizardForm.WelcomePage;
   WelcomeNote.AutoSize := False;
-  WelcomeNote.Caption := 'AI CEO  ·  v1.0.10  ·  {#AppArchLabel}  ·  strictly one worker at a time';
+  WelcomeNote.Caption := 'AI CEO  ·  v1.0.11  ·  {#AppArchLabel}  ·  strictly one worker at a time';
   WelcomeNote.Font.Color := TextMuted;
   WelcomeNote.Font.Size := 8;
   WelcomeNote.SetBounds(0, WizardForm.WelcomeLabel2.Top + WizardForm.WelcomeLabel2.Height + 12, 420, 30);

@@ -12,8 +12,23 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+    }
 
-        Opened += (_, _) => ScrollFeedToEnd();
+    /// <summary>
+    /// v1.0.11: the shell shows and activates itself as soon as the platform window exists.
+    ///
+    /// Relying on the application lifetime's single <c>ShowMainWindow()</c> call is what produced an
+    /// app that ran — taskbar button and all — with no window on screen. Here the window restores
+    /// itself from a minimised state, shrinks to fit the monitor if it was created larger than the
+    /// desktop, and then calls <see cref="Window.Show"/> and <see cref="Window.Activate"/> directly.
+    /// </summary>
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+
+        WindowPresentation.PrepareForDisplay(this);
+
+        ScrollFeedToEnd();
     }
 
     protected override void OnDataContextChanged(EventArgs e)

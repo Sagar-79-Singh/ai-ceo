@@ -8,6 +8,8 @@
         MinHeight="700"
         Background="#07080B"
         WindowStartupLocation="CenterScreen"
+        WindowState="Normal"
+        ShowInTaskbar="True"
         Icon="avares://AiCeo/Assets/aiceo.ico"
         SystemDecorations="Full"
         ExtendClientAreaToDecorationsHint="False">

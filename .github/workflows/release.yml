@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.10 ships a portable build *and* a native installer for every platform:
+# v1.0.11 ships a portable build *and* a native installer for every platform:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
 #                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
 #   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
@@ -192,7 +192,7 @@ jobs:
           name: AiCeo-win-${{ matrix.arch }}.exe
           path: dist
 
-      # v1.0.10: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
+      # v1.0.11: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
       # when the runtime is missing (the usual reason an installed build looks dead). A CDN hiccup
       # must not fail the release — installer.iss degrades to a download link when the file is absent.
       - name: Fetch the WebView2 Evergreen bootstrapper
@@ -577,8 +577,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Full history: the final step pushes a bookkeeping commit back to main, and git refuses to
+      # push from a shallow clone.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download every asset
         uses: actions/download-artifact@v4
@@ -662,14 +666,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.10
-          tag_name: v1.0.10
+          name: AI CEO Orchestrator v1.0.11
+          tag_name: v1.0.11
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.10
+            ## AI CEO Orchestrator v1.0.11
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
             opens in a native window — no browser, no local web server. Workers can read, write and
@@ -731,34 +735,42 @@ jobs:
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.10 — the installed build launches again
+            ### What's new in v1.0.11 — the window is guaranteed to appear
 
-            The v1.0.9 `Setup.exe` could install successfully and then do nothing when started. Three
-            separate causes are fixed:
+            The installed build could launch, take a taskbar button, and never show a window. That is
+            a start-up ordering problem, and it is fixed at every layer:
 
-            - **WebView2 runtime prerequisite.** `Setup.exe` now carries the Microsoft Edge WebView2
-              Evergreen bootstrapper. If the runtime is missing it is installed silently before the
-              wizard finishes, so the Nexus surface has an engine to draw with. The prerequisite is
-              optional by design: if it cannot be installed, the app still starts on its native shell
-              and the installer explains what to install.
-            - **Working directory.** The post-install launch and both shortcuts now run with
-              `WorkingDir = {app}`. A self-contained single-file app resolves its extracted native
-              payload relative to the working directory, and Inno/Explorer otherwise start it in
-              `System32`.
-            - **Native libraries in the bundle.** `PublishSingleFile`, `SelfContained` and
-              `IncludeNativeLibrariesForSelfExtract` are now declared in the project file, not only on
-              the CI command line, so `libSkiaSharp`, `libHarfBuzzSharp` and the WebView2 loader are
-              always extracted and resolvable — however the binary was published.
+            - **The UI thread no longer blocks on the database.** The theme/accent/font row used to be
+              read from SQLite during `OnFrameworkInitializationCompleted` — i.e. on the very thread
+              that has to show the window, through a `GetAwaiter().GetResult()` bridge. That row is now
+              preloaded in `Program.Main` *before* Avalonia installs its dispatcher and
+              `SynchronizationContext`, so there is no continuation to deadlock on and the window is
+              created with no blocking call at all.
+            - **The shell shows and activates itself.** `WindowPresentation.PrepareForDisplay` clears a
+              `Minimized` state, forces `ShowInTaskbar`, calls `Show()` and `Activate()`, and schedules
+              one deferred re-activate for the first frame. Both windows call it from their own
+              `Opened` handler, and the app calls it right after assigning `MainWindow` — so the
+              visible window no longer depends on a single lifetime call.
+            - **Oversized windows are fitted to the monitor.** A 1480×940 window on a 1366×768 laptop
+              was mostly off-screen with its title bar out of reach. The window is now clamped to the
+              monitor's working area and re-centred.
+            - **Window state is explicit.** Both windows declare `WindowState="Normal"`,
+              `ShowInTaskbar="True"` and `WindowStartupLocation="CenterScreen"`, with full native
+              decorations — no `WindowDecorations="None"` anywhere.
+            - **Start-up failures stay visible.** The `Opened` handler is guarded: a failing load now
+              writes `crash.log` and shows a banner instead of killing an `async void` handler.
 
-            **Diagnostics.** Any unhandled startup exception is now written to
-            `%APPDATA%\AiCeoOrchestrator\crash.log` (and beside the executable and in `%TEMP%`), with
-            the process path, base directory, data directory and whether the process is a single-file
-            bundle. A lightweight `startup.log` breadcrumb records every launch, so a silent exit leaves
-            evidence. The Nexus window can no longer take the process down: if the web host fails for
-            any reason it shows an in-window explanation and offers the classic interface.
+            Everything from v1.0.10 is intact: the bundled WebView2 prerequisite and `WorkingDir`,
+            the native OS window chrome, the taskbar/dock icon, the gear **Settings** button, `Enter`
+            to dispatch and the amber **CHECKING…** provider state.
 
-            Everything from v1.0.9 is intact: native OS window chrome, the taskbar/dock icon, the gear
-            **Settings** button, `Enter` to dispatch, and the amber **CHECKING…** provider state.
+            ### Previous release — v1.0.10, the installer finishes the job
+
+            - **WebView2 prerequisite** — `Setup.exe` carries the Evergreen bootstrapper and installs
+              the runtime silently when it is missing.
+            - **Working directory** — `[Run]` and both shortcuts use `WorkingDir = {app}`.
+            - **Native libraries** — `SelfContained`, `PublishSingleFile` and
+              `IncludeNativeLibrariesForSelfExtract` are declared in the project file.
 
             ### Previous release — v1.0.9, native window controls
 
@@ -812,3 +824,44 @@ jobs:
             assets/*.dmg
             assets/*.sha256
             assets/SHA256SUMS.txt
+
+      # v1.0.11: record the release with Claude credited as a co-author.
+      #
+      # The commit is made by the GitHub Actions bot as an empty commit on main, and the exact
+      # trailer line `Co-authored-by: Claude <noreply@anthropic.com>` resolves to the `claude`
+      # GitHub account. `[skip ci]` keeps this bookkeeping commit from launching another CI run;
+      # the tag-triggered release workflow is unaffected by pushes to main.
+      #
+      # It runs last and is allowed to fail: attribution must never be able to stop a release that
+      # has already been published.
+      - name: Commit the release with Claude attribution
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          version="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' src/AiCeo.Desktop/AiCeo.Desktop.csproj | head -1)"
+          if [ -z "$version" ]; then
+            echo "::warning title=no-version::could not read the version; skipping the attribution commit"
+            exit 0
+          fi
+
+          git fetch --no-tags origin main
+          git checkout -B main origin/main
+
+          git commit --allow-empty \
+            -m "chore(release): v$version [skip ci]" \
+            -m "Release v$version published by the Release workflow (run ${{ github.run_id }})." \
+            -m "Co-authored-by: Claude <noreply@anthropic.com>"
+
+          git log -1 --pretty=%B
+
+          if ! git push origin HEAD:main; then
+            echo "::warning title=attribution-push::could not push the attribution commit to main (branch protection?), the release itself is unaffected"
+            exit 0
+          fi
