@@ -30,10 +30,14 @@ public partial class App : Application
                 var picker = new AvaloniaWorkspacePicker(() => desktop.MainWindow);
                 var userSettings = AppBootstrap.GetRequiredService<UserSettingsService>();
 
-                // Paint with the saved preferences before the window is created, so the chosen theme
-                // is what the very first frame shows (no dark flash when light is selected).
-                ApplySavedTheme(userSettings);
-
+                // v1.0.13: the window comes first, the saved theme second.
+                //
+                // Reading the theme is the one call on this path that blocks (it is a SQLite query
+                // behind a GetAwaiter().GetResult() bridge). Doing it before the window existed was
+                // the last thing that could delay — or on a slow first launch, visibly stall — the
+                // moment a window was available to show. Now the shell is built and assigned to the
+                // lifetime first, so there is always a window to put on screen, and the palette is
+                // applied afterwards, still before the first frame is painted.
                 var viewModel = new MainViewModel(
                     AppBootstrap.GetRequiredService<AgentDirectory>(),
                     AppBootstrap.GetRequiredService<AgentOrchestrator>(),
@@ -72,7 +76,13 @@ public partial class App : Application
                     };
                 }
 
+                // The window is assigned to the lifetime before anything else runs, so no blocking
+                // work below can leave the application without a window.
                 desktop.MainWindow = window;
+
+                // Paint with the saved preferences before the window is shown, so the chosen theme is
+                // what the very first frame shows (no dark flash when light is selected).
+                ApplySavedTheme(userSettings);
 
                 // Follow live OS light/dark switches when the saved theme is "System".
                 if (PlatformSettings is { } platformSettings)
@@ -87,13 +97,36 @@ public partial class App : Application
                 // Loading agents/workspace touches SQLite, so it runs after the window exists.
                 window.Opened += async (_, _) =>
                 {
-                    await viewModel.InitializeAsync();
-
-                    if (Program.SmokeTestMode && window is MainWindow classicWindow)
+                    try
                     {
-                        await RunSmokeTestAsync(classicWindow, viewModel);
+                        await viewModel.InitializeAsync();
+
+                        if (Program.SmokeTestMode && window is MainWindow classicWindow)
+                        {
+                            await RunSmokeTestAsync(classicWindow, viewModel);
+                        }
+                    }
+                    catch (Exception exception) when (exception is not OutOfMemoryException)
+                    {
+                        // An async void handler that throws takes the process down; the window is
+                        // already on screen by now, so log it and keep the interface usable.
+                        Program.WriteCrashLog(exception, "view model initialisation");
                     }
                 };
+
+                // v1.0.13: show and activate the shell explicitly. The lifetime shows MainWindow on
+                // its own, but that single call is exactly what stopped happening — the app then ran
+                // with a taskbar button and no window. Presenting it here, after the Opened handler
+                // above is attached, makes the visible window the guaranteed outcome.
+                switch (window)
+                {
+                    case MainWindow classic:
+                        classic.PresentWindow();
+                        break;
+                    case NexusWindow nexus:
+                        nexus.PresentWindow();
+                        break;
+                }
             }
             catch (Exception exception)
             {
@@ -121,7 +154,7 @@ public partial class App : Application
         var previous = desktop.MainWindow;
         desktop.MainWindow = classic;
 
-        classic.Show();
+        classic.PresentWindow();
         previous?.Close();
     }
 

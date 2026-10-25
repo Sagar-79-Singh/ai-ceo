@@ -8,7 +8,7 @@
     <AssemblyName>AiCeo.Core</AssemblyName>
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator core: agents, providers, tools, workspace guardrails.</Description>
-    <Version>1.0.12</Version>
+    <Version>1.0.13</Version>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
 
