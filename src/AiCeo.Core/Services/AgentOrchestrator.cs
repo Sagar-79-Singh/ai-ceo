@@ -33,6 +33,7 @@ public sealed class AgentOrchestrator
     private readonly ILlmGateway _llm;
     private readonly ToolService _tools;
     private readonly WorkspaceService _workspace;
+    private readonly LlmSetupProvider _setup;
     private readonly OmniRouteOptions _options;
     private readonly ILogger<AgentOrchestrator> _logger;
 
@@ -41,6 +42,7 @@ public sealed class AgentOrchestrator
         ILlmGateway llm,
         ToolService tools,
         WorkspaceService workspace,
+        LlmSetupProvider setup,
         IOptions<OmniRouteOptions> options,
         ILogger<AgentOrchestrator> logger)
     {
@@ -48,6 +50,7 @@ public sealed class AgentOrchestrator
         _llm = llm;
         _tools = tools;
         _workspace = workspace;
+        _setup = setup;
         _options = options.Value;
         _logger = logger;
     }
@@ -149,6 +152,17 @@ public sealed class AgentOrchestrator
             .OrderBy(agent => agent.Name)
             .ToList();
 
+        // v1.0.16: fail before a single token is spent, with a message the UI can show verbatim.
+        // There is no fallback key or default model in the build any more, so an unconfigured
+        // install has to be sent to the setup screen rather than to a provider.
+        var setup = _setup.Current;
+        if (!setup.IsConfigured && string.IsNullOrWhiteSpace(ceo.ApiKey))
+        {
+            throw new LlmException(
+                "No provider connection is configured yet. Enter your provider, base URL, API key and "
+                + "model in the setup screen — the whole team uses those values.");
+        }
+
         var task = new TaskItem
         {
             Id = Guid.NewGuid(),
@@ -249,7 +263,7 @@ public sealed class AgentOrchestrator
         AppDbContext db,
         CancellationToken cancellationToken)
     {
-        var connection = LlmConnections.Resolve(worker, _options);
+        var connection = LlmConnections.Resolve(worker, _setup.Current, _options);
 
         var messages = new List<LlmMessage>
         {
@@ -289,7 +303,7 @@ public sealed class AgentOrchestrator
         Func<TaskLog, Task>? onLog,
         CancellationToken cancellationToken)
     {
-        var connection = LlmConnections.Resolve(worker, _options);
+        var connection = LlmConnections.Resolve(worker, _setup.Current, _options);
         var tools = ToolCatalog.Definitions;
 
         var systemPrompt = $"""
@@ -488,7 +502,7 @@ public sealed class AgentOrchestrator
         string raw;
         try
         {
-            var connection = LlmConnections.Resolve(ceo, _options);
+            var connection = LlmConnections.Resolve(ceo, _setup.Current, _options);
 
             var reply = await _llm.CompleteAsync(
                 new LlmCall(
@@ -590,7 +604,7 @@ public sealed class AgentOrchestrator
 
         try
         {
-            var connection = LlmConnections.Resolve(ceo, _options);
+            var connection = LlmConnections.Resolve(ceo, _setup.Current, _options);
 
             var reply = await _llm.CompleteAsync(
                 new LlmCall(

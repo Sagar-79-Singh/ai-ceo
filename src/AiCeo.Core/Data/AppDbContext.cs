@@ -58,6 +58,13 @@ public class AppDbContext : DbContext
             entity.Property(row => row.Theme).HasConversion<string>().HasMaxLength(16).IsRequired();
             entity.Property(row => row.AccentColor).HasConversion<string>().HasMaxLength(16).IsRequired();
             entity.Property(row => row.FontSize).HasConversion<string>().HasMaxLength(16).IsRequired();
+
+            // v1.0.16: the user's LLM connection. The key is a local secret in the same SQLite file
+            // as everything else and is never returned to the page in clear text.
+            entity.Property(row => row.Provider).HasConversion<string>().HasMaxLength(32).IsRequired();
+            entity.Property(row => row.BaseUrl).HasMaxLength(500);
+            entity.Property(row => row.ApiKey).HasMaxLength(500);
+            entity.Property(row => row.ModelId).HasMaxLength(200);
         });
 
         modelBuilder.Entity<TaskItem>(entity =>

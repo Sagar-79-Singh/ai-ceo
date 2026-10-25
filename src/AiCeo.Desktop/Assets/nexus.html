@@ -123,6 +123,17 @@
   .nx-hidden { display: none !important; }
   .nx-scroll { overflow-y: auto; }
   textarea { scrollbar-width: thin; }
+
+  /* ------------------------------------------------- v1.0.16 readability utilities
+     The compiled Tailwind bundle predates these three names and the readability fix needs them:
+     a placeholder that clears 4.5:1 on the obsidian shell (slate-500 did not), a way to pin text
+     at full opacity, and a wrapper for long stored values (keys, URLs, model ids). Every AI
+     output surface is now solid (bg-obsidian-850/95) so the WebGL canvas can no longer bleed
+     through the text. Colours still come from the theme tokens, so light mode is unaffected. */
+  .placeholder-slate-400::placeholder { color: rgb(var(--slate-400-rgb)); opacity: 1; }
+  html[data-theme="light"] .placeholder-slate-400::placeholder { color: rgb(var(--slate-500-rgb)); }
+  .text-opacity-100 { --tw-text-opacity: 1; }
+  .break-all { word-break: break-all; }
 </style>
 </head>
 <body class="text-slate-200 font-sans h-screen flex flex-col overflow-hidden antialiased selection:bg-mint-500/25 selection:text-mint-400">
@@ -134,7 +145,7 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.15</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.16</span>
       </span>
     </div>
   </div>
@@ -428,7 +439,7 @@
       <div id="nx-feed-wrap" class="nx-hidden max-w-3xl w-full mx-auto space-y-3">
         <div id="nx-prompt-bubble" class="nx-hidden bg-obsidian-850 border border-mint-500/30 rounded-xl px-4 py-3 text-[12.5px] text-slate-200 font-sans whitespace-pre-wrap ml-auto max-w-2xl"></div>
         <div id="nx-feed" class="space-y-2.5"></div>
-        <div id="nx-final" class="nx-hidden rounded-xl border border-mint-500/40 bg-emerald-500/5 px-4 py-3"></div>
+        <div id="nx-final" class="nx-hidden rounded-xl border border-mint-500/50 bg-obsidian-850/95 backdrop-blur-md px-4 py-3 shadow-sm"></div>
       </div>
     </section>
 
@@ -440,7 +451,7 @@
 
           <div class="relative">
             <textarea id="nx-prompt" rows="2" placeholder="Direct your CEO: orchestrate builds, delegate tasks, supervise the swarm..."
-                      class="w-full bg-transparent border-none text-slate-100 placeholder-slate-500 text-sm focus:ring-0 focus:outline-none resize-none leading-relaxed font-sans pr-4"></textarea>
+                      class="w-full bg-transparent border-none text-slate-100 text-opacity-100 placeholder-slate-400 text-sm focus:ring-0 focus:outline-none resize-none leading-relaxed font-sans pr-4"></textarea>
           </div>
 
           <div class="flex items-center justify-between pt-2.5 border-t border-obsidian-750/80 mt-1">
@@ -483,6 +494,61 @@
   </main>
 </div>
 
+<!-- ============================================================== PROVIDER SETUP (v1.0.16)
+     The blocking first-run sheet. A fresh install has no API key and no model — nothing is
+     compiled into the build — so the console stays behind this overlay until the user saves a
+     connection (which the host writes to the UserSettings row of the local SQLite file).
+     The same sheet is reused from Settings → Connection, where it can be closed. -->
+<div id="nx-setup" class="nx-hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+  <div class="w-full max-w-lg bg-obsidian-900 border border-mint-500/40 rounded-2xl shadow-2xl p-5 space-y-4">
+    <div class="flex items-start justify-between">
+      <div>
+        <h3 class="text-base font-semibold text-slate-100 font-mono flex items-center gap-2">
+          <i class="fa-solid fa-plug text-mint-400 text-sm"></i>
+          Connect your provider
+        </h3>
+        <p id="nx-setup-subtitle" class="text-[11px] text-slate-300 font-mono leading-snug">
+          This build ships no key of its own. Enter yours to unlock the console.
+        </p>
+      </div>
+      <button id="nx-setup-close" class="nx-hidden p-1.5 rounded-lg text-slate-300 hover:text-white bg-obsidian-850 border border-obsidian-750" title="Close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+
+    <label class="space-y-1 block">
+      <span class="block text-[10px] font-mono uppercase tracking-wider text-slate-300">Provider</span>
+      <select id="nx-setup-provider" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2"></select>
+    </label>
+
+    <label class="space-y-1 block">
+      <span class="block text-[10px] font-mono uppercase tracking-wider text-slate-300">Base URL</span>
+      <input id="nx-setup-baseurl" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2 font-mono" placeholder="http://localhost:20128/v1" spellcheck="false" autocomplete="off" />
+      <span id="nx-setup-baseurl-hint" class="block text-[10px] text-slate-400 font-mono leading-snug">Leave blank to use the provider default.</span>
+    </label>
+
+    <label class="space-y-1 block">
+      <span class="block text-[10px] font-mono uppercase tracking-wider text-slate-300">API key</span>
+      <input id="nx-setup-key" type="password" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2 font-mono" placeholder="paste the key your provider issued" spellcheck="false" autocomplete="off" />
+      <span id="nx-setup-key-hint" class="block text-[10px] text-slate-400 font-mono leading-snug">Stored only in the local SQLite file — never sent anywhere but your provider.</span>
+    </label>
+
+    <label class="space-y-1 block">
+      <span class="block text-[10px] font-mono uppercase tracking-wider text-slate-300">Model</span>
+      <input id="nx-setup-model" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2 font-mono" placeholder="the model id your provider advertises" spellcheck="false" autocomplete="off" />
+    </label>
+
+    <p id="nx-setup-error" class="nx-hidden text-[11px] text-rose-300 font-mono leading-snug"></p>
+
+    <div class="flex items-center justify-between pt-1 border-t border-obsidian-750/80 mt-1">
+      <span id="nx-setup-state" class="text-[10px] font-mono text-slate-400 truncate">Nothing configured yet</span>
+      <button id="nx-setup-save" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-mint-500 to-emerald-500 text-obsidian-950 text-xs font-bold active:scale-95">
+        Save &amp; continue
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ============================================================== SETTINGS MODAL -->
 <div id="nx-settings" class="nx-hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
   <div class="w-full max-w-lg bg-obsidian-900 border border-obsidian-700 rounded-2xl shadow-2xl p-5 space-y-5">
@@ -494,6 +560,16 @@
       <button id="nx-settings-close" class="p-1.5 rounded-lg text-slate-400 hover:text-white bg-obsidian-850 border border-obsidian-750">
         <i class="fa-solid fa-xmark text-xs"></i>
       </button>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <p class="text-[10px] font-mono uppercase tracking-wider text-slate-400">Connection</p>
+        <button id="nx-settings-connection-edit" class="text-[10px] font-mono text-mint-300 hover:text-mint-400 px-2 py-0.5 rounded-md bg-mint-500/10 hover:bg-mint-500/20 border border-mint-500/30">
+          <i class="fa-solid fa-pen-to-square text-[9px]"></i> Edit
+        </button>
+      </div>
+      <p id="nx-settings-connection" class="text-[11px] font-mono text-slate-200 break-all bg-obsidian-850 border border-obsidian-750 rounded-lg px-2.5 py-2 leading-snug">No provider connection yet</p>
     </div>
 
     <div class="space-y-2">
@@ -575,7 +651,7 @@
       <label class="space-y-1"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Provider</span>
         <select id="nx-agent-provider" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2"></select></label>
       <label class="space-y-1"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Model ID</span>
-        <input id="nx-agent-model" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="gh/gpt-5.4-nano" /></label>
+        <input id="nx-agent-model" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2" placeholder="blank = your connection" /></label>
     </div>
 
     <label class="space-y-1 block"><span class="block text-[10px] font-mono uppercase tracking-wider text-slate-400">Base URL (blank = provider default)</span>
@@ -600,7 +676,7 @@
 
 <script>
 /* =====================================================================================
-   Nexus bridge (v1.0.15, PhotinoX).
+   Nexus bridge (v1.0.16, PhotinoX).
 
    C# -> page:  messages arrive through window.external.receiveMessage (PhotinoX injects
                 window.external on every engine: WebView2, WKWebView, WebKitGTK).  A packet is
@@ -709,6 +785,177 @@
   function pushSettings(theme, accent, size) {
     applySettings({ theme: theme, accent: accent, fontSize: size });
     post({ type: 'settings', theme: theme, accent: accent, fontSize: size });
+  }
+
+  /* ------------------------------------------------------------------ connection (v1.0.16)
+     The host owns the truth: it stores provider / base URL / key / model in SQLite and reports
+     them back in state.connection on every push. The page never invents a key or a model, and it
+     only sends the four fields the user typed. While state.connection.configured is false the
+     console is behind the blocking setup sheet. */
+  var setupOpen = false;      // the sheet is on screen
+  var setupBlocking = false;  // …and cannot be dismissed (first run / nothing configured)
+
+  function providerList() {
+    return (state && state.providers) ? state.providers : [];
+  }
+
+  function providerInfo(value) {
+    var list = providerList();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].value === value) return list[i];
+    }
+    return list[0] || null;
+  }
+
+  function fillProviderSelects() {
+    var options = providerList().map(function (provider) {
+      return '<option value="' + escapeHtml(provider.value) + '">' + escapeHtml(provider.displayName) + '</option>';
+    }).join('');
+    if (!options) return;
+
+    var setup = el('nx-setup-provider');
+    if (setup && setup.innerHTML !== options) setup.innerHTML = options;
+
+    var agent = el('nx-agent-provider');
+    if (agent && agent.innerHTML !== options) agent.innerHTML = options;
+  }
+
+  /* Base URL and key hints follow the selected provider, not a hardcoded model table. */
+  function refreshSetupHints() {
+    var select = el('nx-setup-provider');
+    var info = providerInfo(select ? select.value : '');
+    var baseUrl = el('nx-setup-baseurl');
+    var connection = (state && state.connection) ? state.connection : {};
+
+    if (baseUrl && info) baseUrl.placeholder = info.defaultBaseUrl || 'https://host/v1';
+    text('nx-setup-baseurl-hint', info && info.defaultBaseUrl
+      ? 'Leave blank to use ' + info.defaultBaseUrl + '. ' + (info.hint || '')
+      : 'Required for this provider — for example http://localhost:11434/v1.');
+
+    var key = el('nx-setup-key');
+    if (key) {
+      key.placeholder = connection.hasKey
+        ? 'stored ' + (connection.keyMask || 'key') + ' — leave blank to keep it'
+        : 'paste the key your provider issued';
+    }
+
+    text('nx-setup-key-hint', connection.hasKey
+      ? 'A key is already stored locally. Type a new one only to replace it.'
+      : 'Stored only in the local SQLite file — never sent anywhere but your provider.');
+  }
+
+  function showSetupError(message) {
+    var error = el('nx-setup-error');
+    if (!error) return;
+    error.textContent = message || '';
+    show(error, !!message);
+  }
+
+  function openSetup(blocking) {
+    var modal = el('nx-setup');
+    if (!modal) return;
+
+    setupOpen = true;
+    setupBlocking = !!blocking;
+
+    var connection = (state && state.connection) ? state.connection : {};
+    fillProviderSelects();
+
+    var select = el('nx-setup-provider');
+    if (select && connection.provider) select.value = connection.provider;
+    var baseUrl = el('nx-setup-baseurl');
+    if (baseUrl) baseUrl.value = connection.baseUrl || '';
+    var model = el('nx-setup-model');
+    if (model) model.value = connection.model || '';
+    var key = el('nx-setup-key');
+    if (key) key.value = '';
+
+    text('nx-setup-subtitle', blocking
+      ? 'This build ships no key of its own. Enter yours to unlock the console.'
+      : 'Update the connection every agent uses. Leave the key blank to keep the stored one.');
+    text('nx-setup-state', connection.summary || 'Nothing configured yet');
+
+    // Only the settings editor can be dismissed; on first run the sheet is the only way in.
+    show(el('nx-setup-close'), !blocking);
+    showSetupError('');
+    refreshSetupHints();
+    show(modal, true);
+
+    if (blocking && select) select.focus();
+  }
+
+  function closeSetup() {
+    if (setupBlocking) return;
+    setupOpen = false;
+    show(el('nx-setup'), false);
+  }
+
+  function saveSetup() {
+    var connection = (state && state.connection) ? state.connection : {};
+    var provider = el('nx-setup-provider');
+    var baseUrl = el('nx-setup-baseurl');
+    var key = el('nx-setup-key');
+    var model = el('nx-setup-model');
+
+    var providerValue = provider ? provider.value : '';
+    var baseUrlValue = baseUrl ? baseUrl.value.trim() : '';
+    var apiKeyValue = key ? key.value.trim() : '';
+    var modelValue = model ? model.value.trim() : '';
+
+    if (!apiKeyValue && !connection.hasKey) {
+      showSetupError('Paste the API key your provider issued — the app ships with none.');
+      return;
+    }
+    if (!modelValue) {
+      showSetupError('Enter the model id your provider advertises (for example from its dashboard).');
+      return;
+    }
+    if (baseUrlValue && !/^https?:\/\/[^\s]+$/i.test(baseUrlValue)) {
+      showSetupError('The base URL must start with http:// or https://');
+      return;
+    }
+
+    showSetupError('');
+
+    // The host validates the values, persists them and pushes a new snapshot; the sheet closes
+    // itself in renderConnection once state.connection.configured becomes true.
+    post({
+      type: 'saveConnection',
+      provider: providerValue,
+      baseUrl: baseUrlValue,
+      apiKey: apiKeyValue,
+      modelId: modelValue
+    });
+  }
+
+  function renderConnection(s) {
+    var connection = s.connection || {};
+    var configured = !!connection.configured;
+
+    fillProviderSelects();
+
+    text('nx-settings-connection', configured
+      ? connection.summary
+      : 'No provider connection yet — press Edit to enter your key and model.');
+
+    // Nothing runs before a key and a model exist: the dispatch button dims and the sheet blocks.
+    var dispatch = el('nx-dispatch');
+    if (dispatch) dispatch.classList.toggle('opacity-60', !configured);
+
+    if (!configured) {
+      if (!setupOpen) openSetup(true);
+      return;
+    }
+
+    if (setupBlocking || setupOpen) {
+      setupBlocking = false;
+      setupOpen = false;
+      show(el('nx-setup'), false);
+
+      // The key was persisted by the host; drop it from the DOM so it does not linger on screen.
+      var key = el('nx-setup-key');
+      if (key) key.value = '';
+    }
   }
 
   /* ------------------------------------------------------------------ rendering */
@@ -833,25 +1080,25 @@
         return '<div class="flex items-start space-x-2 mt-1.5">' +
           '<span class="w-5 h-5 shrink-0 rounded-full bg-obsidian-750 text-[9px] font-mono text-slate-300 flex items-center justify-center">' + step.index + '</span>' +
           '<div><p class="text-[11px] font-semibold text-cyan-300">' + escapeHtml(step.role) + '</p>' +
-          '<p class="text-[11.5px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(step.instructions) + '</p></div></div>';
+          '<p class="text-[11.5px] text-slate-200 whitespace-pre-wrap">' + escapeHtml(step.instructions) + '</p></div></div>';
       }).join('');
       header = '<div class="flex items-center space-x-2"><span class="w-1.5 h-1.5 rounded-full bg-mint-400"></span>' +
         '<span class="text-[11.5px] font-semibold text-slate-100">CEO plan</span>' +
         '<span class="text-[10px] font-mono text-slate-500">' + escapeHtml(item.agent) + '</span></div>';
       body = steps + (item.text ? '<pre class="mt-2 text-[11px] font-mono text-slate-400 whitespace-pre-wrap">' + escapeHtml(item.text) + '</pre>' : '');
-      return '<div class="rounded-xl border border-obsidian-750 bg-obsidian-900/80 px-3.5 py-2.5 backdrop-blur-sm">' + header + body + '</div>';
+      return '<div class="rounded-xl border border-obsidian-700 bg-obsidian-850/95 px-3.5 py-2.5 backdrop-blur-md shadow-sm">' + header + body + '</div>';
     }
 
     if (kind === 'delegation') {
       return '<div class="flex items-start space-x-2 px-1">' +
         '<span class="mt-1.5 w-1.5 h-1.5 rounded-full ' + (item.pending ? 'bg-amber-400' : 'bg-mint-400') + '"></span>' +
-        '<div><p class="text-[10.5px] font-mono text-slate-500">' + escapeHtml(item.title) + '</p>' +
-        '<p class="text-[11.5px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div></div>';
+        '<div><p class="text-[10.5px] font-mono text-slate-400">' + escapeHtml(item.title) + '</p>' +
+        '<p class="text-[11.5px] text-slate-200 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div></div>';
     }
 
     if (kind === 'tool') {
       var colour = item.failed ? 'text-rose-400 border-rose-500/40' : 'text-cyan-300 border-cyan-500/30';
-      return '<div class="rounded-xl border ' + colour + ' bg-obsidian-900/80 px-3.5 py-2.5 backdrop-blur-sm">' +
+      return '<div class="rounded-xl border ' + colour + ' bg-obsidian-850/95 px-3.5 py-2.5 backdrop-blur-md shadow-sm">' +
         '<div class="flex items-center space-x-2 text-[10.5px] font-mono">' +
         '<i class="fa-solid fa-gear text-[10px]"></i><span>' + escapeHtml(item.tool) + '</span>' +
         '<span class="text-slate-500">' + escapeHtml(item.title) + '</span></div>' +
@@ -859,21 +1106,21 @@
     }
 
     if (kind === 'result') {
-      return '<div class="rounded-xl border border-obsidian-750 bg-obsidian-900/80 px-3.5 py-2.5 backdrop-blur-sm">' +
+      return '<div class="rounded-xl border border-obsidian-700 bg-obsidian-850/95 px-3.5 py-2.5 backdrop-blur-md shadow-sm">' +
         '<div class="flex items-center space-x-2"><i class="fa-solid fa-check text-mint-400 text-[10px]"></i>' +
         '<span class="text-[11.5px] font-semibold text-slate-100">' + escapeHtml(item.agent) + '</span>' +
-        '<span class="text-[10px] font-mono text-slate-500">worker result</span></div>' +
-        '<p class="mt-1.5 text-[12px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
+        '<span class="text-[10px] font-mono text-slate-400">worker result</span></div>' +
+        '<p class="mt-1.5 text-[12px] text-slate-100 text-opacity-100 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
     }
 
     if (kind === 'error') {
-      return '<div class="rounded-xl border border-rose-500/40 bg-rose-500/5 px-3.5 py-2.5">' +
+      return '<div class="rounded-xl border border-rose-500/40 bg-obsidian-850/95 px-3.5 py-2.5 backdrop-blur-md shadow-sm">' +
         '<div class="flex items-start space-x-2"><i class="fa-solid fa-triangle-exclamation text-rose-400 text-[10px] mt-0.5"></i>' +
-        '<p class="text-[11.5px] text-rose-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div></div>';
+        '<p class="text-[11.5px] text-rose-300 text-opacity-100 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div></div>';
     }
 
-    return '<div class="flex items-start space-x-2 px-1"><span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-600"></span>' +
-      '<p class="text-[11.5px] text-slate-400 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
+    return '<div class="flex items-start space-x-2 px-1"><span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-500"></span>' +
+      '<p class="text-[11.5px] text-slate-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
   }
 
   function renderFeed(s) {
@@ -893,9 +1140,9 @@
     if (s.finalOutput) {
       final.innerHTML = '<div class="flex items-center space-x-2 mb-1.5">' +
         '<span class="w-1.5 h-1.5 rounded-full bg-mint-400"></span>' +
-        '<span class="text-[11.5px] font-semibold text-slate-100">Final answer</span>' +
-        '<span class="text-[10px] font-mono text-slate-500">' + escapeHtml(s.ceoName) + '</span></div>' +
-        '<p class="text-[12px] text-slate-200 whitespace-pre-wrap">' + escapeHtml(s.finalOutput) + '</p>';
+        '<span class="text-[12px] font-semibold text-slate-100 text-opacity-100">Final answer</span>' +
+        '<span class="text-[10px] font-mono text-slate-400">' + escapeHtml(s.ceoName) + '</span></div>' +
+        '<p class="text-[12.5px] leading-relaxed text-slate-100 text-opacity-100 whitespace-pre-wrap">' + escapeHtml(s.finalOutput) + '</p>';
       show(final, true);
     } else { show(final, false); }
 
@@ -909,8 +1156,9 @@
     text('nx-dispatch-label', s.running ? 'Stop swarm' : 'Dispatch Swarm');
     var icon = el('nx-dispatch-icon');
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
-    if (dispatch) dispatch.classList.toggle('opacity-60', false);
-    text('nx-version', s.version ? 'v' + s.version : 'v1.0.15');
+    // The dim state belongs to renderConnection (v1.0.16): dispatch is inert until a connection
+    // exists, so this function must not clear it.
+    text('nx-version', s.version ? 'v' + s.version : 'v1.0.16');
     text('nx-footer', s.footer || 'sqlite: aiceo.db');
     var banner = el('nx-banner');
     if (banner) {
@@ -926,6 +1174,7 @@
   function renderAll(s) {
     applySettings(s.settings);
     renderProvider(s);
+    renderConnection(s);
     renderWorkspace(s);
     renderAgents(s);
     renderFeed(s);
@@ -994,6 +1243,12 @@
   /* ------------------------------------------------------------------ wiring */
   function dispatchPrompt() {
     if (!state) return;
+    if (state.connection && !state.connection.configured) {
+      // v1.0.16: no key, no run. Re-open the blocking sheet instead of spending a round trip.
+      openSetup(true);
+      post({ type: 'toast', text: 'Connect a provider before dispatching the swarm.', isError: true });
+      return;
+    }
     if (state.running) { post({ type: 'stop' }); return; }
     var prompt = el('nx-prompt').value.trim();
     if (!prompt) { post({ type: 'toast', text: 'Type a directive for the CEO first.', isError: true }); return; }
@@ -1030,6 +1285,19 @@
       });
     });
 
+    el('nx-setup-save').addEventListener('click', saveSetup);
+    el('nx-setup-close').addEventListener('click', closeSetup);
+    el('nx-setup-provider').addEventListener('change', refreshSetupHints);
+    el('nx-setup-baseurl').addEventListener('input', function () { showSetupError(''); });
+    el('nx-setup-key').addEventListener('input', function () { showSetupError(''); });
+    el('nx-setup-model').addEventListener('input', function () { showSetupError(''); });
+    Array.prototype.forEach.call([el('nx-setup-key'), el('nx-setup-model')], function (input) {
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); saveSetup(); }
+      });
+    });
+
+    el('nx-settings-connection-edit').addEventListener('click', function () { openSetup(false); });
     el('nx-settings-open').addEventListener('click', function () { show(el('nx-settings'), true); });
     el('nx-settings-close').addEventListener('click', function () { show(el('nx-settings'), false); });
     el('nx-settings-done').addEventListener('click', function () { show(el('nx-settings'), false); });
@@ -1070,6 +1338,13 @@
   };
 
   window.nexusToast = function (message, isError) {
+    // v1.0.16: while the setup sheet is open it covers the banner, so a failure (a rejected key, an
+    // unreachable gateway) is shown inside the sheet where the user is actually looking.
+    if (isError && (setupOpen || setupBlocking)) {
+      showSetupError(message);
+      if (setupBlocking) return;
+    }
+
     var banner = el('nx-banner');
     if (!banner) return;
     banner.textContent = message;

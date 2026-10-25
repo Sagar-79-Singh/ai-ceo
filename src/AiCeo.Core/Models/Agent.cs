@@ -19,9 +19,13 @@ public class Agent
     [Required]
     public string SystemPrompt { get; set; } = string.Empty;
 
-    /// <summary>Model id understood by the selected provider, e.g. <c>gh/gpt-5.4-nano</c>.</summary>
-    [Required, MaxLength(200)]
-    public string ModelId { get; set; } = LlmProviderCatalog.OmniRouteDefaultModel;
+    /// <summary>
+    /// Model id for this agent. Empty means "use the model from the user's connection settings"
+    /// (the <c>UserSettings</c> row filled in by the first-run setup), which is what every seeded
+    /// agent does. There is no hardcoded default model anywhere in the app.
+    /// </summary>
+    [MaxLength(200)]
+    public string ModelId { get; set; } = string.Empty;
 
     /// <summary>Which OpenAI-compatible backend this agent talks to.</summary>
     [MaxLength(32)]

@@ -15,17 +15,20 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.15 — Avalonia is gone, PhotinoX hosts the native WebView
+## What's new in v1.0.16 — first-run setup, readable output, versioned file names
 
 | Area | Change |
 | --- | --- |
-| **No Avalonia at all** | Every Avalonia package reference and every `.axaml` file is deleted from `src/AiCeo.Desktop`. There is no managed renderer and no compositor between the window and the page. |
-| **PhotinoX shell** | `Program.cs` is built around `PhotinoApplication.Run(new PhotinoWindow(…))`. `Run` shows the window and pumps the native message loop in one call, so the window that is created is the window that is shown — the invisible-window bug is structurally impossible. |
-| **No start-up freeze** | The window appears first. The database, the agent list and the provider probe then run on a background task (`Created` → `NexusPresenter.Start()`). No `.Result`, no `.Wait()`, no UI work before the first frame. |
-| **Native interop** | Page → host commands arrive as `WebMessageReceived` messages (`window.external.sendMessage`); host → page snapshots are sent with `SendWebMessage` (`window.external.receiveMessage`). The page is loaded by the window itself (`LoadString`) with its Tailwind stylesheet inlined, so no `file://` access is involved. |
-| **Native folder picker** | *Select Workspace Folder* now calls `PhotinoWindow.ShowOpenFolder` — the Win32 folder dialog, GTK's chooser or `NSOpenPanel`, depending on the OS. |
-| **Simpler installer** | The Visual C++ 2015-2022 Redistributable check is removed: PhotinoX uses the WebView the system already provides, so it is not a dependency. The WebView2 check is unchanged, including the **109** line for Windows 7 / 8 / 8.1. |
-| **Version** | `1.0.15` in both `.csproj` files, the assembly/file version, the manifest, the installer metadata, the Nexus badge and the release notes (1.0.14 is skipped). |
+| **No hardcoded key or model** | The seeded OmniRoute key/model, the `DefaultModel` catalog entries, the seeded `ModelId` values and `FallbackApiKey` are gone. `LlmSetupProvider` is the only source of provider, base URL, key and model — and a fresh install starts with none of them. |
+| **Blocking first-run setup** | On launch, if no key **and** model are stored, the console sits behind a setup sheet asking for **provider** (OmniRoute, OpenAI, Gemini, custom), **base URL**, **API key** and **model**. Saving writes them to the `UserSettings` row in `aiceo.db` (`SchemaUpgrader` adds `Provider`, `BaseUrl`, `ApiKey`, `ModelId`) and unlocks the UI in the same snapshot. |
+| **Nothing runs unconfigured** | `AgentOrchestrator` refuses to start a run — before any token is spent — and the health probe reports *not configured* instead of dialling a provider with a key that does not exist. |
+| **Connection in Settings** | Settings → **Connection** shows the masked key, provider, base URL and model, and reopens the same sheet at any time. A blank key keeps the stored one; a blank base URL uses the provider default. |
+| **Readable output** | The final-answer card and all feed cards are solid `bg-obsidian-850/95` (they used to be a 5 %-tinted surface over the WebGL canvas), the prompt placeholder is `placeholder-slate-400` at full opacity, and body text is pinned at `text-slate-100` / `text-opacity-100`. |
+| **Versioned release file names** | Every asset carries the version: `AiCeo-win-x64-v1.0.16.exe`, `Setup-win-arm64-v1.0.16.exe`, `AiCeo-linux-arm64-v1.0.16.deb`, `AiCeo-osx-x64-v1.0.16.dmg`. The release job fails if `release.yml`, the `.csproj`, `installer.iss` and the Nexus badge disagree. |
+| **Version** | `1.0.16` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge, the release notes and every asset name. |
+
+### Older releases
+- **v1.0.15** — Avalonia removed; PhotinoX hosts the OS WebView (WebView2 / WKWebView / WebKitGTK 4.1), native messaging, native folder picker, no VC++ prerequisite.
 
 ### Older releases
 - **v1.0.13** — the window always appears: window built and assigned first, `PresentWindow()` show/activate contract, fully asynchronous WebView2 initialisation.
@@ -49,17 +52,17 @@ Download one file from the **Releases** page and run it.
 
 | Platform | Installer | Portable |
 | --- | --- | --- |
-| **Windows x64 (recommended)** | `Setup-win-x64.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64.exe` |
-| Windows x86 | `Setup-win-x86.exe` | `AiCeo-win-x86.exe` |
-| Windows ARM64 | `Setup-win-arm64.exe` | `AiCeo-win-arm64.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64.tar.gz` |
-| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64.deb` | `AiCeo-linux-arm64.tar.gz` |
-| macOS Intel | `AiCeo-osx-x64.dmg` — open, drag the app to Applications | `AiCeo-osx-x64.tar.gz` |
-| macOS Apple Silicon | `AiCeo-osx-arm64.dmg` | `AiCeo-osx-arm64.tar.gz` |
+| **Windows x64 (recommended)** | `Setup-win-x64-v1.0.16.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v1.0.16.exe` |
+| Windows x86 | `Setup-win-x86-v1.0.16.exe` | `AiCeo-win-x86-v1.0.16.exe` |
+| Windows ARM64 | `Setup-win-arm64-v1.0.16.exe` | `AiCeo-win-arm64-v1.0.16.exe` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v1.0.16.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v1.0.16.tar.gz` |
+| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v1.0.16.deb` | `AiCeo-linux-arm64-v1.0.16.tar.gz` |
+| macOS Intel | `AiCeo-osx-x64-v1.0.16.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v1.0.16.tar.gz` |
+| macOS Apple Silicon | `AiCeo-osx-arm64-v1.0.16.dmg` | `AiCeo-osx-arm64-v1.0.16.tar.gz` |
 
 Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
-`Setup-win-*.exe` checks its prerequisites before it copies anything:
+`Setup-win-<arch>-v1.0.16.exe` checks its prerequisites before it copies anything:
 
 - **Microsoft Edge WebView2 Runtime** — the Nexus interface draws itself with it. Windows 10/11 get
   the current Evergreen bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the
@@ -68,7 +71,7 @@ Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
   the WebView the system provides, so the redistributable is not a dependency of this build.
 - **.NET is not checked**: the executable is published with `--self-contained true`.
 
-> **32-bit Windows:** `AiCeo-win-x86.exe` / `Setup-win-x86.exe` still build and install, but the
+> **32-bit Windows:** `AiCeo-win-x86-v1.0.16.exe` / `Setup-win-x86-v1.0.16.exe` still build and install, but the
 > native window/WebView bridge PhotinoX ships is x64/ARM64 only, so the 32-bit build cannot open the
 > Nexus window — it says so in `crash.log` instead of failing obscurely. A 32-bit Windows 10
 > installation running on 64-bit hardware can and should use the **x64** build.
@@ -167,19 +170,28 @@ Function calling uses the official [`OpenAI`](https://github.com/openai/openai-d
 
 ## Providers
 
-Every backend is OpenAI-compatible, so one client drives all of them; each agent carries its own
-`Provider`, `BaseUrl`, `ApiKey` and `ModelId`.
+Every backend is OpenAI-compatible, so one client drives all of them.
 
-| Provider | Base URL | Key environment variable |
+**First run asks for the connection** (nothing is compiled into the build): the console is blocked by
+a setup sheet until you save a **provider**, an optional **base URL**, an **API key** and a **model**.
+The four values are written to the `UserSettings` row of `aiceo.db`
+(`Provider`, `BaseUrl`, `ApiKey`, `ModelId`), and every agent, the health probe and the orchestrator
+read them through `LlmSetupProvider`. The same sheet is reachable later from
+**Settings → Connection**; a blank key keeps the stored one, a blank base URL uses the provider
+default, and a per-agent key (optional) makes that one agent self-contained.
+
+| Provider | Default base URL | Key environment variable |
 | --- | --- | --- |
 | **OmniRoute** (default) | `http://localhost:20128/v1` | `OMNIROUTE_KEY` |
 | **OpenAI** | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
 | **Gemini** | `https://generativelanguage.googleapis.com/v1beta/openai` | `GEMINI_API_KEY` |
-| **Custom** | any base URL you supply | `CUSTOM_API_KEY` |
+| **Custom** | any base URL you supply (required) | `CUSTOM_API_KEY` |
 
-Key precedence: the agent's stored key → the provider environment variable → (OmniRoute only) the
-configured/fallback key. API keys are **never** sent to the UI or an API: `AgentView` exposes only a
-mask such as `sk-1…cdef` plus where the key came from (`stored`, `env:OPENAI_API_KEY`, …).
+Precedence, in order: an agent's own key (self-contained connection) → the connection saved in the
+setup sheet → the provider environment variable → (OmniRoute only) `OmniRoute:ApiKey` from
+configuration. Model: an agent's own `ModelId` (only when it also owns a key) → the model saved in
+the setup sheet. API keys are **never** sent to the UI or an API: the page receives only a mask such
+as `sk-1…cdef` plus where the key came from (`stored`, `settings`, `env:OPENAI_API_KEY`, …).
 
 ---
 
@@ -190,8 +202,8 @@ src/AiCeo.Core/            portable class library (no UI)
   Models/                  Agent, AgentView, TaskItem, TaskLog, WorkspaceSettings, UserSettings,
                            UiTheme (tokens + dark/light palettes + CSS export), …
   Data/                    AppDbContext, DbSeeder, SchemaUpgrader, DatabasePaths
-  Services/                AgentOrchestrator, LlmGateway, AgentDirectory, WorkspaceService,
-                           UserSettingsService, …
+  Services/                AgentOrchestrator, LlmGateway, LlmConnections, LlmSetupProvider,
+                           AgentDirectory, WorkspaceService, UserSettingsService, …
   Tools/                   WorkspaceGuard, CommandGuard, ToolCatalog, ToolService, ToolResult
 src/AiCeo.Desktop/         PhotinoX desktop head (Windows · Linux · macOS) — no XAML at all
   Program.cs               entry point: PhotinoApplication.Run, the NexusShell window, crash.log
@@ -202,7 +214,7 @@ src/AiCeo.Desktop/         PhotinoX desktop head (Windows · Linux · macOS) —
   ViewModels/              MainViewModel, AgentEditorViewModel, cards, feed items (no UI toolkit types)
   AppBootstrap.cs          DI container, database preparation, --self-test
   Assets/                  nexus.html + nexus.css (the Nexus console), aiceo.ico, aiceo.png, theme.css
-installer.iss              Inno Setup script (root) → Setup-win-<arch>.exe (x64 / x86 / arm64)
+installer.iss              Inno Setup script (root) → Setup-win-<arch>-v<version>.exe (x64 / x86 / arm64)
 tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
 ```
 
@@ -217,6 +229,8 @@ on macOS). Override with the `AICEO_DB_PATH` environment variable.
 - v1.0.1 → v1.0.2: adds `Agents.Provider`, `Agents.BaseUrl`, `Agents.ApiKey`
 - v1.0.2 → v1.0.3: adds `Agents.CanUseTools`, `TaskLogs.ToolName`, creates `WorkspaceSettings`
 - v1.0.4 → v1.0.5: creates `UserSettings` (`Theme`, `AccentColor`, `FontSize` stored as readable text)
+- v1.0.15 → v1.0.16: adds `UserSettings.Provider`, `BaseUrl`, `ApiKey`, `ModelId` — the LLM
+  connection the first-run setup writes (an existing row keeps its theme and starts unconfigured)
 
 Existing agents, tasks and logs are preserved.
 
@@ -244,15 +258,15 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 # the Windows installers (need Inno Setup 6.3+ on Windows: choco install innosetup)
 mkdir -p dist
 for arch in x64 x86 arm64; do
-  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch.exe"
-  ISCC.exe "/DAppVersion=1.0.15" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch.exe" installer.iss
-done                      # → dist\installer\Setup-win-x64.exe, Setup-win-x86.exe, Setup-win-arm64.exe
+  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v1.0.16.exe"
+  ISCC.exe "/DAppVersion=1.0.16" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v1.0.16.exe" installer.iss
+done                      # → dist\installer\Setup-win-<arch>-v1.0.16.exe (x64, x86, arm64)
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
-dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64.deb
+dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v1.0.16.deb
 
 # the macOS disk image (needs macOS: hdiutil + iconutil)
-hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64.dmg
+hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v1.0.16.dmg
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
@@ -306,7 +320,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.15** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v1.0.16** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 

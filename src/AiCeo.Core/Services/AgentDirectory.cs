@@ -15,11 +15,16 @@ public sealed class AgentDirectory
 {
     private readonly IDbContextFactory<AppDbContext> _factory;
     private readonly OmniRouteOptions _options;
+    private readonly LlmSetupProvider _setup;
 
-    public AgentDirectory(IDbContextFactory<AppDbContext> factory, IOptions<OmniRouteOptions> options)
+    public AgentDirectory(
+        IDbContextFactory<AppDbContext> factory,
+        IOptions<OmniRouteOptions> options,
+        LlmSetupProvider setup)
     {
         _factory = factory;
         _options = options.Value;
+        _setup = setup;
     }
 
     /// <summary>Entities (with their keys) — used by health probes only, never sent to a client.</summary>
@@ -54,13 +59,20 @@ public sealed class AgentDirectory
 
     public AgentView ToView(Agent agent)
     {
-        var baseUrl = LlmConnections.ResolveBaseUrl(agent.Provider, agent.BaseUrl, _options);
-        var (_, source) = LlmConnections.ResolveApiKey(agent.Provider, agent.ApiKey, _options);
+        var setup = _setup.Current;
+        var (provider, baseUrl, source) = LlmConnections.Effective(agent, setup, _options);
 
-        // Only mask keys the user actually stored; shared/fallback keys are reported as a source.
+        // Only a key the user actually stored on the agent is shown as a mask. A key that comes from
+        // the connection settings is reported through the source instead, so the secret itself never
+        // travels to the page.
         var mask = !string.IsNullOrWhiteSpace(agent.ApiKey) ? LlmConnections.MaskKey(agent.ApiKey) : null;
 
-        return AgentView.From(agent, baseUrl, mask, source);
+        return AgentView.From(agent, baseUrl, mask, source) with
+        {
+            Provider = provider,
+            ProviderDisplayName = LlmProviderCatalog.DisplayNameFor(provider),
+            ModelId = LlmConnections.ResolveModel(agent, setup, provider)
+        };
     }
 
     public async Task<Agent> CreateAsync(AgentFormModel form, CancellationToken cancellationToken = default)
@@ -77,7 +89,7 @@ public sealed class AgentDirectory
             Provider = form.Provider,
             BaseUrl = LlmConnections.NormalizeOptionalBaseUrl(form.Provider, form.BaseUrl),
             ApiKey = string.IsNullOrWhiteSpace(form.ApiKey) ? null : form.ApiKey.Trim(),
-            ModelId = NormalizeModel(form.Provider, form.ModelId),
+            ModelId = NormalizeModel(form.ModelId),
             CanUseTools = form.CanUseTools,
             // The first agent ever created becomes the CEO so the app is never headless.
             IsManager = !await db.Agents.AnyAsync(cancellationToken)
@@ -110,7 +122,7 @@ public sealed class AgentDirectory
         agent.SystemPrompt = form.SystemPrompt.Trim();
         agent.Provider = form.Provider;
         agent.BaseUrl = LlmConnections.NormalizeOptionalBaseUrl(form.Provider, form.BaseUrl);
-        agent.ModelId = NormalizeModel(form.Provider, form.ModelId);
+        agent.ModelId = NormalizeModel(form.ModelId);
         agent.CanUseTools = form.CanUseTools && !agent.IsManager;
 
         // Blank key means "unchanged"; an explicit clear removes it. The secret itself is never
@@ -212,8 +224,11 @@ public sealed class AgentDirectory
         }
     }
 
-    private static string NormalizeModel(LlmProvider provider, string? modelId)
-        => string.IsNullOrWhiteSpace(modelId)
-            ? LlmProviderCatalog.DefaultModelFor(provider)
-            : modelId.Trim();
+    /// <summary>
+    /// A blank model is stored as an empty string, which means "use the model from the user's
+    /// connection settings". v1.0.16 deleted the hardcoded per-provider default it used to fall back
+    /// to, so an agent can never silently run on a model nobody selected.
+    /// </summary>
+    private static string NormalizeModel(string? modelId)
+        => string.IsNullOrWhiteSpace(modelId) ? string.Empty : modelId.Trim();
 }
