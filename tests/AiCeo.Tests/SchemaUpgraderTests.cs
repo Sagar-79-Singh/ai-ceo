@@ -125,6 +125,46 @@ public class SchemaUpgraderTests
     }
 
     [Fact]
+    public async Task Adds_the_v1_0_16_connection_columns_to_an_existing_settings_row()
+    {
+        await using var legacy = await LegacyDatabase.CreateAsync();
+
+        // A v1.0.5-v1.0.15 settings table: appearance only.
+        await using (var create = legacy.Connection.CreateCommand())
+        {
+            create.CommandText = """
+                CREATE TABLE "UserSettings" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_UserSettings" PRIMARY KEY AUTOINCREMENT,
+                    "Theme" TEXT NOT NULL DEFAULT 'System',
+                    "AccentColor" TEXT NOT NULL DEFAULT 'Green',
+                    "FontSize" TEXT NOT NULL DEFAULT 'Medium',
+                    "UpdatedAt" TEXT NOT NULL
+                );
+                INSERT INTO "UserSettings" ("Id","Theme","AccentColor","FontSize","UpdatedAt")
+                VALUES (1, 'Dark', 'Amber', 'Large', '2025-01-01 00:00:00');
+                """;
+            await create.ExecuteNonQueryAsync();
+        }
+
+        await SchemaUpgrader.UpgradeAsync(legacy.Db, NullLogger.Instance);
+
+        var columns = await SchemaUpgrader.ReadColumnsAsync(legacy.Connection, "UserSettings");
+        Assert.Contains("Provider", columns);
+        Assert.Contains("BaseUrl", columns);
+        Assert.Contains("ApiKey", columns);
+        Assert.Contains("ModelId", columns);
+
+        // The existing preferences are untouched, and the connection starts empty.
+        var stored = await legacy.Db.UserSettings.AsNoTracking().SingleAsync();
+        Assert.Equal(AiCeo.Models.AppTheme.Dark, stored.Theme);
+        Assert.Equal(AiCeo.Models.AccentColor.Amber, stored.AccentColor);
+        Assert.Equal(LlmProvider.OmniRoute, stored.Provider);
+        Assert.Null(stored.ApiKey);
+        Assert.Null(stored.ModelId);
+        Assert.False(stored.ToSetup().IsConfigured);
+    }
+
+    [Fact]
     public async Task Is_idempotent()
     {
         await using var legacy = await LegacyDatabase.CreateAsync();

@@ -44,15 +44,17 @@ public sealed class AgentEditorViewModel : ObservableObject
             _name = agent.Name;
             _role = agent.Role;
             _systemPrompt = agent.SystemPrompt;
-            _modelId = agent.ModelId;
+
+            // The agent's *own* model, not the effective one: a blank field means "follow the
+            // connection saved in the setup sheet", and editing must not pin a global model onto
+            // this one agent.
+            _modelId = agent.AgentModelId;
             _baseUrl = agent.BaseUrl;
             _canUseTools = agent.CanUseTools;
         }
-        else
-        {
-            _modelId = _selectedProvider.DefaultModel;
-        }
 
+        // v1.0.16: no provider carries a default model any more, so a new agent starts with a blank
+        // field; a blank field means "use the connection saved in the setup sheet".
         SaveCommand = new AsyncRelayCommand(SaveAsync, () => !IsBusy);
         CancelCommand = new RelayCommand(() => _close());
     }
@@ -88,13 +90,8 @@ public sealed class AgentEditorViewModel : ObservableObject
                 return;
             }
 
-            // Keep the model id sane when the backend changes.
-            if (string.IsNullOrWhiteSpace(ModelId)
-                || Providers.Any(info => string.Equals(info.DefaultModel, ModelId, StringComparison.OrdinalIgnoreCase)))
-            {
-                ModelId = value.DefaultModel;
-            }
-
+            // v1.0.16: switching the backend cannot invent a model — nothing is compiled in. The
+            // field keeps whatever the user typed, and a blank field means "use the connection".
             OnPropertyChanged(nameof(ProviderHint), nameof(BaseUrlPlaceholder), nameof(ApiKeyPlaceholder), nameof(ShowClearKey));
         }
     }

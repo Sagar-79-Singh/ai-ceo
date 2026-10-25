@@ -9,7 +9,7 @@ namespace AiCeo.Tests;
 public class AgentDirectoryTests
 {
     private static AgentDirectory Create(TestDatabase database)
-        => new(database.Factory, MsOptions.Create(new OmniRouteOptions()));
+        => new(database.Factory, MsOptions.Create(new OmniRouteOptions()), database.Setup());
 
     private static AgentFormModel Form(LlmProvider provider = LlmProvider.OmniRoute, string? apiKey = "sk-secret-1234567890") => new()
     {
@@ -100,16 +100,43 @@ public class AgentDirectoryTests
     }
 
     [Fact]
-    public async Task Missing_model_id_falls_back_to_the_provider_default()
+    public async Task A_blank_model_is_stored_empty_so_the_connection_decides()
     {
         using var database = TestDatabase.Create();
+        var directory = Create(database);
 
-        var form = Form(LlmProvider.Gemini);
+        var form = Form(LlmProvider.Gemini, apiKey: null);
         form.ModelId = "";
 
-        var created = await Create(database).CreateAsync(form);
+        var created = await directory.CreateAsync(form);
+        Assert.Equal(string.Empty, created.ModelId);
 
-        Assert.Equal(LlmProviderCatalog.GeminiDefaultModel, created.ModelId);
+        // The view reports the model the whole team will actually use, from the saved connection.
+        database.SeedConnection(LlmProvider.Gemini, apiKey: "sk-team-key", modelId: "gemini-2.5-pro");
+
+        var view = Assert.Single(await Create(database).ListViewsAsync());
+        Assert.Equal("gemini-2.5-pro", view.ModelId);
+        Assert.Equal(string.Empty, view.AgentModelId);
+    }
+
+    [Fact]
+    public async Task An_agent_without_its_own_key_inherits_the_saved_connection()
+    {
+        using var database = TestDatabase.Create()
+            .SeedConnection(LlmProvider.OpenAI, apiKey: "sk-team-key", modelId: "gpt-5.4-mini");
+
+        var directory = Create(database);
+        var created = await directory.CreateAsync(Form(LlmProvider.OmniRoute, apiKey: null));
+
+        var view = Assert.Single(await directory.ListViewsAsync());
+        Assert.Equal(LlmProvider.OpenAI, view.Provider);
+        Assert.Equal("OpenAI", view.ProviderDisplayName);
+        Assert.Equal("https://api.openai.com/v1", view.EffectiveBaseUrl);
+        Assert.Equal("gpt-5.4-mini", view.ModelId);
+        Assert.False(view.HasStoredApiKey);
+        Assert.Null(view.ApiKeyMask);
+        Assert.Equal(LlmConnections.KeySourceSettings, view.ApiKeySource);
+        Assert.Null(created.ApiKey);
     }
 
     [Fact]

@@ -1,11 +1,13 @@
 name: CI
 
-# v1.0.15 is a PhotinoX desktop app: a native window hosting the operating system's own WebView
+# v1.0.16 is a PhotinoX desktop app: a native window hosting the operating system's own WebView
 # (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux), so the pipeline does:
-#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema),
+#   1. the core library + unit tests on Linux (guardrail, topology, tools, schema, LLM connection),
 #   2. the desktop head built and published as a single file on Linux (real executable, booted
 #      headlessly through --self-test, plus the --smoke-ui run on Xvfb: the native window, the
-#      WebKitGTK web view, the page→host "ready" handshake and a settings command round-trip),
+#      WebKitGTK web view, the page→host "ready" handshake, a settings command round-trip, and the
+#      v1.0.16 first-run connection flow — no connection ⇒ setup required, saveConnection ⇒
+#      configured, an invalid submission ⇒ rejected),
 #   3. the same on Windows, producing the standalone .exe users download, and compiling
 #      installer.iss for x64 / x86 / arm64 with Inno Setup so every installer script is validated on every push.
 on:
@@ -206,6 +208,23 @@ jobs:
           fi
           if ! grep -q "settings round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
             echo "::error title=command-failed::a page command did not reach the host snapshot"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          # v1.0.16: a fresh database must report "setup required", the setup sheet's command must
+          # persist a connection, and an invalid submission must be rejected without side effects.
+          if ! grep -q "first-run setup required = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=setup-required::a fresh install did not report that the first-run setup is required"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "connection round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=connection-failed::saveConnection did not persist the LLM connection"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "invalid setup rejected = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=connection-validation::an incomplete connection was accepted"
             tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi

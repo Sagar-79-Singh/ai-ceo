@@ -19,6 +19,7 @@ public sealed record NexusState(
     string? FinalOutput,
     NexusSettingsState Settings,
     IReadOnlyList<NexusProviderOption> Providers,
+    NexusConnectionState Connection,
     string Footer);
 
 public sealed record NexusWorkspaceState(
@@ -66,10 +67,25 @@ public sealed record NexusFeedState(
 
 public sealed record NexusSettingsState(string Theme, string Accent, string FontSize);
 
+/// <summary>
+/// The user's LLM connection, as the page sees it (v1.0.16). <see cref="Configured"/> is what drives
+/// the blocking first-run setup screen; the key itself never leaves the host — only
+/// <see cref="KeyMask"/> and <see cref="HasKey"/> do.
+/// </summary>
+public sealed record NexusConnectionState(
+    bool Configured,
+    string Provider,
+    string ProviderDisplay,
+    string BaseUrl,
+    string BaseUrlPlaceholder,
+    string Model,
+    string KeyMask,
+    bool HasKey,
+    string Summary);
+
 public sealed record NexusProviderOption(
     string Value,
     string DisplayName,
-    string DefaultModel,
     string DefaultBaseUrl,
     string Hint,
     bool RequiresApiKey);

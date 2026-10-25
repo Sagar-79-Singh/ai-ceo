@@ -82,6 +82,30 @@ public class UserSettingsTests
     }
 
     [Fact]
+    public async Task The_saved_connection_survives_an_appearance_change_and_a_reset()
+    {
+        using var database = TestDatabase.Create();
+        var service = Create(database);
+
+        database.SeedConnection(LlmProvider.Gemini, baseUrl: "https://proxy.internal/v1", modelId: "gemini-2.5-pro");
+
+        var afterAppearance = await service.SaveAsync(
+            new UserSettingsSnapshot(AppTheme.Light, AccentColor.Rose, FontSizePreference.Small));
+
+        Assert.True(afterAppearance.IsConnectionConfigured);
+        Assert.Equal(LlmProvider.Gemini, afterAppearance.Setup.Provider);
+        Assert.Equal("gemini-2.5-pro", afterAppearance.Setup.ModelId);
+
+        // "Reset appearance" must never wipe the user's key.
+        var afterReset = await service.ResetAsync();
+        Assert.Equal(AppTheme.System, afterReset.Theme);
+        Assert.Equal(AccentColor.Green, afterReset.AccentColor);
+        Assert.Equal(FontSizePreference.Medium, afterReset.FontSize);
+        Assert.True(afterReset.IsConnectionConfigured);
+        Assert.Equal("https://proxy.internal/v1", afterReset.Setup.BaseUrl);
+    }
+
+    [Fact]
     public async Task Unknown_enum_values_are_clamped_instead_of_throwing()
     {
         using var database = TestDatabase.Create();
