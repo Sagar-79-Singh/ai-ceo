@@ -473,21 +473,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # v1.0.16: `hdiutil create` failed with "No space left on device" on a hosted macOS runner
-      # that had barely a gigabyte free after the toolchain caches. The image needs several
-      # gigabytes of scratch, so the job reclaims the biggest preinstalled consumers first and
-      # prints the result; nothing here is used by a .NET desktop build.
+      # v1.0.16: `hdiutil create` kept failing with "No space left on device" on the hosted macOS
+      # images — they ship every Xcode release and the simulator runtimes, which leaves too little
+      # scratch for the compressed image. A .NET desktop build needs none of it: hdiutil, sips,
+      # iconutil and codesign all live in /usr/bin. The cleanup is reported as an annotation (job
+      # logs are not readable from every environment) and the job fails fast if it is still tight.
       - name: Free disk space
         shell: bash
         run: |
           set -euo pipefail
-          echo "before:"; df -h /
-          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes 2>/dev/null || true
-          sudo rm -rf /Library/Developer/CoreSimulator/Caches 2>/dev/null || true
-          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches 2>/dev/null || true
-          sudo rm -rf ~/Library/Caches/Homebrew ~/Library/Caches/pip ~/Library/Caches/ms-playwright 2>/dev/null || true
-          sudo rm -rf "$RUNNER_TEMP"/* 2>/dev/null || true
-          echo "after:"; df -h /
+          echo "before: $(df -h / | tail -1)"
+
+          sudo rm -rf /Applications/Xcode*.app
+          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes
+          sudo rm -rf /Library/Developer/CoreSimulator/Caches
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches
+          sudo rm -rf ~/Library/Caches/Homebrew ~/Library/Caches/pip
+          sudo rm -rf "$RUNNER_TEMP"/*
+
+          FREE_MB=$(df -m / | awk 'NR==2{print $4}')
+          echo "after: $(df -h / | tail -1)"
+          echo "::notice title=disk-space::${FREE_MB} MB free after cleanup"
+
+          if [ "$FREE_MB" -lt 3072 ]; then
+            echo "::error title=low-disk::only ${FREE_MB} MB free; hdiutil needs at least 3 GB of scratch"
+            exit 1
+          fi
 
       - name: Download the portable archive
         uses: actions/download-artifact@v4
