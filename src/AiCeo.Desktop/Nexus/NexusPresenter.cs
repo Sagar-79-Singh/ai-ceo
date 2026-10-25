@@ -32,6 +32,7 @@ public sealed class NexusPresenter : IDisposable
 
     private readonly MainViewModel _viewModel;
     private readonly UserSettingsService _settings;
+    private readonly LlmSetupProvider _connection;
     private readonly AppRuntimeInfo _runtime;
     private readonly Action<string> _sendWebMessage;
     private readonly HashSet<FeedItemViewModel> _watchedFeedItems = new();
@@ -44,11 +45,13 @@ public sealed class NexusPresenter : IDisposable
     public NexusPresenter(
         MainViewModel viewModel,
         UserSettingsService settings,
+        LlmSetupProvider connection,
         AppRuntimeInfo runtime,
         Action<string> sendWebMessage)
     {
         _viewModel = viewModel;
         _settings = settings;
+        _connection = connection;
         _runtime = runtime;
         _sendWebMessage = sendWebMessage;
 
@@ -126,11 +129,11 @@ public sealed class NexusPresenter : IDisposable
                 .Select(info => new NexusProviderOption(
                     info.Value,
                     info.DisplayName,
-                    info.DefaultModel,
                     info.DefaultBaseUrl,
                     info.Hint,
                     info.RequiresApiKey))
                 .ToList(),
+            Connection: ToState(_connection.Current),
             Footer: $"sqlite · {Path.GetFileName(_runtime.DatabasePath)}");
 
         return JsonSerializer.Serialize(state, NexusJson.Options);
@@ -247,6 +250,10 @@ public sealed class NexusPresenter : IDisposable
                     await ApplySettingsAsync(root);
                     break;
 
+                case "saveConnection":
+                    await SaveConnectionAsync(root);
+                    break;
+
                 case "saveAgent":
                     await SaveAgentAsync(root);
                     break;
@@ -325,6 +332,48 @@ public sealed class NexusPresenter : IDisposable
         Push();
     }
 
+    /// <summary>
+    /// Stores the connection the user typed in the first-run setup (or in Settings → Connection).
+    /// The values are validated in Core, persisted in the <c>UserSettings</c> row and published
+    /// immediately, so the next agent run uses them without a restart.
+    /// </summary>
+    private async Task SaveConnectionAsync(JsonElement root)
+    {
+        var providerText = ReadString(root, "provider");
+
+        // A blank key means "keep the stored one": the editor shows a masked key, never the secret,
+        // so the field is empty unless the user is deliberately replacing it.
+        var apiKey = ReadString(root, "apiKey");
+        if (string.IsNullOrWhiteSpace(apiKey) && _connection.Current.HasApiKey)
+        {
+            apiKey = _connection.Current.ApiKey!;
+        }
+
+        var form = new LlmSetup(
+            LlmProviderCatalog.TryParse(providerText, out var provider) ? provider : LlmProvider.OmniRoute,
+            NullIfBlank(ReadString(root, "baseUrl")),
+            apiKey,
+            ReadString(root, "modelId"));
+
+        try
+        {
+            var saved = await _connection.SaveAsync(form);
+            Toast($"{saved.ProviderName} connected · model {saved.ModelLabel}", isError: false);
+
+            // Re-probe the new endpoint so the telemetry strip stops saying CHECKING/OFFLINE.
+            await GuardAsync(_viewModel.NexusRefreshHealthAsync);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            Toast(exception.Message, isError: true);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Program.WriteCrashLog(exception, "saving the LLM connection");
+            Toast("Could not save the connection: " + exception.Message, isError: true);
+        }
+    }
+
     private async Task SaveAgentAsync(JsonElement root)
     {
         var idText = ReadString(root, "id");
@@ -347,11 +396,6 @@ public sealed class NexusPresenter : IDisposable
         {
             Toast("An agent needs a name and a role.", isError: true);
             return;
-        }
-
-        if (form.ModelId.Length == 0)
-        {
-            form.ModelId = LlmProviderCatalog.DefaultModelFor(form.Provider);
         }
 
         await GuardAsync(() => _viewModel.NexusSaveAgentAsync(form));
@@ -402,6 +446,22 @@ public sealed class NexusPresenter : IDisposable
 
     // ----------------------------------------------------------------------------------- mapping
 
+    private static NexusConnectionState ToState(LlmSetup setup)
+    {
+        var provider = LlmProviderCatalog.Get(setup.Provider);
+
+        return new NexusConnectionState(
+            Configured: setup.IsConfigured,
+            Provider: setup.Provider.ToString(),
+            ProviderDisplay: setup.ProviderName,
+            BaseUrl: setup.BaseUrl ?? string.Empty,
+            BaseUrlPlaceholder: provider.DefaultBaseUrl,
+            Model: setup.ModelId ?? string.Empty,
+            KeyMask: setup.MaskedApiKey ?? string.Empty,
+            HasKey: setup.HasApiKey,
+            Summary: setup.Describe());
+    }
+
     private static NexusAgentState ToState(AgentCardViewModel card) => new(
         Id: card.Id.ToString(),
         Name: card.Name,
@@ -411,7 +471,7 @@ public sealed class NexusPresenter : IDisposable
         CanUseTools: card.CanUseTools,
         Provider: card.Agent.Provider.ToString(),
         ProviderDisplay: card.ProviderDisplayName,
-        Model: card.ModelId,
+        Model: card.OwnModelId,
         Key: card.KeyText,
         Endpoint: card.EndpointText,
         SystemPrompt: card.Agent.SystemPrompt,

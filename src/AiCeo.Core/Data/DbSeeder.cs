@@ -7,6 +7,11 @@ namespace AiCeo.Data;
 /// <summary>
 /// Creates the SQLite database on first run (and upgrades v1.0.x schemas), then seeds one CEO
 /// plus a small worker bench so the app is usable immediately. Safe to run on every start.
+///
+/// v1.0.16: the seeded agents carry <b>no</b> credentials and <b>no</b> model id. Both used to be
+/// hardcoded here, which meant a fresh install silently pointed at a provider with a baked-in key
+/// and a model the user never chose. Now the seeded agents are pure personas: provider, base URL,
+/// key and model come from the single <c>UserSettings</c> row the first-run setup screen fills in.
 /// </summary>
 public static class DbSeeder
 {
@@ -38,7 +43,6 @@ public static class DbSeeder
                 Name = "Atlas",
                 Role = "Chief Executive Officer",
                 Provider = LlmProvider.OmniRoute,
-                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = true,
                 SystemPrompt =
                     "You are Atlas, the Chief Executive Officer of a small AI company. You are the single point of "
@@ -51,7 +55,6 @@ public static class DbSeeder
                 Name = "Scout",
                 Role = "Researcher",
                 Provider = LlmProvider.OmniRoute,
-                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 SystemPrompt =
                     "You are Scout, a meticulous researcher. You gather and organise facts, call out assumptions, "
@@ -62,7 +65,6 @@ public static class DbSeeder
                 Name = "Vector",
                 Role = "Analyst",
                 Provider = LlmProvider.OmniRoute,
-                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 SystemPrompt =
                     "You are Vector, a quantitative analyst. You structure problems, weigh trade-offs, and produce "
@@ -73,7 +75,6 @@ public static class DbSeeder
                 Name = "Quill",
                 Role = "Writer",
                 Provider = LlmProvider.OmniRoute,
-                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 SystemPrompt =
                     "You are Quill, a senior writer and editor. You turn raw findings into clear, well-structured prose "
@@ -84,7 +85,6 @@ public static class DbSeeder
                 Name = "Forge",
                 Role = "Software Engineer",
                 Provider = LlmProvider.OmniRoute,
-                ModelId = LlmProviderCatalog.OmniRouteDefaultModel,
                 IsManager = false,
                 CanUseTools = true,
                 SystemPrompt =

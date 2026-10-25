@@ -39,6 +39,9 @@ public sealed class AgentCardViewModel : ObservableObject
 
     public string ModelId => Agent.ModelId;
 
+    /// <summary>What the agent itself pins (empty = the user's configured model).</summary>
+    public string OwnModelId => Agent.AgentModelId;
+
     public string KeyText => Agent.ApiKeyMask is not null
         ? $"key {Agent.ApiKeyMask}"
         : $"key: {Agent.ApiKeySource}";

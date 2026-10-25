@@ -146,6 +146,9 @@ internal static class Program
     {
         private readonly NexusPresenter _presenter;
         private readonly MainViewModel _viewModel;
+        private readonly LlmSetupProvider _connection;
+        private readonly TaskCompletionSource<bool> _backendReady =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly string _page;
 
         internal NexusShell()
@@ -175,9 +178,12 @@ internal static class Program
 
             window = Window;
 
+            _connection = AppBootstrap.GetRequiredService<LlmSetupProvider>();
+
             _presenter = new NexusPresenter(
                 _viewModel,
                 AppBootstrap.GetRequiredService<UserSettingsService>(),
+                _connection,
                 AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                 SendToPage);
 
@@ -270,6 +276,10 @@ internal static class Program
             {
                 Program.WriteCrashLog(exception, "view model initialisation");
             }
+            finally
+            {
+                _backendReady.TrySetResult(true);
+            }
         }
 
         /// <summary>
@@ -297,6 +307,17 @@ internal static class Program
                 if (!ready)
                 {
                     Say("UI SMOKE FAILED: the Nexus page never announced itself to the host");
+                }
+
+                // The first snapshot is only complete once the database, the agent list and the
+                // connection have been loaded; wait for that start-up task to finish.
+                try
+                {
+                    await _backendReady.Task.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+                }
+                catch (TimeoutException)
+                {
+                    Say("UI SMOKE: WARNING start-up task did not finish within 30 s");
                 }
 
                 // The remaining checks read the window and the view model, so they run on the
@@ -362,6 +383,52 @@ internal static class Program
             if (!applied)
             {
                 Say("UI SMOKE FAILED: the settings command did not reach the snapshot");
+                ok = false;
+            }
+
+            // v1.0.16: a fresh database has no connection, so the page must be told to block with
+            // the setup screen; a configured one must report the stored provider and model.
+            var firstRun = !_connection.IsConfigured;
+            Say($"UI SMOKE: first-run setup required = {firstRun} (connection: {_connection.Current.Describe()})");
+
+            var stateJson = _presenter.BuildState();
+            var connectionBlock = stateJson.Contains("\"connection\":", StringComparison.Ordinal)
+                && stateJson.Contains($"\"configured\":{(firstRun ? "false" : "true")}", StringComparison.Ordinal);
+
+            Say($"UI SMOKE: connection block in snapshot = {connectionBlock}");
+
+            if (!connectionBlock)
+            {
+                Say("UI SMOKE FAILED: the snapshot does not describe the LLM connection");
+                ok = false;
+            }
+
+            // Saving a connection must validate, persist and unlock the UI in one step.
+            await _presenter.HandleMessageAsync(
+                "{\"type\":\"saveConnection\",\"provider\":\"OmniRoute\",\"baseUrl\":\"http://localhost:20128/v1\","
+                + "\"apiKey\":\"smoke-test-key-0123456789\",\"modelId\":\"smoke/model\"}");
+
+            var configured = _connection.IsConfigured
+                && _connection.Current.ModelId == "smoke/model"
+                && _presenter.BuildState().Contains("\"configured\":true", StringComparison.Ordinal);
+
+            Say($"UI SMOKE: connection round-trip = {configured}");
+
+            if (!configured)
+            {
+                Say("UI SMOKE FAILED: the setup command did not persist the connection");
+                ok = false;
+            }
+
+            // A rejected value must leave the stored connection untouched.
+            await _presenter.HandleMessageAsync("{\"type\":\"saveConnection\",\"provider\":\"OmniRoute\",\"modelId\":\"\"}");
+
+            var rejected = _connection.Current.ModelId == "smoke/model";
+            Say($"UI SMOKE: invalid setup rejected = {rejected}");
+
+            if (!rejected)
+            {
+                Say("UI SMOKE FAILED: an empty model was accepted");
                 ok = false;
             }
 

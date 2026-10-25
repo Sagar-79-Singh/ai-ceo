@@ -9,6 +9,7 @@ public sealed record AgentView(
     string Name,
     string Role,
     string SystemPrompt,
+    /// <summary>The model this agent will actually run on (its own, or the user's configured one).</summary>
     string ModelId,
     LlmProvider Provider,
     string ProviderDisplayName,
@@ -18,7 +19,13 @@ public sealed record AgentView(
     string ApiKeySource,
     bool HasStoredApiKey,
     bool IsManager,
-    bool CanUseTools)
+    bool CanUseTools,
+    /// <summary>
+    /// The model id stored on the agent itself. Empty means "follow the user's connection settings";
+    /// the UI uses this (not <see cref="ModelId"/>) to pre-fill the editor so a global model is never
+    /// silently pinned onto an individual agent.
+    /// </summary>
+    string AgentModelId)
 {
     public static AgentView From(
         Agent agent,
@@ -39,5 +46,6 @@ public sealed record AgentView(
             apiKeySource,
             !string.IsNullOrWhiteSpace(agent.ApiKey),
             agent.IsManager,
-            agent.CanUseTools);
+            agent.CanUseTools,
+            agent.ModelId ?? string.Empty);
 }

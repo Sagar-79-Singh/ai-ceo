@@ -12,19 +12,10 @@ public sealed class OmniRouteOptions
     /// <summary>Default OmniRoute gateway base URL.</summary>
     public const string DefaultEndpoint = "http://localhost:20128/v1";
 
-    /// <summary>Default model id suggested for new OmniRoute agents.</summary>
-    public const string DefaultModel = "gh/gpt-5.4-nano";
-
-    /// <summary>Local-only fallback key used when neither the agent nor the environment has one.</summary>
-    public const string FallbackApiKey = "sk-48f9a7b2051199e0-64bc90-6a0ec9ee";
-
     public string Endpoint { get; set; } = DefaultEndpoint;
 
     /// <summary>Optional key; the <c>OMNIROUTE_KEY</c> environment variable always wins.</summary>
     public string? ApiKey { get; set; }
-
-    /// <summary>Model used by the agent editor as its default value.</summary>
-    public string ModelId { get; set; } = DefaultModel;
 
     /// <summary>0 (default) means "let the gateway decide".</summary>
     public int MaxOutputTokens { get; set; }
@@ -37,7 +28,14 @@ public sealed class OmniRouteOptions
         return endpoint.TrimEnd('/');
     }
 
-    public string ResolveApiKey()
+    /// <summary>
+    /// The gateway key, if any: <c>OMNIROUTE_KEY</c> wins over the configured value.
+    ///
+    /// v1.0.16 removed the built-in fallback key. Nothing in the build ships a credential any more;
+    /// when this returns null the UI sends the user to the setup screen instead of silently trying
+    /// to call a provider with somebody else's key.
+    /// </summary>
+    public string? ResolveApiKey()
     {
         var fromEnvironment = Environment.GetEnvironmentVariable("OMNIROUTE_KEY");
         if (!string.IsNullOrWhiteSpace(fromEnvironment))
@@ -45,11 +43,6 @@ public sealed class OmniRouteOptions
             return fromEnvironment.Trim();
         }
 
-        if (!string.IsNullOrWhiteSpace(ApiKey))
-        {
-            return ApiKey.Trim();
-        }
-
-        return FallbackApiKey;
+        return string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim();
     }
 }

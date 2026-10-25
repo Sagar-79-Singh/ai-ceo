@@ -5,9 +5,13 @@ using Microsoft.EntityFrameworkCore;
 namespace AiCeo.Services;
 
 /// <summary>
-/// Owns the single <see cref="UserSettings"/> row: the theme, accent colour and font size the
-/// desktop shell paints with. Every read falls back to sensible defaults, so a fresh database or a
-/// hand-edited file can never leave the UI unstyled.
+/// Owns the appearance half of the single <see cref="UserSettings"/> row: the theme, accent colour
+/// and font size the Nexus page paints with. Every read falls back to sensible defaults, so a fresh
+/// database or a hand-edited file can never leave the UI unstyled.
+///
+/// v1.0.16: the LLM connection lives in the same row but is owned by <see cref="LlmSetupProvider"/>.
+/// Saving appearance preferences here deliberately leaves those columns untouched, and the snapshot
+/// this service returns always carries the stored connection.
 /// </summary>
 public sealed class UserSettingsService
 {
@@ -54,12 +58,16 @@ public sealed class UserSettingsService
 
         await db.SaveChangesAsync(cancellationToken);
 
-        var result = cleaned.ToSnapshot();
+        // Return the stored row so the caller keeps the connection that is already configured.
+        var result = settings.ToSnapshot();
         Changed?.Invoke(this, result);
         return result;
     }
 
-    /// <summary>Restores the defaults (System theme, green accent, medium text).</summary>
+    /// <summary>
+    /// Restores the defaults (System theme, green accent, medium text). The LLM connection is
+    /// deliberately kept: "reset appearance" must never wipe the user's API key.
+    /// </summary>
     public Task<UserSettingsSnapshot> ResetAsync(CancellationToken cancellationToken = default)
         => SaveAsync(UserSettingsSnapshot.Default, cancellationToken);
 

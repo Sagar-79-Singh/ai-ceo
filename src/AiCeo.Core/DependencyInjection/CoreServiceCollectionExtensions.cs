@@ -35,10 +35,14 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton(new AppRuntimeInfo(
             databasePath,
             typeof(CoreServiceCollectionExtensions).Assembly
-                .GetName().Version?.ToString(3) ?? "1.0.15"));
+                .GetName().Version?.ToString(3) ?? "1.0.16"));
 
         // The gateway caches OpenAI clients per endpoint+key, so it is a singleton.
         services.AddSingleton<ILlmGateway, LlmGateway>();
+
+        // v1.0.16: the user's LLM connection (provider/base URL/key/model) is a singleton so the
+        // orchestrator, the directory and the health probe all see the values the setup screen saved.
+        services.AddSingleton<LlmSetupProvider>();
 
         services.AddScoped<AgentDirectory>();
         services.AddScoped<AgentHealthService>();
@@ -50,14 +54,28 @@ public static class CoreServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>Creates the database, upgrades an older schema and seeds the default team.</summary>
+    /// <summary>
+    /// Creates the database, upgrades an older schema, seeds the default team and loads the user's
+    /// LLM connection into <see cref="LlmSetupProvider"/>.
+    /// </summary>
     public static async Task InitializeDatabaseAsync(
         this IServiceProvider services,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
         var factory = services.GetRequiredService<IDbContextFactory<AppDbContext>>();
-        await using var db = await factory.CreateDbContextAsync(cancellationToken);
-        await DbSeeder.SeedAsync(db, logger, cancellationToken);
+        await using (var db = await factory.CreateDbContextAsync(cancellationToken))
+        {
+            await DbSeeder.SeedAsync(db, logger, cancellationToken);
+        }
+
+        var setup = services.GetRequiredService<LlmSetupProvider>();
+        var connection = await setup.RefreshAsync(cancellationToken);
+
+        logger.LogInformation(
+            connection.IsConfigured
+                ? "LLM connection ready: {Connection}"
+                : "LLM connection: not configured yet — the setup screen will ask for it",
+            connection.Describe());
     }
 }
