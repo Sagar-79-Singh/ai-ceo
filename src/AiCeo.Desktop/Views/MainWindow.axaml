@@ -7,6 +7,9 @@
         MinWidth="1020"
         MinHeight="680"
         WindowStartupLocation="CenterScreen"
+        WindowState="Normal"
+        ShowInTaskbar="True"
+        Topmost="False"
         Background="{DynamicResource AppBg}">
 
     <Grid ColumnDefinitions="368,*">

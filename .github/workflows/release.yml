@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.12 ships a portable build *and* a native installer for every platform:
+# v1.0.13 ships a portable build *and* a native installer for every platform:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>.exe      (portable)
 #                                            → Setup-win-<arch>.exe      (Inno Setup, 3 installers)
 #   * Linux    linux-x64 / linux-arm64       → AiCeo-linux-<arch>.tar.gz (portable)
@@ -192,7 +192,7 @@ jobs:
           name: AiCeo-win-${{ matrix.arch }}.exe
           path: dist
 
-      # v1.0.12: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
+      # v1.0.13: the installer embeds the Evergreen WebView2 bootstrapper and runs it silently
       # when the runtime is missing (the usual reason an installed build looks dead). A CDN hiccup
       # must not fail the release — installer.iss degrades to a download link when the file is absent.
       - name: Fetch the WebView2 Evergreen bootstrapper
@@ -435,7 +435,7 @@ jobs:
     needs: publish
     runs-on: macos-latest
     env:
-      # v1.0.12: the oldest macOS this image supports (High Sierra). Declared once, used by the
+      # v1.0.13: the oldest macOS this image supports (High Sierra). Declared once, used by the
       # bundle's Info.plist and by the two checks in the packaging script.
       MIN_MACOS: "10.13"
     strategy:
@@ -462,7 +462,7 @@ jobs:
           ARCH="${{ matrix.arch }}"
           APP="$RUNNER_TEMP/AI CEO Orchestrator.app"
 
-          # v1.0.12: this image targets macOS 10.13 (High Sierra) or later. The version declared
+          # v1.0.13: this image targets macOS 10.13 (High Sierra) or later. The version declared
           # in Info.plist below is the floor LaunchServices enforces; this check makes sure the
           # image is never built on — or labelled for — anything older.
           version_ge() {   # version_ge <have> <need> -> true when have >= need
@@ -701,14 +701,14 @@ jobs:
       - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          name: AI CEO Orchestrator v1.0.12
-          tag_name: v1.0.12
+          name: AI CEO Orchestrator v1.0.13
+          tag_name: v1.0.13
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v1.0.12
+            ## AI CEO Orchestrator v1.0.13
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · Avalonia UI · Nexus console) that
             opens in a native window — no browser, no local web server. Workers can read, write and
@@ -779,40 +779,44 @@ jobs:
             first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
             local file.
 
-            ### What's new in v1.0.12 — no freeze, and installers that check what they need
+            ### What's new in v1.0.13 — the window always appears, and WebView2 never blocks it
 
-            **The v1.0.11 start-up work is reverted.** The explicit show/activate path introduced
-            there could leave the app running with no window on some machines — the opposite of its
-            goal — so `App.axaml.cs`, both window classes and the WebView initialisation are back to
-            their v1.0.8 state, where the portable `.exe` opened reliably:
+            The app could keep running with its taskbar button and never show a window. Fixed at the
+            two places that can cause it:
 
-            - standard Avalonia window defaults again — no decorative overrides, no `Show()` or
-              `Activate()` calls from inside framework initialisation, no monitor-fitting logic;
-            - the database and the saved theme are read exactly as they were in v1.0.8, with no
-              pre-start pass and no extra lifecycle hooks;
-            - diagnostics stay: `crash.log` and `startup.log` are still written for unhandled
-              exceptions, so a future regression leaves evidence instead of silence.
+            - **The window is built and assigned first.** `OnFrameworkInitializationCompleted` now
+              constructs the shell and sets `desktop.MainWindow` before the one call on that path that
+              blocks (the saved theme, which is a SQLite read). There is therefore always a window for
+              the lifetime to show, whatever happens afterwards.
+            - **Both windows show and activate themselves.** `PresentWindow()` clears a `FullScreen`
+              or `Minimized` state, forces `ShowInTaskbar="True"` and `Topmost="False"`, then calls
+              `Show()` and `Activate()`. It is called from the window itself, from `App` right after
+              the `Opened` handler is attached, and from the classic-shell switch — so visibility never
+              depends on a single lifetime call. Both windows also declare
+              `WindowStartupLocation="CenterScreen"` and `WindowState="Normal"`; no
+              `WindowState="FullScreen"` anywhere, which is a known way to make a window never appear.
+            - **WebView2 initialisation is fully asynchronous.** Page extraction moved to the thread
+              pool, navigation and script calls are awaited, and the `Opened` handler has no `.Result`
+              or `.Wait()` on any WebView2 call — the deadlock that froze the interface is impossible
+              by construction. The window is on screen before the browser engine is touched at all.
 
-            **Windows installers are now standard wizards with real dependency checks.** The custom
-            dark wizard, its hand-painted controls and its artwork are gone; the installer is the
-            stock Inno Setup UI. Before copying a single file it now checks:
+            **Attribution.** Releases are now recorded with the official Claude Code footer:
+            `🤖 Generated with Claude Code` and
+            `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`.
 
-            - **WebView2**, choosing the bootstrapper by OS — the current Evergreen build on Windows
-              10/11, the 109 line (109.0.1518.x, the last one that supports those systems) on
-              Windows 7 / 8 / 8.1. The runtime is bundled with the Setup when the release pipeline
-              can fetch it and downloaded otherwise. Declining the prompt **aborts** the install.
-            - **Visual C++ 2015-2022 Redistributable**, prompted for and installed quietly on request.
-            - **No .NET check** — the executable is self-contained.
+            Everything from earlier releases is intact: the Nexus surface and its providers, the
+            workspace guardrail and tool loop, the stock installer wizard with its OS-aware WebView2 /
+            VC++ prerequisite checks, the `.deb` dependencies on `libgtk-3-0` and
+            `libwebkit2gtk-4.1-0`, and the macOS 10.13 floor.
 
-            **Linux and macOS packages declare their requirements:**
+            ### Previous release — v1.0.12, start-up reverted and smart installers
 
-            - the `.deb` now **depends** on `libgtk-3-0` and `libwebkit2gtk-4.1-0`;
-            - the `.dmg` targets **macOS 10.13 or later**, enforced in the packaging script, declared
-              in `Info.plist`, and re-checked by the app at launch.
-
-            Everything from earlier releases is intact: the Nexus surface, providers and health
-            badges, the workspace guardrail and tool loop, the gear **Settings** button, `Enter` to
-            dispatch, and the taskbar/dock icon.
+            - **The v1.0.11 start-up path was reverted**, back to the v1.0.8 code where the portable
+              `.exe` opened reliably.
+            - **Stock Inno Setup wizard** with OS-aware **WebView2** (current Evergreen on Windows
+              10/11, the **109** line on Windows 7 / 8 / 8.1) and **Visual C++** checks.
+            - **`.deb` depends on** `libgtk-3-0` and `libwebkit2gtk-4.1-0`; the **`.dmg` targets
+              macOS 10.13+**.
 
             ### Previous release — v1.0.11, the window is guaranteed to appear
 
@@ -884,15 +888,18 @@ jobs:
             assets/*.sha256
             assets/SHA256SUMS.txt
 
-      # v1.0.12: record the release with Claude credited as a co-author.
+      # v1.0.13: record the release with the official Claude Code attribution footer.
       #
-      # The commit is made by the GitHub Actions bot as an empty commit on main, and the exact
-      # trailer line `Co-authored-by: Claude <noreply@anthropic.com>` resolves to the `claude`
-      # GitHub account. `[skip ci]` keeps this bookkeeping commit from launching another CI run;
-      # the tag-triggered release workflow is unaffected by pushes to main.
+      # The commit is made by the GitHub Actions bot as an empty commit on main, carrying the exact
+      # default Claude Code footer:
       #
-      # It runs last and is allowed to fail: attribution must never be able to stop a release that
-      # has already been published.
+      #     🤖 Generated with Claude Code
+      #
+      #     Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+      #
+      # `[skip ci]` keeps this bookkeeping commit from launching another CI run; the tag-triggered
+      # release workflow is unaffected by pushes to main. It runs last and is allowed to fail:
+      # attribution must never be able to stop a release that has already been published.
       - name: Commit the release with Claude attribution
         continue-on-error: true
         shell: bash
@@ -916,7 +923,8 @@ jobs:
           git commit --allow-empty \
             -m "chore(release): v$version [skip ci]" \
             -m "Release v$version published by the Release workflow (run ${{ github.run_id }})." \
-            -m "Co-authored-by: Claude <noreply@anthropic.com>"
+            -m "🤖 Generated with Claude Code" \
+            -m "Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 
           git log -1 --pretty=%B
 
