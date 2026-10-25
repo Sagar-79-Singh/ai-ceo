@@ -52,6 +52,11 @@ public partial class NexusWindow : Window
 
     private async void OnOpened(object? sender, EventArgs e)
     {
+        // v1.0.11: make the window visible before anything that talks to the web engine. This is the
+        // first thing that runs once the platform window exists, so no failure below — and no slow
+        // WebView2 start-up — can leave the app running with a taskbar button and no window.
+        WindowPresentation.PrepareForDisplay(this);
+
         if (_started || _viewModel is null || _settings is null || _runtime is null)
         {
             return;
