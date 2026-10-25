@@ -846,7 +846,7 @@ jobs:
           prerelease: false
           generate_release_notes: true
           body: |
-            ## AI CEO Orchestrator v${PRODUCT_VERSION}
+            ## AI CEO Orchestrator v${{ env.PRODUCT_VERSION }}
 
             A **cross-platform desktop** AI orchestrator (.NET 10 · PhotinoX + native WebView ·
             Nexus console) that opens in a native window — no browser, no local web server, no
@@ -858,9 +858,9 @@ jobs:
 
             | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | **x64 (recommended)** | `AiCeo-win-x64-v${PRODUCT_VERSION}.exe` | `Setup-win-x64-v${PRODUCT_VERSION}.exe` |
-            | x86 (32-bit) | `AiCeo-win-x86-v${PRODUCT_VERSION}.exe` | `Setup-win-x86-v${PRODUCT_VERSION}.exe` |
-            | ARM64 (Surface / Snapdragon) | `AiCeo-win-arm64-v${PRODUCT_VERSION}.exe` | `Setup-win-arm64-v${PRODUCT_VERSION}.exe` |
+            | **x64 (recommended)** | `AiCeo-win-x64-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-x64-v${{ env.PRODUCT_VERSION }}.exe` |
+            | x86 (32-bit) | `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-x86-v${{ env.PRODUCT_VERSION }}.exe` |
+            | ARM64 (Surface / Snapdragon) | `AiCeo-win-arm64-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-arm64-v${{ env.PRODUCT_VERSION }}.exe` |
 
             The installers are stock Inno Setup wizards — the same native shell, buttons and pages
             every other Windows program uses, with no custom theme or artwork. Per-user install (no
@@ -879,11 +879,11 @@ jobs:
 
             | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | x64 | `AiCeo-linux-x64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-linux-x64-v${PRODUCT_VERSION}.deb` |
-            | ARM64 | `AiCeo-linux-arm64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-linux-arm64-v${PRODUCT_VERSION}.deb` |
+            | x64 | `AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.deb` |
+            | ARM64 | `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.deb` |
 
-            Portable: `tar -xzf AiCeo-linux-x64-v${PRODUCT_VERSION}.tar.gz && ./AiCeo`. Debian/Ubuntu:
-            `sudo apt install ./AiCeo-linux-x64-v${PRODUCT_VERSION}.deb` — installs to `/usr/lib/aiceo`, adds the
+            Portable: `tar -xzf AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.tar.gz && ./AiCeo`. Debian/Ubuntu:
+            `sudo apt install ./AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.deb` — installs to `/usr/lib/aiceo`, adds the
             `aiceo` command, a desktop entry and the icon. The package **depends** on `libgtk-3-0`
             and `libwebkit2gtk-4.1-0`, so `apt` resolves the window toolkit and the web engine for
             the Nexus surface instead of leaving the app to fall back.
@@ -892,8 +892,8 @@ jobs:
 
             | Architecture | Portable | Installer |
             | --- | --- | --- |
-            | Intel | `AiCeo-osx-x64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-osx-x64-v${PRODUCT_VERSION}.dmg` |
-            | Apple Silicon | `AiCeo-osx-arm64-v${PRODUCT_VERSION}.tar.gz` | `AiCeo-osx-arm64-v${PRODUCT_VERSION}.dmg` |
+            | Intel | `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.dmg` |
+            | Apple Silicon | `AiCeo-osx-arm64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-osx-arm64-v${{ env.PRODUCT_VERSION }}.dmg` |
 
             The `.dmg` contains a real `AI CEO Orchestrator.app` bundle (icon, versioned `Info.plist`,
             ad-hoc signature) plus an **Applications** shortcut: open the image, drag the app across.
@@ -942,8 +942,8 @@ jobs:
               text is pinned at `text-slate-100` / `text-opacity-100`. Answers stay legible on every
               accent preset and in light mode.
             - **Versioned file names.** Every asset carries the release version —
-              `AiCeo-win-x64-v${PRODUCT_VERSION}.exe`, `Setup-win-arm64-v${PRODUCT_VERSION}.exe`,
-              `AiCeo-linux-arm64-v${PRODUCT_VERSION}.deb`, `AiCeo-osx-x64-v${PRODUCT_VERSION}.dmg` —
+              `AiCeo-win-x64-v${{ env.PRODUCT_VERSION }}.exe`, `Setup-win-arm64-v${{ env.PRODUCT_VERSION }}.exe`,
+              `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.deb`, `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.dmg` —
               so two releases can never be confused once downloaded. The release job fails when
               `release.yml`, `AiCeo.Desktop.csproj`, `installer.iss` and the Nexus badge disagree
               about the number.
@@ -1051,7 +1051,7 @@ jobs:
 
             ### 32-bit Windows note
 
-            `AiCeo-win-x86-v${PRODUCT_VERSION}.exe` and `Setup-win-x86-v${PRODUCT_VERSION}.exe` are still built and published, but the native
+            `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` and `Setup-win-x86-v${{ env.PRODUCT_VERSION }}.exe` are still built and published, but the native
             window/WebView bridge that PhotinoX ships is x64 / ARM64 only, so the 32-bit build cannot
             open the Nexus window — it writes that reason to `crash.log` instead of failing obscurely.
             A 32-bit Windows 10 installation on 64-bit hardware runs the **x64** build.
@@ -1061,7 +1061,7 @@ jobs:
             17763) and newer only, so that is the floor for the application itself. `Setup.exe` will
             still run on Windows 7 SP1 / 8 / 8.1: it installs the WebView2 **109** runtime that those
             systems support and says plainly that the app needs Windows 10 1809 or newer.
-            `AiCeo-win-x86-v${PRODUCT_VERSION}.exe` is the right build for 32-bit Windows 10 machines.
+            `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` is the right build for 32-bit Windows 10 machines.
 
             ### Verify the download
             `SHA256SUMS.txt` (and a `.sha256` per file) is attached to the release.
