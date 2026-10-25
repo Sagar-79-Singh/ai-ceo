@@ -1,48 +1,48 @@
-using System.Security.Cryptography;
 using System.Text;
-using Avalonia.Platform;
 
 namespace AiCeo.Desktop.Nexus;
 
 /// <summary>
-/// Materialises the Nexus shell (<c>Assets/nexus.html</c> + <c>Assets/nexus.css</c>) on disk so the
-/// native web engine can load it from a real <c>file://</c> URL.
+/// The Nexus shell (<c>Assets/nexus.html</c> + <c>Assets/nexus.css</c>) as the native WebView sees it.
 ///
-/// A <c>file://</c> URL — rather than a local HTTP server or <c>NavigateToString</c> — keeps the
-/// process free of listening sockets and sidesteps the 2 MB string limit of the WebView2
-/// "navigate to string" API (the precompiled Tailwind stylesheet alone is far larger than that).
-/// The files are rewritten only when their contents change, so start-up stays cheap.
+/// v1.0.15: the page is handed to PhotinoX with <c>LoadString</c> instead of being extracted to a
+/// <c>file://</c> URL. The compiled Tailwind stylesheet is inlined into the document first, so the
+/// page has no sub-resources of its own to fetch and therefore cannot be broken by a web engine
+/// that restricts <c>file://</c> access (WebKitGTK gates that behind a setting, WKWebView gates it
+/// behind read-access grants). The document is ~190 KB, comfortably inside the 2 MB limit of the
+/// WebView2 "navigate to string" API, and there is nothing left to fail at start-up.
 /// </summary>
 public static class NexusAssets
 {
-    /// <summary>File name of the page inside the extraction folder.</summary>
+    /// <summary>File name of the page inside the assembly.</summary>
     public const string PageFileName = "nexus.html";
 
     /// <summary>File name of the compiled Tailwind + Font Awesome stylesheet.</summary>
     public const string StyleFileName = "nexus.css";
 
-    private const string PageResource = "Assets/nexus.html";
-    private const string StyleResource = "Assets/nexus.css";
+    private const string PageResource = "AiCeo.Desktop.Assets.nexus.html";
+    private const string StyleResource = "AiCeo.Desktop.Assets.nexus.css";
 
-    /// <summary>Extracts the shell and returns the <c>file://</c> URL the web view should open.</summary>
-    public static Uri EnsureExtracted(out string directory)
+    /// <summary>The stylesheet reference the page ships with; replaced by an inline block.</summary>
+    private const string StyleLink = "<link rel=\"stylesheet\" href=\"nexus.css\" />";
+
+    /// <summary>
+    /// The complete document the window loads: the shipped HTML with the stylesheet inlined.
+    /// Deterministic and side-effect free, so the smoke test exercises exactly what start-up uses.
+    /// </summary>
+    public static string RenderDocument()
     {
-        var folder = Path.Combine(AppPaths.DataDirectory(), "nexus");
+        var html = ReadPage();
+        var css = ReadStyles();
 
-        try
-        {
-            directory = Write(folder);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            // A locked-down profile can still run the UI from the temp folder.
-            directory = Write(Path.Combine(Path.GetTempPath(), "AiCeoOrchestrator", "nexus"));
-        }
+        var document = html.Contains(StyleLink, StringComparison.Ordinal)
+            ? html.Replace(StyleLink, "<style>" + Environment.NewLine + css + Environment.NewLine + "</style>", StringComparison.Ordinal)
+            : html.Insert(InsertIndex(html), "<style>" + Environment.NewLine + css + Environment.NewLine + "</style>");
 
-        return new Uri(Path.Combine(directory, PageFileName));
+        return document;
     }
 
-    /// <summary>Reads the page straight out of the assembly (used by the diagnostics/self-test).</summary>
+    /// <summary>Reads the page straight out of the assembly.</summary>
     public static string ReadPage() => ReadResource(PageResource);
 
     /// <summary>Reads the compiled stylesheet straight out of the assembly.</summary>
@@ -56,8 +56,14 @@ public static class NexusAssets
             var html = ReadPage();
             var css = ReadStyles();
 
-            var hasBridge = html.Contains("nexusReceive", StringComparison.Ordinal)
-                && html.Contains("chrome.webview.postMessage", StringComparison.Ordinal);
+            // The page→host path prefers window.external.sendMessage (PhotinoX injects it on every
+            // engine) and still falls back to chrome.webview.postMessage; the host→page path is the
+            // nexusReceive/nexusToast pair NexusPresenter sends.
+            var hasBridge = html.Contains("external.sendMessage", StringComparison.Ordinal)
+                && html.Contains("external.receiveMessage", StringComparison.Ordinal)
+                && html.Contains("chrome.webview.postMessage", StringComparison.Ordinal)
+                && html.Contains("window.nexusReceive", StringComparison.Ordinal)
+                && html.Contains("window.nexusToast", StringComparison.Ordinal);
             var hasShader = html.Contains("shader-canvas-ANIMATION_5", StringComparison.Ordinal)
                 && html.Contains("precision highp float", StringComparison.Ordinal);
             var hasStyles = html.Contains("href=\"nexus.css\"", StringComparison.Ordinal)
@@ -76,38 +82,19 @@ public static class NexusAssets
         }
     }
 
-    private static string Write(string folder)
+    /// <summary>Fallback position for the inline stylesheet: the end of the document head.</summary>
+    private static int InsertIndex(string html)
     {
-        Directory.CreateDirectory(folder);
-
-        WriteIfChanged(Path.Combine(folder, PageFileName), ReadPage());
-        WriteIfChanged(Path.Combine(folder, StyleFileName), ReadStyles());
-
-        return folder;
+        var head = html.IndexOf("</head>", StringComparison.OrdinalIgnoreCase);
+        return head >= 0 ? head : 0;
     }
 
-    private static void WriteIfChanged(string path, string content)
+    private static string ReadResource(string name)
     {
-        var bytes = Encoding.UTF8.GetBytes(content);
+        var assembly = typeof(NexusAssets).Assembly;
+        using var stream = assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"The embedded resource '{name}' is missing from {assembly.GetName().Name}.");
 
-        if (File.Exists(path))
-        {
-            var existing = File.ReadAllBytes(path);
-
-            if (existing.Length == bytes.Length
-                && SHA256.HashData(existing).AsSpan().SequenceEqual(SHA256.HashData(bytes)))
-            {
-                return;
-            }
-        }
-
-        File.WriteAllBytes(path, bytes);
-    }
-
-    private static string ReadResource(string path)
-    {
-        var assemblyName = typeof(NexusAssets).Assembly.GetName().Name ?? "AiCeo";
-        using var stream = AssetLoader.Open(new Uri($"avares://{assemblyName}/{path}"));
         using var reader = new StreamReader(stream, Encoding.UTF8);
         return reader.ReadToEnd();
     }

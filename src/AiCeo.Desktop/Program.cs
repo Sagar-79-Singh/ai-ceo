@@ -1,17 +1,28 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
+using AiCeo.Desktop.Nexus;
+using AiCeo.Desktop.ViewModels;
+using AiCeo.Models;
+using AiCeo.Services;
+using Microsoft.Extensions.Logging;
+using Photino.NET;
 
 namespace AiCeo.Desktop;
 
 /// <summary>
 /// Process entry point.
 ///
-/// Everything runs inside a global try/catch: if Avalonia cannot start (missing native library,
-/// no display, unreadable config, …) the full stack trace is appended to <c>crash.log</c> next to
-/// the executable and the process exits non-zero instead of vanishing silently.
+/// v1.0.15: the desktop shell is a <see cref="PhotinoWindow"/> — the operating system's own
+/// WebView (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux) inside a native
+/// window, driven by <see cref="PhotinoApplication.Run"/>. There is no Avalonia, no XAML and no
+/// managed compositor anywhere in the process, which is what removes the invisible-window and
+/// start-up-freeze failures of the previous shell: the loop that shows the window and the loop that
+/// pumps events are the same native loop.
+///
+/// Everything still runs inside a global try/catch: if the shell cannot start (missing native
+/// library, no display server, unreadable config, …) the full stack trace is appended to
+/// <c>crash.log</c> and the process exits non-zero instead of vanishing silently.
 /// </summary>
 internal static class Program
 {
@@ -58,53 +69,372 @@ internal static class Program
                 return SelfTest.Run();
             }
 
-            // UI smoke test used by CI: builds the real window (XAML + DI + database) on a virtual
-            // display, closes it after a couple of seconds and exits 0.
+            // UI smoke test used by CI: builds the real native window (native WebView + DI +
+            // database) on a virtual display, waits for the page to talk to the host, closes it and
+            // exits 0.
             SmokeTestMode = args.Any(argument => string.Equals(argument, "--smoke-ui", StringComparison.OrdinalIgnoreCase));
 
-            if (SmokeTestMode)
-            {
-                // Default ShutdownMode is OnLastWindowClose, so closing the smoke window exits.
-                var lifetime = new ClassicDesktopStyleApplicationLifetime();
-
-                BuildAvaloniaApp().SetupWithLifetime(lifetime);
-
-                lifetime.Start(args);
-
-                // The window closes itself; the app sets a non-zero exit code if any assertion
-                // inside the smoke run failed (missing settings panel, theme not repainted, …).
-                if (Environment.ExitCode != 0)
-                {
-                    Console.WriteLine($"UI SMOKE FAILED (exit code {Environment.ExitCode})");
-                    return Environment.ExitCode;
-                }
-
-                Console.WriteLine("UI SMOKE OK");
-                return 0;
-            }
-
-            Trace("starting the Avalonia lifetime");
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-            Trace("Avalonia lifetime exited cleanly");
-            return 0;
+            return RunDesktop();
         }
         catch (Exception exception)
         {
             WriteCrashLog(exception, "Startup");
             Trace("startup failed: " + exception.GetType().Name);
+            Say("STARTUP FAILED: " + exception.Message);
             return 1;
         }
     }
 
-    /// <summary>Avalonia builder used by the runtime and by the Avalonia design tools.</summary>
-    public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+    /// <summary>
+    /// Builds the container, the view model and the PhotinoX window, then hands control to the
+    /// native message loop.
+    /// </summary>
+    private static int RunDesktop()
+    {
+        // A missing display server is reported as a proper startup failure with a stack trace,
+        // rather than as an abort inside GTK. CI asserts exactly this contract.
+        EnsureDisplayAvailable();
+
+        // PhotinoX ships its native window/WebView bridge for win-x64, win-arm64, linux-x64,
+        // linux-arm64, osx-x64 and osx-arm64 only. A 32-bit Windows process therefore cannot host
+        // the window at all, and saying so here is far more useful than a DllNotFoundException from
+        // deep inside the interop layer.
+        EnsureNativeBridgeIsAvailable();
+
+        Trace("bootstrapping the service container");
+        AppBootstrap.Initialize();
+
+        var application = new PhotinoApplication
+        {
+            Name = "AI CEO Orchestrator",
+            ShutdownMode = PhotinoShutdownMode.OnMainWindowClose,
+            NotificationsEnabled = false
+        };
+
+        // The dispatcher thread is this thread: [STAThread] on Main means PhotinoX runs the loop
+        // here on every platform (it only hops to an STA thread on Windows when the caller is not
+        // STA). Recording it before Run() makes UiThread.CheckAccess answer correctly during
+        // start-up, and installing our SynchronizationContext keeps `await` continuations of
+        // UI-initiated calls on this same thread.
+        UiThread.Attach(application.Dispatcher);
+        SynchronizationContext.SetSynchronizationContext(new UiSynchronizationContext());
+
+        // A fault inside a dispatcher callback must be logged, never taken as a reason to die.
+        application.DispatcherUnhandledException += (_, eventArgs) =>
+            WriteCrashLog(eventArgs.ExceptionObject as Exception, "dispatcher");
+
+        var shell = new NexusShell();
+
+        Trace("starting the PhotinoX message loop");
+        var exitCode = application.Run(shell.Window);
+        Trace($"PhotinoX message loop exited with {exitCode}");
+
+        if (SmokeTestMode && Environment.ExitCode != 0)
+        {
+            Say($"UI SMOKE FAILED (exit code {Environment.ExitCode})");
+            return Environment.ExitCode;
+        }
+
+        return exitCode;
+    }
 
     /// <summary>
-    /// Appends a full crash report to <c>crash.log</c> in the executable's directory. Falls back to
-    /// the temp folder when the application folder is read-only.
+    /// The Nexus shell: one native window whose content is the embedded HTML/WebGL console, wired
+    /// to the view model through <see cref="NexusPresenter"/>.
+    /// </summary>
+    private sealed class NexusShell
+    {
+        private readonly NexusPresenter _presenter;
+        private readonly MainViewModel _viewModel;
+        private readonly string _page;
+
+        internal NexusShell()
+        {
+            _page = NexusAssets.RenderDocument();
+
+            PhotinoWindow? window = null;
+
+            // The picker needs the window, and the window needs the presenter: both are resolved
+            // lazily, so neither construction order is a constraint.
+            _viewModel = new MainViewModel(
+                AppBootstrap.GetRequiredService<AgentDirectory>(),
+                AppBootstrap.GetRequiredService<AgentOrchestrator>(),
+                AppBootstrap.GetRequiredService<AgentHealthService>(),
+                AppBootstrap.GetRequiredService<WorkspaceService>(),
+                new PhotinoWorkspacePicker(() => window),
+                AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
+                AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
+
+            Window = new PhotinoWindow()
+                .SetTitle("AI CEO Orchestrator")
+                .SetSize(1440, 900)
+                .SetMinSize(960, 640)
+                .Center()
+                .SetResizable(true)
+                .SetUserDataFolder(WebViewProfileDirectory());
+
+            window = Window;
+
+            _presenter = new NexusPresenter(
+                _viewModel,
+                AppBootstrap.GetRequiredService<UserSettingsService>(),
+                AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
+                SendToPage);
+
+            Window
+                .LoadString(_page)
+                .RegisterCreatedHandler((_, _) => OnCreated())
+                .RegisterWebMessageReceivedHandler((_, eventArgs) => _presenter.Accept(eventArgs.Message))
+                .RegisterClosedHandler((_, _) => _presenter.Dispose());
+        }
+
+        internal PhotinoWindow Window { get; }
+
+        /// <summary>
+        /// WebView2 keeps its profile (cookies, cache, GPU state) outside the install folder. Point
+        /// it at the per-user data directory so a portable copy on a read-only USB stick still
+        /// works, and so the profile sits next to the database instead of in a shared folder.
+        /// Non-Windows engines have no equivalent and keep <c>null</c>.
+        /// </summary>
+        private static string? WebViewProfileDirectory()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return null;
+            }
+
+            try
+            {
+                var directory = Path.Combine(AppPaths.DataDirectory(), "webview");
+                Directory.CreateDirectory(directory);
+                return directory;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                // The default (%LOCALAPPDATA%\Photino) is fine, and a failure here must not stop
+                // the window from being created.
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Hands one JSON packet to the page through the native web-message channel. PhotinoX
+        /// delivers it to the callback the page registered with <c>window.external.receiveMessage</c>.
+        /// </summary>
+        private void SendToPage(string message)
+        {
+            if (Window.IsClosed || !Window.IsInitialized)
+            {
+                return;
+            }
+
+            Window.SendWebMessage(message);
+        }
+
+        /// <summary>
+        /// The window exists and is on screen. Every slow thing — the database, the agent list, the
+        /// provider probe — starts only now, on a background task, so nothing can delay or freeze
+        /// the first frame.
+        /// </summary>
+        private void OnCreated()
+        {
+            Trace($"window created · {Window.Size.Width}×{Window.Size.Height} · visible={Window.IsVisible}");
+
+            _ = Task.Run(StartBackendAsync);
+
+            if (Program.SmokeTestMode)
+            {
+                _ = Task.Run(RunSmokeTestAsync);
+            }
+        }
+
+        /// <summary>
+        /// Everything slow, on the thread pool, in the order the UI needs it: create/upgrade the
+        /// database, load agents and workspace, probe the provider, then push the first snapshot.
+        /// None of it can delay the window, and none of it runs on the message loop.
+        /// </summary>
+        private async Task StartBackendAsync()
+        {
+            try
+            {
+                // The only blocking call: create/upgrade SQLite, on the thread pool.
+                AppBootstrap.PrepareDatabase();
+
+                // Then the view-model work, started *on the message-loop thread* so its awaits
+                // resume there too — the agent/feed collections are read by the presenter on that
+                // same thread. Both steps are async, so the window keeps painting throughout.
+                await UiThread.RunAsync(() => _viewModel.InitializeAsync());
+                await UiThread.RunAsync(() => _presenter.InitializeAsync());
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                Program.WriteCrashLog(exception, "view model initialisation");
+            }
+        }
+
+        /// <summary>
+        /// CI smoke test: proves the native window, the native WebView and the two-way bridge all
+        /// work on a real (virtual) display. Any missing marker fails the build.
+        /// </summary>
+        private async Task RunSmokeTestAsync()
+        {
+            var ok = false;
+
+            try
+            {
+                var ready = false;
+
+                try
+                {
+                    ready = await _presenter.WaitForPageAsync().ConfigureAwait(false);
+                }
+                catch (TimeoutException)
+                {
+                    ready = false;
+                }
+
+                Say($"UI SMOKE: page bridge ready = {ready}");
+                if (!ready)
+                {
+                    Say("UI SMOKE FAILED: the Nexus page never announced itself to the host");
+                }
+
+                // The remaining checks read the window and the view model, so they run on the
+                // message-loop thread.
+                var checks = await UiThread.RunAsync(() => InspectAsync(ready)).ConfigureAwait(false);
+
+                ok = ready && checks;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                Say("UI SMOKE FAILED: " + exception);
+                ok = false;
+            }
+            finally
+            {
+                Say(ok ? "UI SMOKE OK" : "UI SMOKE FAILED");
+                Environment.ExitCode = ok ? 0 : 1;
+
+                // Close on the message-loop thread; that is what ends Run() and returns the code.
+                UiThread.Post(() =>
+                {
+                    if (!Window.IsClosed)
+                    {
+                        Window.Close();
+                    }
+                });
+            }
+        }
+
+        /// <summary>The window, asset and round-trip assertions. Runs on the message-loop thread.</summary>
+        private async Task<bool> InspectAsync(bool pageReady)
+        {
+            var ok = true;
+
+            Say($"UI SMOKE: native window initialized={Window.IsInitialized} "
+                + $"visible={Window.IsVisible} state={Window.WindowState}");
+
+            // The page and its stylesheet must be inside the published executable.
+            if (NexusAssets.IsValid(out var assetDetail))
+            {
+                Say($"UI SMOKE: nexus assets {assetDetail}");
+            }
+            else
+            {
+                Say($"UI SMOKE FAILED: the bundled Nexus assets are missing or incomplete ({assetDetail})");
+                ok = false;
+            }
+
+            Say($"UI SMOKE: page document {_page.Length / 1024} KB · {_viewModel.VersionLabel} "
+                + $"· agents loaded {_viewModel.Agents.Count} (page ready: {pageReady})");
+
+            // Exercise the bridge in the other direction: a settings command must be parsed,
+            // stored and reflected in the next snapshot.
+            await _presenter.HandleMessageAsync(
+                "{\"type\":\"settings\",\"theme\":\"Light\",\"accent\":\"Purple\",\"fontSize\":\"Large\"}");
+
+            var state = _presenter.BuildState();
+            var applied = state.Contains("\"theme\":\"Light\"", StringComparison.Ordinal)
+                && state.Contains("\"accent\":\"Purple\"", StringComparison.Ordinal);
+
+            Say($"UI SMOKE: settings round-trip = {applied}");
+
+            if (!applied)
+            {
+                Say("UI SMOKE FAILED: the settings command did not reach the snapshot");
+                ok = false;
+            }
+
+            return ok;
+        }
+    }
+
+    /// <summary>
+    /// Linux and the BSDs need a display server. Failing here — as a managed exception with a stack
+    /// trace — keeps the <c>crash.log</c> contract deterministic instead of depending on what GTK
+    /// decides to do when it cannot open the display.
+    /// </summary>
+    private static void EnsureDisplayAvailable()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsFreeBSD())
+        {
+            return;
+        }
+
+        var x11 = Environment.GetEnvironmentVariable("DISPLAY");
+        var wayland = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
+
+        if (!string.IsNullOrWhiteSpace(x11) || !string.IsNullOrWhiteSpace(wayland))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "No display server is available: DISPLAY and WAYLAND_DISPLAY are both empty, so the "
+            + "native window cannot be created. Start the app from a desktop session, or use "
+            + "--self-test for a headless check.");
+    }
+
+    /// <summary>
+    /// Rejects the one architecture this build cannot work on: 32-bit Windows. Everything else —
+    /// including the 32-bit Windows 10 installations that run on 64-bit hardware with the x64
+    /// build — is supported by PhotinoX.
+    /// </summary>
+    private static void EnsureNativeBridgeIsAvailable()
+    {
+        if (!OperatingSystem.IsWindows() || IntPtr.Size != 4)
+        {
+            return;
+        }
+
+        throw new PlatformNotSupportedException(
+            "This is the 32-bit (x86) build of AI CEO Orchestrator. The native window and WebView "
+            + "bridge (PhotinoX.Native) is published for Windows x64 and ARM64 only, so this build "
+            + "cannot open the Nexus window. Download AiCeo-win-x64.exe or Setup-win-x64.exe — 64-bit "
+            + "Windows, including a 32-bit Windows installation on 64-bit hardware, runs it. The "
+            + "headless --self-test still works from here.");
+    }
+
+    /// <summary>
+    /// Console output that never throws: a WinExe has no console and a closed pipe must not take
+    /// down a smoke run.
+    /// </summary>
+    private static void Say(string message)
+    {
+        try
+        {
+            Console.Out.WriteLine(message);
+            Console.Out.Flush();
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            // No console attached.
+        }
+    }
+
+    /// <summary>
+    /// Appends a full crash report to <c>crash.log</c>. Falls back to the temp folder when the
+    /// application folder is read-only.
     /// </summary>
     internal static void WriteCrashLog(Exception? exception, string context)
     {
@@ -118,7 +448,7 @@ internal static class Program
     internal static void Trace(string message)
     {
         WriteAll(StartupLogFileName, $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz}  {message}{Environment.NewLine}");
-        Console.WriteLine("TRACE: " + message);
+        Say("TRACE: " + message);
     }
 
     /// <summary>
@@ -323,6 +653,8 @@ internal static class Program
         builder.AppendLine($"process  : {Environment.ProcessPath}");
         builder.AppendLine($"base dir : {AppContext.BaseDirectory}");
         builder.AppendLine($"data dir : {SafeDataDirectory()}");
+        builder.AppendLine($"display  : DISPLAY={Environment.GetEnvironmentVariable("DISPLAY") ?? "(unset)"} "
+            + $"WAYLAND_DISPLAY={Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") ?? "(unset)"}");
         builder.AppendLine($"bundle   : single-file = {IsSingleFileBundle}");
         builder.AppendLine($"extract  : {Environment.GetEnvironmentVariable("DOTNET_BUNDLE_EXTRACT_BASE_DIR") ?? @"(default: %TEMP%\.net)"}");
         builder.AppendLine("--------------------------------------------------------------------------------");

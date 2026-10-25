@@ -1,10 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
-using AiCeo.Desktop.Theme;
 using AiCeo.Models;
 using AiCeo.Services;
-using Avalonia.Media;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 
 namespace AiCeo.Desktop.ViewModels;
@@ -19,7 +16,6 @@ public sealed class MainViewModel : ObservableObject
     private readonly AgentOrchestrator _orchestrator;
     private readonly AgentHealthService _health;
     private readonly WorkspaceService _workspace;
-    private readonly UserSettingsService _userSettings;
     private readonly IWorkspacePicker _picker;
     private readonly AppRuntimeInfo _runtime;
     private readonly ILogger<MainViewModel> _logger;
@@ -34,7 +30,6 @@ public sealed class MainViewModel : ObservableObject
     private bool _toolsEnabled = true;
     private bool _suppressToolPersist;
     private AgentEditorViewModel? _editor;
-    private SettingsViewModel? _settingsView;
     private string? _banner;
     private bool _bannerIsError;
     private CancellationTokenSource? _runCts;
@@ -45,7 +40,6 @@ public sealed class MainViewModel : ObservableObject
         AgentOrchestrator orchestrator,
         AgentHealthService health,
         WorkspaceService workspace,
-        UserSettingsService userSettings,
         IWorkspacePicker picker,
         AppRuntimeInfo runtime,
         ILogger<MainViewModel> logger)
@@ -54,7 +48,6 @@ public sealed class MainViewModel : ObservableObject
         _orchestrator = orchestrator;
         _health = health;
         _workspace = workspace;
-        _userSettings = userSettings;
         _picker = picker;
         _runtime = runtime;
         _logger = logger;
@@ -65,13 +58,7 @@ public sealed class MainViewModel : ObservableObject
         ClearWorkspaceCommand = new AsyncRelayCommand(ClearWorkspaceAsync, () => !IsRunning && HasWorkspace);
         RefreshHealthCommand = new AsyncRelayCommand(RefreshHealthAsync, () => !IsRefreshingHealth);
         NewAgentCommand = new RelayCommand(BeginCreate, () => !IsRunning);
-        OpenSettingsCommand = new RelayCommand(OpenSettings);
-        CloseSettingsCommand = new RelayCommand(CloseSettings);
-
         Feed.CollectionChanged += OnFeedChanged;
-
-        // Every theme change repaints the status dots and banner tints these view models own.
-        ThemeManager.ThemeChanged += OnThemeChanged;
     }
 
     // -------------------------------------------------------------------------------- commands
@@ -87,10 +74,6 @@ public sealed class MainViewModel : ObservableObject
     public AsyncRelayCommand RefreshHealthCommand { get; }
 
     public RelayCommand NewAgentCommand { get; }
-
-    public RelayCommand OpenSettingsCommand { get; }
-
-    public RelayCommand CloseSettingsCommand { get; }
 
     // ------------------------------------------------------------------------------- collections
 
@@ -181,14 +164,6 @@ public sealed class MainViewModel : ObservableObject
 
     public string ProviderTooltip => _providerHealth?.Message ?? "Check the provider behind the CEO";
 
-    public IBrush ProviderDotBrush => _isRefreshingHealth
-        ? ThemeBrushes.Get(UiTheme.Warn, "#FFC46B")
-        : _providerHealth is null
-            ? ThemeBrushes.Get(UiTheme.TextDim, "#55657A")
-            : _providerHealth.Online
-                ? ThemeBrushes.Get(UiTheme.Ok, "#5EE0B0")
-                : ThemeBrushes.Get(UiTheme.Danger, "#FF9A9A");
-
     public bool IsRefreshingHealth
     {
         get => _isRefreshingHealth;
@@ -196,7 +171,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _isRefreshingHealth, value))
             {
-                OnPropertyChanged(nameof(ProviderText), nameof(ProviderDotBrush), nameof(ProviderChecking), nameof(ProviderName));
+                OnPropertyChanged(nameof(ProviderText), nameof(ProviderChecking), nameof(ProviderName));
                 RefreshHealthCommand.RaiseCanExecuteChanged();
             }
         }
@@ -251,20 +226,9 @@ public sealed class MainViewModel : ObservableObject
         get => _bannerIsError;
         private set
         {
-            if (SetProperty(ref _bannerIsError, value))
-            {
-                OnPropertyChanged(nameof(BannerBackground), nameof(BannerBorderBrush));
-            }
+            SetProperty(ref _bannerIsError, value);
         }
     }
-
-    public IBrush BannerBackground => BannerIsError
-        ? ThemeBrushes.Get(UiTheme.BannerErrorBg, "#2A1417")
-        : ThemeBrushes.Get(UiTheme.BannerInfoBg, "#0F2430");
-
-    public IBrush BannerBorderBrush => BannerIsError
-        ? ThemeBrushes.Get(UiTheme.BannerErrorBorder, "#5A2A31")
-        : ThemeBrushes.Get(UiTheme.BannerInfoBorder, "#1D4A56");
 
     // ----------------------------------------------------------------------------------- editor
 
@@ -281,61 +245,6 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public bool IsEditorOpen => Editor is not null;
-
-    // ----------------------------------------------------------------------------------- settings
-
-    /// <summary>The settings panel view model; created on first open.</summary>
-    public SettingsViewModel? Settings
-    {
-        get => _settingsView;
-        private set
-        {
-            if (SetProperty(ref _settingsView, value))
-            {
-                OnPropertyChanged(nameof(IsSettingsOpen));
-            }
-        }
-    }
-
-    public bool IsSettingsOpen => Settings is not null;
-
-    private void OpenSettings()
-    {
-        CloseEditor();
-
-        var settings = new SettingsViewModel(_userSettings, CloseSettings);
-        Settings = settings;
-
-        // Mirror the saved values into the panel, then repaint from what was stored.
-        _ = settings.LoadAsync();
-    }
-
-    private void CloseSettings() => Settings = null;
-
-    /// <summary>Forwarded from the platform colour-scheme watcher.</summary>
-    public void OnSystemThemeChanged() => Settings?.OnSystemThemeChanged();
-
-    private void OnThemeChanged(object? sender, ThemePalette palette)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            RepaintForTheme();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(RepaintForTheme);
-        }
-    }
-
-    private void RepaintForTheme()
-    {
-        OnPropertyChanged(nameof(ProviderDotBrush), nameof(BannerBackground), nameof(BannerBorderBrush));
-
-        foreach (var item in Feed)
-        {
-            item.RefreshTheme();
-        }
-    }
 
     // ------------------------------------------------------------------------------------ nexus
 
@@ -387,16 +296,6 @@ public sealed class MainViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(AppBootstrap.StartupWarning))
         {
             SetBanner(AppBootstrap.StartupWarning!, isError: true);
-        }
-
-        // Paint the shell with the saved preferences before the first frame is composited.
-        try
-        {
-            ThemeManager.Apply(await _userSettings.GetAsync());
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or IOException or System.Data.Common.DbException)
-        {
-            _logger.LogWarning(exception, "Could not apply the saved theme; keeping the default palette");
         }
 
         await LoadAgentsAsync();
@@ -547,7 +446,7 @@ public sealed class MainViewModel : ObservableObject
         finally
         {
             IsRefreshingHealth = false;
-            OnPropertyChanged(nameof(ProviderText), nameof(ProviderTooltip), nameof(ProviderDotBrush), nameof(ProviderChecking), nameof(ProviderName), nameof(ProviderOnline));
+            OnPropertyChanged(nameof(ProviderText), nameof(ProviderTooltip), nameof(ProviderChecking), nameof(ProviderName), nameof(ProviderOnline));
         }
     }
 
@@ -730,8 +629,10 @@ public sealed class MainViewModel : ObservableObject
 
     private Task HandleLogAsync(TaskLog log)
     {
-        // The orchestrator logs from background threads; the UI must be touched on the UI thread.
-        Dispatcher.UIThread.Post(() => AppendLog(log));
+        // The orchestrator logs from background threads, and the feed is read by the presenter on
+        // the message-loop thread, so every append is marshalled there (v1.0.15: UiThread, backed
+        // by PhotinoX's dispatcher).
+        UiThread.Post(() => AppendLog(log));
         return Task.CompletedTask;
     }
 

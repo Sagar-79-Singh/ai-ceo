@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The desktop head (Avalonia) is an app; the tests target the portable core. -->
+    <!-- The desktop head (PhotinoX) is an app; the tests target the portable core. -->
     <ProjectReference Include="../../src/AiCeo.Core/AiCeo.Core.csproj" />
   </ItemGroup>
 
