@@ -270,6 +270,12 @@ jobs:
             tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi
+          # v2.0.2: the worker chat must be its own routed view, not an overlay on the CEO chat.
+          if ! grep -q "single chat view = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=chat-routing::the worker chat is not routed as a separate view"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
 
           # Crash logging: with no display server the native window cannot be created. The binary
           # must exit non-zero AND leave a crash.log with the stack trace next to itself (the app

@@ -172,7 +172,7 @@ public sealed class DeviceFlowService
         };
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.1");
+        request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.2");
 
         using var document = await SendJsonAsync(request, "GitHub", cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
@@ -210,7 +210,7 @@ public sealed class DeviceFlowService
         };
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.1");
+        request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.2");
 
         using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -250,7 +250,7 @@ public sealed class DeviceFlowService
             using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiBase + "/user");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.1");
+            request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.2");
 
             using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
@@ -464,7 +464,7 @@ public sealed class DeviceFlowService
         };
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.1");
+        request.Headers.UserAgent.ParseAdd("AiCeoOrchestrator/2.0.2");
 
         return request;
     }
