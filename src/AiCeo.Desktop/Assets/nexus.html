@@ -145,8 +145,19 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v1.0.16</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v2.0.0</span>
       </span>
+    </div>
+
+    <!-- v2.0.0: the spaces dropdown. One space = one named workspace + its conversation. -->
+    <div class="flex items-center gap-1.5 pl-2.5 ml-0.5 border-l border-obsidian-750">
+      <i class="fa-solid fa-layer-group text-[10px] text-cyan-400"></i>
+      <select id="nx-space-select" style="max-width:12rem"
+              class="bg-obsidian-850 border border-obsidian-700 text-slate-200 text-[10.5px] font-mono rounded px-1.5 py-0.5"
+              title="Switch space"></select>
+      <button id="nx-space-manage" class="p-1 rounded bg-obsidian-850 hover:bg-obsidian-800 border border-obsidian-750 text-slate-300 hover:text-mint-400 transition" title="Workspace manager">
+        <i class="fa-solid fa-plus text-[9px]"></i>
+      </button>
     </div>
   </div>
 
@@ -269,6 +280,15 @@
           <span class="text-[11px] leading-tight text-slate-300 group-hover:text-slate-100 transition">
             Allow agents to use files &amp; terminal
             <span class="block text-[10px] text-slate-500 mt-0.5 font-mono">Sandboxed strictly to chosen workspace</span>
+          </span>
+        </label>
+
+        <!-- v2.0.0: human-in-the-loop gate -->
+        <label class="flex items-start space-x-2.5 pt-0.5 cursor-pointer select-none group">
+          <input id="nx-approvals" class="mt-0.5 rounded border-obsidian-600 bg-obsidian-800 text-amber-500 focus:ring-amber-500/30 focus:ring-offset-obsidian-900 transition" type="checkbox" checked />
+          <span class="text-[11px] leading-tight text-slate-300 group-hover:text-slate-100 transition">
+            Ask before every write or command
+            <span class="block text-[10px] text-slate-500 mt-0.5 font-mono">Approve or reject each action in the feed</span>
           </span>
         </label>
       </div>
@@ -439,6 +459,8 @@
       <div id="nx-feed-wrap" class="nx-hidden max-w-3xl w-full mx-auto space-y-3">
         <div id="nx-prompt-bubble" class="nx-hidden bg-obsidian-850 border border-mint-500/30 rounded-xl px-4 py-3 text-[12.5px] text-slate-200 font-sans whitespace-pre-wrap ml-auto max-w-2xl"></div>
         <div id="nx-feed" class="space-y-2.5"></div>
+        <!-- v2.0.0: the approval card. Nothing below it runs until this is answered. -->
+        <div id="nx-approval" class="nx-hidden rounded-xl border-2 border-amber-400/60 bg-obsidian-850/95 backdrop-blur-md px-4 py-3 shadow-sm"></div>
         <div id="nx-final" class="nx-hidden rounded-xl border border-mint-500/50 bg-obsidian-850/95 backdrop-blur-md px-4 py-3 shadow-sm"></div>
       </div>
     </section>
@@ -545,6 +567,54 @@
       <button id="nx-setup-save" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-mint-500 to-emerald-500 text-obsidian-950 text-xs font-bold active:scale-95">
         Save &amp; continue
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================== WORKSPACE MANAGER (v2.0.0) -->
+<div id="nx-spaces" class="nx-hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+  <div class="w-full max-w-lg bg-obsidian-900 border border-obsidian-700 rounded-2xl shadow-xl overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-obsidian-750">
+      <div>
+        <h3 class="text-base font-semibold text-slate-100 font-mono flex items-center gap-2">
+          <i class="fa-solid fa-layer-group text-mint-400 text-sm"></i> Workspace manager
+        </h3>
+        <p class="text-[11px] text-slate-400 font-mono">One space = one folder + the conversation held inside it.</p>
+      </div>
+      <button id="nx-spaces-close" class="p-1.5 rounded-lg text-slate-400 hover:text-white bg-obsidian-850 border border-obsidian-750">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+
+    <div class="px-4 py-3 space-y-3 max-h-[70vh] nx-scroll">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400">Your spaces</span>
+        <span id="nx-space-count" class="text-[10px] font-mono text-cyan-300">0 saved</span>
+      </div>
+
+      <div id="nx-space-list" class="space-y-2"></div>
+
+      <div class="rounded-xl border border-obsidian-700 bg-obsidian-850 p-3 space-y-2">
+        <label class="block text-[10px] font-mono uppercase tracking-wider text-slate-400" for="nx-space-name">New space</label>
+        <input id="nx-space-name" class="nx-input w-full rounded-lg bg-obsidian-800 border border-obsidian-700 text-slate-100 text-xs px-2.5 py-2 font-mono"
+               placeholder="Python Game" autocomplete="off" spellcheck="false" />
+        <div class="grid grid-cols-2 gap-2">
+          <button id="nx-space-create" class="bg-gradient-to-r from-mint-500 to-emerald-500 hover:from-mint-400 hover:to-emerald-400 text-obsidian-950 font-semibold text-[11px] py-1.5 px-2 rounded-lg transition active:scale-95">
+            <i class="fa-solid fa-folder-tree text-[10px] mr-1"></i> Use current folder
+          </button>
+          <button id="nx-space-create-folder" class="bg-obsidian-750/80 hover:bg-obsidian-700 text-slate-200 text-[11px] py-1.5 px-2 rounded-lg border border-obsidian-700 transition active:scale-95">
+            <i class="fa-solid fa-folder-open text-[10px] mr-1"></i> Choose folder…
+          </button>
+        </div>
+        <p id="nx-space-error" class="nx-hidden text-[10.5px] text-rose-300 font-mono"></p>
+        <p class="text-[10px] text-slate-500 font-mono leading-snug">
+          Switching spaces switches the sandbox root and restores that space's feed. Everything is stored in the local SQLite file.
+        </p>
+      </div>
+    </div>
+
+    <div class="px-4 py-2.5 border-t border-obsidian-750 flex items-center justify-end">
+      <button id="nx-spaces-done" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-mint-500 to-emerald-500 text-obsidian-950 text-xs font-bold active:scale-95">Done</button>
     </div>
   </div>
 </div>
@@ -691,6 +761,11 @@
   var state = null;
   var editingId = null;
   var pendingDelete = null;
+
+  /* v2.0.0: the rejection reason the user is typing. Kept outside the DOM because the approval card
+     is re-rendered on every host push (each feed line), and a typed reason must survive that. */
+  var approvalReason = '';
+  var spaceDraftName = '';
 
   function post(payload) {
     try {
@@ -1113,6 +1188,16 @@
         '<p class="mt-1.5 text-[12px] text-slate-100 text-opacity-100 whitespace-pre-wrap">' + escapeHtml(item.text) + '</p></div>';
     }
 
+    if (kind === 'approval') {
+      return '<div class="rounded-xl border border-amber-500/40 bg-obsidian-850/95 px-3.5 py-2.5 backdrop-blur-md shadow-sm">' +
+        '<div class="flex items-center space-x-2 text-[10.5px] font-mono">' +
+        '<i class="fa-solid fa-hand text-[10px] text-amber-300"></i>' +
+        '<span class="text-amber-300 font-semibold">approval requested</span>' +
+        '<span class="text-slate-500">' + escapeHtml(item.tool) + '</span>' +
+        '<span class="text-slate-400">' + escapeHtml(item.agent) + '</span></div>' +
+        '<pre class="mt-1.5 text-[11px] font-mono text-slate-300 whitespace-pre-wrap">' + escapeHtml(item.text) + '</pre></div>';
+    }
+
     if (kind === 'error') {
       return '<div class="rounded-xl border border-rose-500/40 bg-obsidian-850/95 px-3.5 py-2.5 backdrop-blur-md shadow-sm">' +
         '<div class="flex items-start space-x-2"><i class="fa-solid fa-triangle-exclamation text-rose-400 text-[10px] mt-0.5"></i>' +
@@ -1125,7 +1210,7 @@
 
   function renderFeed(s) {
     var feed = s.feed || [];
-    var hasFeed = feed.length > 0;
+    var hasFeed = feed.length > 0 || !!s.approval;
 
     show(el('nx-hero'), !hasFeed);
     show(el('nx-feed-wrap'), hasFeed);
@@ -1151,6 +1236,170 @@
     if (stage) stage.scrollTop = stage.scrollHeight;
   }
 
+  /* ---------------------------------------------------------------- spaces (v2.0.0)
+     The host stores name + folder + conversation per space and reports them in state.spaces; the
+     header dropdown and the workspace manager are two views of the same list. */
+  function renderSpaces(s) {
+    var spaces = s.spaces || [];
+    var activeId = s.activeSpaceId || '';
+    var select = el('nx-space-select');
+
+    if (select) {
+      var signature = spaces.map(function (space) {
+        return space.id + ':' + space.name + ':' + (space.active ? '1' : '0');
+      }).join('|');
+
+      if (select.getAttribute('data-signature') !== signature) {
+        select.setAttribute('data-signature', signature);
+        select.innerHTML = spaces.length
+          ? spaces.map(function (space) {
+              return '<option value="' + escapeHtml(space.id) + '">' + escapeHtml(space.name) + '</option>';
+            }).join('')
+          : '<option value="">No space yet</option>';
+      }
+
+      if (activeId && select.value !== activeId) select.value = activeId;
+    }
+
+    text('nx-space-count', spaces.length + (spaces.length === 1 ? ' saved' : ' saved'));
+
+    var list = el('nx-space-list');
+    if (!list) return;
+
+    if (!spaces.length) {
+      list.innerHTML = '<p class="text-[11px] font-mono text-slate-400 px-1 py-2">' +
+        'No spaces yet. Name this workspace below and it will reopen with its conversation next time.</p>';
+      return;
+    }
+
+    list.innerHTML = spaces.map(function (space) {
+      var active = !!space.active;
+      var folder = space.path || 'no folder yet';
+      return '<div class="rounded-xl border ' + (active ? 'border-mint-500/50 bg-mint-500/10' : 'border-obsidian-700 bg-obsidian-850') +
+        ' px-3 py-2 flex items-center justify-between gap-2">' +
+        '<div class="min-w-0">' +
+        '<p class="text-[11.5px] font-mono text-slate-100 truncate">' +
+        (active ? '<i class="fa-solid fa-circle text-[6px] text-mint-400 mr-1.5 align-middle"></i>' : '') +
+        escapeHtml(space.name) + '</p>' +
+        '<p class="text-[10px] font-mono text-slate-400 truncate" title="' + escapeHtml(folder) + '">' +
+        escapeHtml(folder) + ' · ' + (space.feedCount || 0) + ' lines</p></div>' +
+        '<div class="flex items-center space-x-1.5 shrink-0">' +
+        (active ? '' : '<button data-switch-space="' + escapeHtml(space.id) + '" class="text-[10px] font-mono px-2 py-0.5 rounded bg-obsidian-800 text-mint-300 border border-mint-500/30 hover:bg-mint-500/20">Open</button>') +
+        '<button data-delete-space="' + escapeHtml(space.id) + '" class="text-[10px] font-mono px-2 py-0.5 rounded bg-obsidian-800 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20" title="Delete this space and its conversation">' +
+        '<i class="fa-solid fa-trash-can text-[9px]"></i></button>' +
+        '</div></div>';
+    }).join('');
+
+    Array.prototype.forEach.call(list.querySelectorAll('[data-switch-space]'), function (button) {
+      button.addEventListener('click', function () {
+        post({ type: 'selectSpace', id: button.getAttribute('data-switch-space') });
+        show(el('nx-spaces'), false);
+      });
+    });
+
+    Array.prototype.forEach.call(list.querySelectorAll('[data-delete-space]'), function (button) {
+      button.addEventListener('click', function () {
+        post({ type: 'deleteSpace', id: button.getAttribute('data-delete-space') });
+      });
+    });
+  }
+
+  function showSpaceError(message) {
+    var error = el('nx-space-error');
+    if (!error) return;
+    error.textContent = message || '';
+    show(error, !!message);
+  }
+
+  function createSpace(withFolder) {
+    var input = el('nx-space-name');
+    var name = input ? input.value.trim() : '';
+
+    if (!name) {
+      showSpaceError('Give the space a name first, for example "React App".');
+      return;
+    }
+
+    showSpaceError('');
+    input.value = '';
+    spaceDraftName = '';
+
+    if (withFolder) post({ type: 'createSpaceWithFolder', name: name });
+    else post({ type: 'createSpace', name: name });
+  }
+
+  /* ---------------------------------------------------------------- approvals (v2.0.0)
+     state.approval is non-null while a worker's write_file / run_command is parked. The card shows
+     the diff or the command and blocks the run until it is answered. */
+  function renderApproval(s) {
+    var box = el('nx-approval');
+    if (!box) return;
+
+    var approval = s.approval;
+    if (!approval) {
+      box.innerHTML = '';
+      show(box, false);
+      approvalReason = '';
+      return;
+    }
+
+    // Re-rendering on every push would steal the caret from the reason box, and a snapshot arrives
+    // for every feed line. Paint once per request and leave the DOM alone afterwards.
+    if (box.getAttribute('data-approval') === approval.id && box.firstChild) {
+      show(box, true);
+      return;
+    }
+
+    if (approval.id !== box.getAttribute('data-approval')) approvalReason = '';
+    box.setAttribute('data-approval', approval.id);
+
+    var label = approval.isWrite ? 'WRITE' : 'COMMAND';
+    var target = approval.target || approval.summary || '';
+
+    box.innerHTML =
+      '<div class="flex items-start justify-between gap-3">' +
+        '<div class="flex items-center space-x-2 min-w-0">' +
+          '<span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">APPROVAL REQUIRED</span>' +
+          '<span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-obsidian-800 text-slate-300 border border-obsidian-700">' + escapeHtml(label) + '</span>' +
+          '<span class="text-[11.5px] font-semibold text-slate-100 truncate">' + escapeHtml(approval.summary) + '</span>' +
+        '</div>' +
+        '<span class="text-[10px] font-mono text-slate-400 shrink-0">' + escapeHtml(approval.agentName) + ' · ' + escapeHtml(approval.createdAt) + '</span>' +
+      '</div>' +
+      '<p class="mt-1 text-[10.5px] font-mono text-slate-400 truncate" title="' + escapeHtml(target) + '">' + escapeHtml(target) + '</p>' +
+      '<pre class="mt-2 max-h-64 overflow-auto rounded-lg bg-obsidian-950/90 border border-obsidian-750 px-3 py-2 text-[11px] font-mono text-slate-200 whitespace-pre-wrap text-opacity-100">' + escapeHtml(approval.preview) + '</pre>' +
+      '<div class="mt-2.5 flex flex-col sm:flex-row sm:items-center gap-2">' +
+        '<button id="nx-approval-approve" class="bg-gradient-to-r from-mint-500 to-emerald-500 hover:from-mint-400 hover:to-emerald-400 text-obsidian-950 font-bold text-[11.5px] py-1.5 px-3.5 rounded-lg transition active:scale-95 flex items-center justify-center gap-1.5">' +
+          '<i class="fa-solid fa-check text-[10px]"></i> Approve</button>' +
+        '<button id="nx-approval-reject" class="bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 font-bold text-[11.5px] py-1.5 px-3.5 rounded-lg border border-rose-500/40 transition active:scale-95 flex items-center justify-center gap-1.5">' +
+          '<i class="fa-solid fa-xmark text-[10px]"></i> Reject</button>' +
+        '<input id="nx-approval-reason" class="nx-input flex-1 rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-[11px] px-2.5 py-1.5 font-mono" ' +
+          'placeholder="Why? (sent back to the CEO so it can plan another way)" autocomplete="off" spellcheck="false" />' +
+      '</div>';
+
+    show(box, true);
+
+    var approve = el('nx-approval-approve');
+    var reject = el('nx-approval-reject');
+    var reason = el('nx-approval-reason');
+
+    if (approve) approve.addEventListener('click', function () { decideApproval(approval.id, true, ''); });
+    if (reject) reject.addEventListener('click', function () { decideApproval(approval.id, false, reason ? reason.value : ''); });
+
+    if (reason) {
+      reason.value = approvalReason;
+      reason.addEventListener('input', function () { approvalReason = reason.value; });
+      reason.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); decideApproval(approval.id, false, reason.value); }
+      });
+    }
+  }
+
+  function decideApproval(id, approved, reason) {
+    // The host resolves the parked call; the next snapshot hides this card.
+    post({ type: 'approval', id: id, approved: !!approved, reason: reason || '' });
+    approvalReason = '';
+  }
+
   function renderComposer(s) {
     var dispatch = el('nx-dispatch');
     text('nx-dispatch-label', s.running ? 'Stop swarm' : 'Dispatch Swarm');
@@ -1158,7 +1407,10 @@
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[11px]' : 'fa-solid fa-arrow-right text-[11px]';
     // The dim state belongs to renderConnection (v1.0.16): dispatch is inert until a connection
     // exists, so this function must not clear it.
-    text('nx-version', s.version ? 'v' + s.version : 'v1.0.16');
+    text('nx-version', s.version ? 'v' + s.version : 'v2.0.0');
+
+    var approvals = el('nx-approvals');
+    if (approvals && approvals.checked !== !!s.approvalsEnabled) approvals.checked = !!s.approvalsEnabled;
     text('nx-footer', s.footer || 'sqlite: aiceo.db');
     var banner = el('nx-banner');
     if (banner) {
@@ -1176,8 +1428,10 @@
     renderProvider(s);
     renderConnection(s);
     renderWorkspace(s);
+    renderSpaces(s);
     renderAgents(s);
     renderFeed(s);
+    renderApproval(s);
     renderComposer(s);
   }
 
@@ -1268,6 +1522,7 @@
       if (path && navigator.clipboard) navigator.clipboard.writeText(path);
     });
     el('nx-tools').addEventListener('change', function (event) { post({ type: 'setTools', enabled: event.target.checked }); });
+    el('nx-approvals').addEventListener('change', function (event) { post({ type: 'setApprovals', enabled: event.target.checked }); });
     el('nx-new-agent').addEventListener('click', function () { openAgentModal(null); });
     el('nx-dispatch').addEventListener('click', dispatchPrompt);
     el('nx-agent-save').addEventListener('click', saveAgent);
@@ -1295,6 +1550,25 @@
       input.addEventListener('keydown', function (event) {
         if (event.key === 'Enter') { event.preventDefault(); saveSetup(); }
       });
+    });
+
+    /* v2.0.0: spaces */
+    el('nx-space-select').addEventListener('change', function (event) {
+      if (event.target.value) post({ type: 'selectSpace', id: event.target.value });
+    });
+    el('nx-space-manage').addEventListener('click', function () {
+      showSpaceError('');
+      show(el('nx-spaces'), true);
+      var name = el('nx-space-name');
+      if (name) name.focus();
+    });
+    el('nx-spaces-close').addEventListener('click', function () { show(el('nx-spaces'), false); });
+    el('nx-spaces-done').addEventListener('click', function () { show(el('nx-spaces'), false); });
+    el('nx-space-create').addEventListener('click', function () { createSpace(false); });
+    el('nx-space-create-folder').addEventListener('click', function () { createSpace(true); });
+    el('nx-space-name').addEventListener('input', function () { showSpaceError(''); });
+    el('nx-space-name').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); createSpace(false); }
     });
 
     el('nx-settings-connection-edit').addEventListener('click', function () { openSetup(false); });

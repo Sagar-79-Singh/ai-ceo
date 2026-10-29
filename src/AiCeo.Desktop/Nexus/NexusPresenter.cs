@@ -33,6 +33,7 @@ public sealed class NexusPresenter : IDisposable
     private readonly MainViewModel _viewModel;
     private readonly UserSettingsService _settings;
     private readonly LlmSetupProvider _connection;
+    private readonly ApprovalCoordinator _approvals;
     private readonly AppRuntimeInfo _runtime;
     private readonly Action<string> _sendWebMessage;
     private readonly HashSet<FeedItemViewModel> _watchedFeedItems = new();
@@ -46,14 +47,20 @@ public sealed class NexusPresenter : IDisposable
         MainViewModel viewModel,
         UserSettingsService settings,
         LlmSetupProvider connection,
+        ApprovalCoordinator approvals,
         AppRuntimeInfo runtime,
         Action<string> sendWebMessage)
     {
         _viewModel = viewModel;
         _settings = settings;
         _connection = connection;
+        _approvals = approvals;
         _runtime = runtime;
         _sendWebMessage = sendWebMessage;
+
+        // v2.0.0: the gate is armed as soon as the UI exists. Every parked write/command now waits
+        // for the approval card, and cancellation or a closed window never leaves it parked.
+        _approvals.Attach(_ => SchedulePush());
 
         // A thread-pool timer rather than a UI-thread DispatcherTimer: the tick only schedules a
         // push, and Push() marshals itself onto the message loop. Nothing waits on the UI thread.
@@ -134,7 +141,11 @@ public sealed class NexusPresenter : IDisposable
                     info.RequiresApiKey))
                 .ToList(),
             Connection: ToState(_connection.Current),
-            Footer: $"sqlite · {Path.GetFileName(_runtime.DatabasePath)}");
+            Footer: $"sqlite · {Path.GetFileName(_runtime.DatabasePath)}",
+            Spaces: _viewModel.Spaces.Select(ToState).ToList(),
+            ActiveSpaceId: _viewModel.ActiveSpace?.Id.ToString(),
+            ApprovalsEnabled: _approvals.Enabled,
+            Approval: ToState(_approvals.Current));
 
         return JsonSerializer.Serialize(state, NexusJson.Options);
     }
@@ -228,6 +239,42 @@ public sealed class NexusPresenter : IDisposable
 
                 case "clearWorkspace":
                     await GuardAsync(_viewModel.NexusClearWorkspaceAsync);
+                    break;
+
+                case "selectSpace":
+                    if (Guid.TryParse(ReadString(root, "id"), out var spaceId))
+                    {
+                        await GuardAsync(() => _viewModel.NexusSelectSpaceAsync(spaceId));
+                    }
+
+                    break;
+
+                case "createSpace":
+                    await GuardAsync(() => _viewModel.NexusCreateSpaceAsync(ReadString(root, "name")));
+                    break;
+
+                case "createSpaceWithFolder":
+                    await GuardAsync(() => _viewModel.NexusCreateSpaceFromFolderAsync(ReadString(root, "name")));
+                    break;
+
+                case "deleteSpace":
+                    if (Guid.TryParse(ReadString(root, "id"), out var doomed))
+                    {
+                        await GuardAsync(() => _viewModel.NexusDeleteSpaceAsync(doomed));
+                    }
+
+                    break;
+
+                case "approval":
+                    if (Guid.TryParse(ReadString(root, "id"), out var approvalId))
+                    {
+                        ResolveApproval(approvalId, ReadBool(root, "approved", false), ReadString(root, "reason"));
+                    }
+
+                    break;
+
+                case "setApprovals":
+                    _viewModel.NexusSetApprovalsEnabled(ReadBool(root, "enabled", true));
                     break;
 
                 case "refreshHealth":
@@ -421,6 +468,21 @@ public sealed class NexusPresenter : IDisposable
         await GuardAsync(() => _viewModel.NexusMakeCeoAsync(card));
     }
 
+    /// <summary>
+    /// Feeds the user's answer back into the parked orchestrator thread. A rejection without a typed
+    /// reason still carries one, so the CEO always knows why its worker was stopped.
+    /// </summary>
+    private void ResolveApproval(Guid id, bool approved, string reason)
+    {
+        if (!_viewModel.NexusResolveApproval(id, approved, reason))
+        {
+            // Nothing is waiting any more (the run was stopped, or the page double-clicked).
+            return;
+        }
+
+        Toast(approved ? "Approved — the worker continues." : "Rejected — the CEO will plan around it.", isError: false);
+    }
+
     private void Toast(string message, bool isError)
     {
         var text = JsonSerializer.Serialize(message);
@@ -462,6 +524,27 @@ public sealed class NexusPresenter : IDisposable
             Summary: setup.Describe());
     }
 
+    private static NexusSpaceState ToState(SpaceView space) => new(
+        Id: space.Id.ToString(),
+        Name: space.Name,
+        Path: space.FolderPath ?? string.Empty,
+        Active: space.IsActive,
+        FeedCount: space.FeedCount,
+        UpdatedAt: space.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+
+    private static NexusApprovalState? ToState(PendingApproval? approval) => approval is null
+        ? null
+        : new NexusApprovalState(
+            Id: approval.Id.ToString(),
+            AgentName: approval.AgentName,
+            ToolName: approval.ToolName,
+            Target: approval.Target,
+            Preview: approval.Preview,
+            Summary: approval.Summary,
+            IsWrite: approval.IsWrite,
+            CreatedAt: approval.CreatedAt.ToLocalTime().ToString("HH:mm:ss"),
+            Label: approval.IsWrite ? "WRITE" : "COMMAND");
+
     private static NexusAgentState ToState(AgentCardViewModel card) => new(
         Id: card.Id.ToString(),
         Name: card.Name,
@@ -483,6 +566,7 @@ public sealed class NexusPresenter : IDisposable
             FeedKind.Plan => "plan",
             FeedKind.Delegation => "delegation",
             FeedKind.ToolCall or FeedKind.ToolResult => "tool",
+            FeedKind.Approval => "approval",
             FeedKind.Result => "result",
             FeedKind.Error => "error",
             _ => "note"
@@ -587,5 +671,8 @@ public sealed class NexusPresenter : IDisposable
 
         _watchedFeedItems.Clear();
         _pageReady.TrySetCanceled();
+
+        // v2.0.0: nothing may stay parked on a decision once the window is gone.
+        _approvals.ResolveAll(false, "the window was closed.");
     }
 }

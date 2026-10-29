@@ -241,6 +241,23 @@ jobs:
             tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi
+          # v2.0.0: spaces must be created, listed, published and able to restore a conversation,
+          # and the approval gate must park a tool call until it is answered.
+          if ! grep -q "spaces round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=spaces-failed::creating a space did not persist or publish it"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "conversation restore = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=space-conversation::the space did not restore its conversation"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "approval round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=approval-failed::the approval gate did not park and resolve a tool call"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
 
           # Crash logging: with no display server the native window cannot be created. The binary
           # must exit non-zero AND leave a crash.log with the stack trace next to itself (the app

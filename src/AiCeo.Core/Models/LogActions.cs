@@ -13,4 +13,10 @@ public static class LogActions
 
     /// <summary>The tool returned.</summary>
     public const string ToolResult = "tool_result";
+
+    /// <summary>v2.0.0: a write or a command is parked on the approval card.</summary>
+    public const string Approval = "approval";
+
+    /// <summary>v2.0.0: the user answered that approval request.</summary>
+    public const string ApprovalResult = "approval_result";
 }

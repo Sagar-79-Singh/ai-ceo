@@ -35,7 +35,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton(new AppRuntimeInfo(
             databasePath,
             typeof(CoreServiceCollectionExtensions).Assembly
-                .GetName().Version?.ToString(3) ?? "1.0.16"));
+                .GetName().Version?.ToString(3) ?? "2.0.0"));
 
         // The gateway caches OpenAI clients per endpoint+key, so it is a singleton.
         services.AddSingleton<ILlmGateway, LlmGateway>();
@@ -44,9 +44,16 @@ public static class CoreServiceCollectionExtensions
         // orchestrator, the directory and the health probe all see the values the setup screen saved.
         services.AddSingleton<LlmSetupProvider>();
 
+        // v2.0.0: the human-in-the-loop gate. One instance for the whole process, because the
+        // orchestrator (thread pool) parks the call and the Nexus presenter (message loop) answers it.
+        services.AddSingleton<ApprovalCoordinator>();
+
         services.AddScoped<AgentDirectory>();
         services.AddScoped<AgentHealthService>();
         services.AddScoped<WorkspaceService>();
+
+        // v2.0.0: named, persistent workspaces.
+        services.AddScoped<SpaceService>();
         services.AddScoped<UserSettingsService>();
         services.AddScoped<ToolService>();
         services.AddScoped<AgentOrchestrator>();

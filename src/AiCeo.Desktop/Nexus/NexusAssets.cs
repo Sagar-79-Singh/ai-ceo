@@ -70,10 +70,21 @@ public static class NexusAssets
                 && css.Contains("--obsidian-950-rgb", StringComparison.Ordinal)
                 && css.Contains("font-family:\"Font Awesome 6 Free\"");
 
-            detail = $"nexus.html {html.Length / 1024} KB · nexus.css {css.Length / 1024} KB"
-                + $" · bridge: {hasBridge} · shader: {hasShader} · styles: {hasStyles}";
+            // v2.0.0: the two new surfaces must be in the shipped page — the approval card that a
+            // parked write/command is rendered into, and the spaces switcher in the header.
+            var hasApprovalCard = html.Contains("id=\"nx-approval\"", StringComparison.Ordinal)
+                && html.Contains("decideApproval", StringComparison.Ordinal)
+                && html.Contains("nx-approval-approve", StringComparison.Ordinal)
+                && html.Contains("nx-approval-reject", StringComparison.Ordinal);
+            var hasSpaces = html.Contains("id=\"nx-space-select\"", StringComparison.Ordinal)
+                && html.Contains("id=\"nx-spaces\"", StringComparison.Ordinal)
+                && html.Contains("createSpaceWithFolder", StringComparison.Ordinal);
 
-            return hasBridge && hasShader && hasStyles;
+            detail = $"nexus.html {html.Length / 1024} KB · nexus.css {css.Length / 1024} KB"
+                + $" · bridge: {hasBridge} · shader: {hasShader} · styles: {hasStyles}"
+                + $" · approval: {hasApprovalCard} · spaces: {hasSpaces}";
+
+            return hasBridge && hasShader && hasStyles && hasApprovalCard && hasSpaces;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException)
         {

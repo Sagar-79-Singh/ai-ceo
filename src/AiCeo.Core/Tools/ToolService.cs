@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using AiCeo.Models;
 using AiCeo.Services;
 using Microsoft.Extensions.Logging;
 
@@ -313,6 +314,128 @@ public sealed class ToolService
         finally
         {
             process?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// v2.0.0: describes a tool call before it runs, for the approval card.
+    ///
+    /// A write is previewed as a diff against what is on disk (or as the new file's first lines),
+    /// and a command is previewed verbatim. Nothing is executed and nothing is written: this only
+    /// reads the current file so the user can see what would change.
+    /// </summary>
+    public async Task<PendingApproval> DescribeAsync(
+        string agentName,
+        Guid taskId,
+        string toolName,
+        string argumentsJson,
+        CancellationToken cancellationToken = default)
+    {
+        var tool = ToolCatalog.Normalize(toolName) ?? (toolName ?? string.Empty).Trim();
+        var target = string.Empty;
+        var preview = string.Empty;
+        var summary = $"Run {tool}";
+        var isWrite = tool == ToolCatalog.WriteFile;
+
+        JsonElement arguments;
+        var parsed = true;
+
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
+            arguments = document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            parsed = false;
+            arguments = default;
+        }
+
+        if (!parsed)
+        {
+            summary = $"Run {tool} (the arguments were not valid JSON)";
+            preview = argumentsJson ?? string.Empty;
+        }
+        else if (isWrite)
+        {
+            var filePath = GetString(arguments, "filePath") ?? GetString(arguments, "path") ?? string.Empty;
+            var content = GetString(arguments, "content") ?? string.Empty;
+
+            target = string.IsNullOrWhiteSpace(filePath) ? "(no path given)" : filePath.Trim();
+            var existing = await ReadExistingAsync(filePath, cancellationToken);
+
+            preview = ToolPreview.ForWrite(target, existing, content);
+            summary = (existing is null ? "Create " : "Overwrite ") + target;
+        }
+        else if (tool == ToolCatalog.RunCommand)
+        {
+            var command = (GetString(arguments, "command") ?? string.Empty).Trim();
+
+            target = command;
+            preview = ToolPreview.ForCommand(command);
+            summary = "Run a terminal command";
+        }
+        else
+        {
+            target = GetString(arguments, "filePath")
+                ?? GetString(arguments, "directoryPath")
+                ?? GetString(arguments, "path")
+                ?? string.Empty;
+
+            preview = argumentsJson ?? string.Empty;
+            summary = $"Run {tool}";
+        }
+
+        return new PendingApproval
+        {
+            TaskId = taskId,
+            AgentName = string.IsNullOrWhiteSpace(agentName) ? "System" : agentName.Trim(),
+            ToolName = tool,
+            ArgumentsJson = argumentsJson ?? string.Empty,
+            Target = target,
+            Preview = preview,
+            Summary = summary,
+            IsWrite = isWrite
+        };
+    }
+
+    /// <summary>Current contents of a workspace file, or null when it does not exist yet.</summary>
+    private async Task<string?> ReadExistingAsync(string filePath, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var root = await _workspace.GetRootAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return null;
+            }
+
+            var path = WorkspaceGuard.Resolve(root, filePath);
+
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var info = new FileInfo(path);
+            if (info.Length > MaxReadChars)
+            {
+                return null;
+            }
+
+            return await File.ReadAllTextAsync(path, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException
+                                             or UnauthorizedAccessException
+                                             or WorkspaceViolationException)
+        {
+            // A preview must never be the reason an approval cannot be shown.
+            return null;
         }
     }
 
