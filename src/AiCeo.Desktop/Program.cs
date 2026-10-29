@@ -493,6 +493,16 @@ internal static class Program
                 ok = false;
             }
 
+            // v2.0.2: the two chats are siblings and the router paints exactly one of them.
+            var routingOk = VerifyViewRouting();
+            Say($"UI SMOKE: single chat view = {routingOk}");
+
+            if (!routingOk)
+            {
+                Say("UI SMOKE FAILED: the worker chat is not routed as its own view");
+                ok = false;
+            }
+
             // v2.0.1: the chat is the main surface, and every delegation opens a worker thread.
             var chatOk = VerifyChatSurface();
             Say($"UI SMOKE: chat surface = {chatOk}");
@@ -521,6 +531,29 @@ internal static class Program
             }
 
             return ok;
+        }
+
+        /// <summary>
+        /// v2.0.2: the CEO chat and the worker chat are two sibling views, and the page's router —
+        /// not a z-index — decides which one is on screen. The old shape (a worker panel absolutely
+        /// positioned over the CEO transcript) painted both conversations at once, so it is rejected
+        /// here before a build reaches a user.
+        /// </summary>
+        private bool VerifyViewRouting()
+        {
+            var page = NexusAssets.ReadPage();
+
+            var twoViews = page.Contains("id=\"nx-ceo-view\"", StringComparison.Ordinal)
+                && page.Contains("id=\"nx-thread\" class=\"nx-hidden nx-view", StringComparison.Ordinal);
+            var router = page.Contains("function applyView(", StringComparison.Ordinal)
+                && page.Contains("function routeViews(", StringComparison.Ordinal)
+                && page.Contains("function backToCeo(", StringComparison.Ordinal);
+            var wayBack = page.Contains("data-back-ceo", StringComparison.Ordinal)
+                && page.Contains("Back to CEO", StringComparison.Ordinal);
+            var noOverlay = !page.Contains("id=\"nx-thread\" class=\"nx-hidden absolute", StringComparison.Ordinal);
+            var oneScroller = page.Contains("#nx-stage, #nx-thread-stage {", StringComparison.Ordinal);
+
+            return twoViews && router && wayBack && noOverlay && oneScroller;
         }
 
         /// <summary>

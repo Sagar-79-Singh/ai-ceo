@@ -25,7 +25,12 @@ namespace AiCeo.Desktop.Nexus;
 /// </summary>
 public sealed class NexusPresenter : IDisposable
 {
-    private static readonly TimeSpan PushDelay = TimeSpan.FromMilliseconds(90);
+    /// <summary>
+    /// v2.0.2: one repaint per 150 ms at most. The transcript is rebuilt from a snapshot, so a burst
+    /// of feed lines (a worker printing twenty tool results) used to schedule twenty serialisations;
+    /// coalescing them into one is what removed the stutter while a delegation runs.
+    /// </summary>
+    private static readonly TimeSpan PushDelay = TimeSpan.FromMilliseconds(150);
 
     /// <summary>How long the smoke test waits for the page to announce itself.</summary>
     internal static readonly TimeSpan PageReadyTimeout = TimeSpan.FromSeconds(30);
@@ -43,6 +48,14 @@ public sealed class NexusPresenter : IDisposable
 
     private UserSettingsSnapshot _preferences = UserSettingsSnapshot.Default;
     private bool _disposed;
+
+    /// <summary>
+    /// v2.0.2: the page shows the worker chat exactly while a thread is open, so that — read live,
+    /// never cached — is what decides whether a feed-only change is worth pushing. A cached copy
+    /// could outlive the view it describes (a page reload, a thread closed elsewhere) and silently
+    /// stop the CEO transcript from updating.
+    /// </summary>
+    private bool WorkerViewActive => _viewModel.IsThreadOpen;
 
     public NexusPresenter(
         MainViewModel viewModel,
@@ -67,7 +80,7 @@ public sealed class NexusPresenter : IDisposable
 
         // v2.0.1: a device-flow sign-in is started from the page and finishes on the thread pool;
         // every state change repaints the modal.
-        _signIn.Changed += SchedulePush;
+        _signIn.Changed += OnSignInStateChanged;
 
         // A thread-pool timer rather than a UI-thread DispatcherTimer: the tick only schedules a
         // push, and Push() marshals itself onto the message loop. Nothing waits on the UI thread.
@@ -194,10 +207,21 @@ public sealed class NexusPresenter : IDisposable
     }
 
     /// <summary>Coalesces rapid changes (feed bursts, health pings) into a single repaint.</summary>
-    private void SchedulePush()
+    /// <param name="feedOnly">
+    /// True when this change only affects the CEO transcript (a feed line, a delegation's pending
+    /// flag). Such a repaint is pointless while a worker chat is on screen, so it is dropped.
+    /// </param>
+    private void SchedulePush(bool feedOnly = false)
     {
         if (_disposed)
         {
+            return;
+        }
+
+        if (feedOnly && WorkerViewActive)
+        {
+            // The transcript moved on, but nobody can see it. The snapshot (and the whole feed) is
+            // sent when the user goes back to the CEO chat.
             return;
         }
 
@@ -210,6 +234,9 @@ public sealed class NexusPresenter : IDisposable
             // Shutting down.
         }
     }
+
+    /// <summary>A device-flow sign-in changed state: repaint the modal (coalesced).</summary>
+    private void OnSignInStateChanged() => SchedulePush();
 
     /// <summary>
     /// Handles one JSON command from the page. Unknown types are ignored on purpose: the page can
@@ -758,7 +785,7 @@ public sealed class NexusPresenter : IDisposable
             Watch(item);
         }
 
-        SchedulePush();
+        SchedulePush(feedOnly: true);
     }
 
     private void Watch(FeedItemViewModel item)
@@ -769,7 +796,7 @@ public sealed class NexusPresenter : IDisposable
         }
     }
 
-    private void OnFeedItemChanged(object? sender, PropertyChangedEventArgs args) => SchedulePush();
+    private void OnFeedItemChanged(object? sender, PropertyChangedEventArgs args) => SchedulePush(feedOnly: true);
 
     public void Dispose()
     {
@@ -792,7 +819,6 @@ public sealed class NexusPresenter : IDisposable
 
         _viewModel.PropertyChanged -= OnViewModelChanged;
         _viewModel.Feed.CollectionChanged -= OnFeedChanged;
-        _signIn.Changed -= SchedulePush;
 
         foreach (var item in _watchedFeedItems)
         {
@@ -806,7 +832,7 @@ public sealed class NexusPresenter : IDisposable
         _approvals.ResolveAll(false, "the window was closed.");
 
         // v2.0.1: and no device flow may keep polling for a page that no longer exists.
-        _signIn.Changed -= SchedulePush;
+        _signIn.Changed -= OnSignInStateChanged;
         _signIn.Cancel();
     }
 }

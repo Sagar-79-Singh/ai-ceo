@@ -44,6 +44,7 @@ public sealed class MainViewModel : ObservableObject
     private SpaceView? _activeSpace;
     private bool _isSpaceManagerOpen;
     private IReadOnlyList<AgentThreadView> _threadList = Array.Empty<AgentThreadView>();
+    private int _threadReloadPending;
     private AgentThreadDetail? _openThread;
 
     public MainViewModel(
@@ -574,8 +575,26 @@ public sealed class MainViewModel : ObservableObject
             }
         });
 
+    /// <summary>
+    /// v2.0.2: the hub fires once per line a worker writes — a busy delegation can produce dozens a
+    /// second, and every one of them used to mean two database queries and a full repaint. Reloads
+    /// are now coalesced into one every 150 ms, so the conversation stays live without the stutter.
+    /// </summary>
     private void OnThreadChanged(Guid threadId)
-        => UiThread.Post(() => _ = NexusReloadThreadsAsync());
+    {
+        if (Interlocked.Exchange(ref _threadReloadPending, 1) == 1)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(150).ConfigureAwait(false);
+
+            Volatile.Write(ref _threadReloadPending, 0);
+            UiThread.Post(() => _ = NexusReloadThreadsAsync());
+        });
+    }
 
     /// <summary>
     /// The CEO's reply as a chat message. It is the final answer when there is one, and the plan

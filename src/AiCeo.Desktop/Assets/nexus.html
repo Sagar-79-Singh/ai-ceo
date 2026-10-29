@@ -135,10 +135,21 @@
   .text-opacity-100 { --tw-text-opacity: 1; }
   .break-all { word-break: break-all; }
 
-  /* ------------------------------------------------- v2.0.1 chat surface
-     The WebGL shader is gone. The chat sits on a solid obsidian surface with a faint grid, so text
-     stays legible on every accent and in light mode. Bubbles follow the familiar messenger geometry:
-     max 78 % width, tight radius on the sender's side, generous line-height. */
+  /* ------------------------------------------------- v2.0.2 chat surface
+     One view at a time, solid bubbles, and a transcript that scrolls inside a fixed height.
+
+     `.nx-view` is the routing primitive: both chat containers are flex columns that fill the
+     window, and `nx-hidden` (display:none !important) is the only thing that decides which one is
+     on screen. Nothing is absolutely positioned, so nothing can paint over anything else.
+
+     Every bubble is OPAQUE — no rgba, no backdrop-filter, no inherited transparency. Text can not
+     bleed through from the layer below because there is no layer below. */
+  .nx-view {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
   .nx-chat-grid {
     background-color: rgb(var(--obsidian-950-rgb));
     background-image:
@@ -152,28 +163,44 @@
       linear-gradient(to bottom, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
   }
 
+  /* The transcript is the only scroller in the window: it takes the space between the header and
+     the composer and never grows past it. */
+  #nx-stage, #nx-thread-stage {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
   .nx-bubble {
     max-width: 78%;
     padding: 0.5rem 0.75rem;
-    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 1px 1px #0000002e;
     font-size: 12.8px;
     line-height: 1.5;
     min-width: 3.5rem;
+    opacity: 1;
   }
   .nx-bubble-in {
-    background: rgb(var(--obsidian-800-rgb));
+    background-color: rgb(var(--obsidian-800-rgb));
     color: rgb(var(--slate-100-rgb));
     border: 1px solid rgb(var(--obsidian-750-rgb));
     border-radius: 4px 14px 14px 14px;
   }
   .nx-bubble-out {
-    background: #1f6f52;
+    background-color: #1f6f52;
     color: #f2fffa;
     border: 1px solid #2a8a67;
     border-radius: 14px 4px 14px 14px;
   }
-  html[data-theme="light"] .nx-bubble-in { background: #ffffff; color: rgb(var(--slate-100-rgb)); }
-  html[data-theme="light"] .nx-bubble-out { background: #d9fdd3; color: #10312a; border-color: #b7e5b0; }
+  html[data-theme="light"] .nx-bubble-in { background-color: #ffffff; color: rgb(var(--slate-100-rgb)); }
+  html[data-theme="light"] .nx-bubble-out { background-color: #d9fdd3; color: #10312a; border-color: #b7e5b0; }
+
+  /* The meta line of an outgoing bubble sits on green, so it gets its own solid colour instead of a
+     translucent utility class (no alpha anywhere, in either theme). */
+  .nx-bubble-out .nx-bubble-meta { color: #cdeee0; }
+  html[data-theme="light"] .nx-bubble-out .nx-bubble-meta { color: #2f6b57; }
+  .nx-bubble-out .nx-bubble-code { background-color: #144e3a; }
+  html[data-theme="light"] .nx-bubble-out .nx-bubble-code { background-color: #c3f0bd; }
 
   .nx-bubble-text { white-space: pre-wrap; word-break: break-word; }
   .nx-bubble-meta {
@@ -188,10 +215,9 @@
   .nx-bubble-quote {
     margin-top: 0.3rem;
     padding-left: 0.5rem;
-    border-left: 2px solid rgba(255, 255, 255, 0.25);
+    border-left: 2px solid rgb(var(--obsidian-600-rgb));
     font-size: 12px;
     color: inherit;
-    opacity: 0.85;
     white-space: pre-wrap;
   }
   .nx-bubble-code {
@@ -204,9 +230,9 @@
     overflow: auto;
     border-radius: 8px;
     padding: 0.35rem 0.5rem;
-    background: rgba(0, 0, 0, 0.28);
+    background-color: #0f1117;
   }
-  html[data-theme="light"] .nx-bubble-code { background: rgba(15, 23, 42, 0.06); }
+  html[data-theme="light"] .nx-bubble-code { background-color: #eef2f7; }
   .nx-thread-grid { background-color: rgb(var(--obsidian-950-rgb)); }
 
   @media (prefers-reduced-motion: reduce) {
@@ -223,7 +249,7 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v2.0.1</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v2.0.2</span>
       </span>
     </div>
 
@@ -344,8 +370,15 @@
     </div>
   </aside>
 
-  <!-- ---------------------------------------------------------- MAIN CHAT -->
-  <main class="flex-1 flex flex-col bg-obsidian-950 relative overflow-hidden nx-chat-grid">
+  <!-- ---------------------------------------------------------- MAIN CHAT
+       v2.0.2 — a router, not a stack. `#nx-main` holds TWO sibling views, `#nx-ceo-view` and
+       `#nx-thread`, and exactly one of them has a display at any moment. The worker transcript used
+       to be an absolutely positioned overlay on top of the CEO chat, which painted two transcripts
+       on top of each other (unreadable, and it repainted both on every push). -->
+  <main id="nx-main" class="flex-1 flex flex-col bg-obsidian-950 relative overflow-hidden nx-chat-grid">
+
+    <!-- ============================================================ VIEW: CEO CHAT -->
+    <div id="nx-ceo-view" class="nx-view flex-1 flex flex-col min-h-0">
 
     <!-- chat header -->
     <header class="h-14 px-5 border-b border-obsidian-800 flex items-center justify-between bg-obsidian-900 z-10 shrink-0">
@@ -391,7 +424,7 @@
     <div id="nx-banner" class="nx-hidden mx-5 mt-3 px-3 py-2 rounded-lg text-[11.5px] z-10"></div>
 
     <!-- transcript -->
-    <section id="nx-stage" class="flex-1 nx-scroll px-4 sm:px-8 py-5 z-10 relative">
+    <section id="nx-stage" class="flex-1 nx-scroll min-h-0 px-4 sm:px-8 py-5 z-10 relative">
       <div id="nx-hero" class="max-w-md w-full mx-auto my-auto text-center space-y-5">
         <div class="w-16 h-16 mx-auto rounded-full bg-emerald-700/30 border border-emerald-600/40 flex items-center justify-center">
           <i class="fa-regular fa-comments text-2xl text-emerald-400"></i>
@@ -450,13 +483,18 @@
       </div>
     </footer>
 
-    <!-- ---------------------------------------------------- WORKER DETAIL VIEW (v2.0.1)
-         The other half of the star: everything the CEO and one agent said to each other, live. -->
-    <div id="nx-thread" class="nx-hidden absolute inset-0 z-30 bg-obsidian-950 flex flex-col">
+    </div><!-- /VIEW: CEO CHAT -->
+
+    <!-- ============================================================ VIEW: WORKER CHAT
+         The other half of the star: everything the CEO and one agent said to each other, live.
+         A sibling of the CEO view, never an overlay — when this one has a display, the CEO chat has
+         `nx-hidden` and its transcript is emptied, so only one conversation can ever be painted. -->
+    <div id="nx-thread" class="nx-hidden nx-view flex-1 flex-col min-h-0 bg-obsidian-950">
       <header class="h-14 px-5 border-b border-obsidian-800 flex items-center justify-between bg-obsidian-900 shrink-0">
         <div class="flex items-center space-x-3 min-w-0">
-          <button id="nx-thread-close" class="p-2 -ml-1 rounded-full text-slate-400 hover:text-white hover:bg-obsidian-850 transition" title="Back to the CEO">
-            <i class="fa-solid fa-arrow-left text-[12px]"></i>
+          <button id="nx-thread-close" class="flex items-center gap-1.5 px-2.5 py-1.5 -ml-1 rounded-full text-slate-300 hover:text-white hover:bg-obsidian-850 border border-obsidian-750 transition" title="Back to the CEO chat">
+            <i class="fa-solid fa-arrow-left text-[11px]"></i>
+            <span class="text-[11px] font-mono">Back to CEO</span>
           </button>
           <div class="w-9 h-9 rounded-full bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-[12px] font-semibold text-cyan-300" id="nx-thread-initials">W</div>
           <div class="min-w-0">
@@ -470,7 +508,7 @@
         <span id="nx-thread-updated" class="text-[10px] text-slate-500"></span>
       </header>
 
-      <section id="nx-thread-stage" class="flex-1 nx-scroll px-4 sm:px-8 py-5">
+      <section id="nx-thread-stage" class="flex-1 nx-scroll min-h-0 px-4 sm:px-8 py-5">
         <div id="nx-thread-feed" class="max-w-3xl mx-auto space-y-2"></div>
       </section>
 
@@ -479,7 +517,7 @@
           Read-only: this is what the CEO and this agent said to each other, including every command it ran.
         </p>
       </footer>
-    </div>
+    </div><!-- /VIEW: WORKER CHAT -->
   </main>
 </div>
 
@@ -797,6 +835,112 @@
      is re-rendered on every host push (each feed line), and a typed reason must survive that. */
   var approvalReason = '';
   var spaceDraftName = '';
+
+  /* =====================================================================================
+     v2.0.2 — the view router.
+
+     The window has exactly two chat surfaces, `#nx-ceo-view` and `#nx-thread`, and exactly one of
+     them is ever rendered: `applyView` gives the outgoing one `nx-hidden` and empties its message
+     list, so the hidden conversation is gone from the DOM (no bleed-through, no memory, nothing to
+     lay out) instead of sitting underneath the visible one.
+
+     A snapshot is the source of truth: `state.openThread` present means "show the worker", absent
+     means "show the CEO". Clicking Back asks the host to close the thread and switches the view
+     immediately, so the UI never waits for the round trip.
+     ===================================================================================== */
+  var VIEW_CEO = 'ceo';
+  var VIEW_THREAD = 'thread';
+  var currentView = VIEW_CEO;
+
+  /* Markup of the last paint of each transcript. Re-rendering identical markup on every host push
+     is what made the chat feel laggy; an unchanged conversation now costs one string compare. */
+  var feedSignature = '';
+  var threadSignature = '';
+  var agentListSignature = '';
+  var threadListSignature = '';
+
+  function scrollToEnd(id, force) {
+    var stage = el(id);
+    if (!stage) return;
+
+    if (force || (stage.scrollHeight - stage.scrollTop - stage.clientHeight) < 64) {
+      stage.scrollTop = stage.scrollHeight;
+    }
+  }
+
+  function bindThreadLinks(root) {
+    if (!root) return;
+
+    Array.prototype.forEach.call(root.querySelectorAll('[data-open-thread]'), function (button) {
+      button.addEventListener('click', function (event) {
+        event.stopPropagation();
+        post({ type: 'openThread', id: button.getAttribute('data-open-thread') });
+      });
+    });
+  }
+
+  function applyView(name) {
+    currentView = name === VIEW_THREAD ? VIEW_THREAD : VIEW_CEO;
+
+    var worker = currentView === VIEW_THREAD;
+
+    // Clear the conversation we are leaving. Only the visible transcript is ever in the DOM, so
+    // there is exactly one chat painted at a time — the bug this release fixes.
+    if (worker) {
+      var ceoList = el('nx-feed');
+      if (ceoList) ceoList.innerHTML = '';
+      var ceoFinal = el('nx-final');
+      if (ceoFinal) ceoFinal.innerHTML = '';
+      feedSignature = '';
+    } else {
+      var workerList = el('nx-thread-feed');
+      if (workerList) workerList.innerHTML = '';
+      threadSignature = '';
+    }
+
+    show(el('nx-ceo-view'), !worker);
+    show(el('nx-thread'), worker);
+
+    // Repaint the view we switched to from the snapshot we already hold, so the switch is instant.
+    if (state) {
+      if (worker) {
+        renderThread(state);
+      } else {
+        renderFeed(state);
+        renderApproval(state);
+      }
+    }
+
+    scrollToEnd(worker ? 'nx-thread-stage' : 'nx-stage', true);
+  }
+
+  function routeViews(s) {
+    var want = s && s.openThread ? VIEW_THREAD : VIEW_CEO;
+
+    if (want !== currentView) {
+      applyView(want);
+      return;
+    }
+
+    // Same view as before: keep the display classes in agreement without touching a transcript.
+    show(el('nx-ceo-view'), want === VIEW_CEO);
+    show(el('nx-thread'), want === VIEW_THREAD);
+  }
+
+  function backToCeo() {
+    applyView(VIEW_CEO);
+    post({ type: 'closeThread' });
+  }
+
+  /* True when one of the overlays is in front of the chat (settings, setup, spaces, sign-in, agent). */
+  function isModalOpen() {
+    var overlays = ['nx-settings', 'nx-setup', 'nx-spaces', 'nx-signin', 'nx-agent-modal'];
+
+    return overlays.some(function (id) {
+      var node = el(id);
+      return !!node && !(node.className || '').split(/\s+/).includes('nx-hidden');
+    });
+  }
 
   function post(payload) {
     try {
@@ -1122,10 +1266,13 @@
 
     var palette = ['#22d3ee', '#a78bfa', '#f59e0b', '#fb7185', '#34d399'];
 
-    list.innerHTML = agents.length ? agents.map(function (agent, index) {
+    var html = agents.length ? agents.map(function (agent, index) {
       var accent = agent.isCeo ? '#34d399' : palette[index % palette.length];
+
+      // The CEO row is the way home from a worker chat: clicking it restores the CEO transcript.
+      // A worker row opens that worker's newest conversation.
       var action = agent.isCeo
-        ? ''
+        ? 'data-back-ceo="1" title="Open the CEO chat"'
         : 'data-open-agent="' + escapeHtml(agent.name) + '"';
 
       return '' +
@@ -1149,6 +1296,13 @@
           '</span>' +
         '</div>';
     }).join('') : '<p class="px-2 text-[11px] text-slate-500">No agents yet — press the add button.</p>';
+
+    // The team changes when an agent is added, edited or promoted — not on every feed line. Comparing
+    // the markup first keeps the sidebar from being rebuilt (and re-bound) during a live run.
+    if (html === agentListSignature) return;
+
+    agentListSignature = html;
+    list.innerHTML = html;
 
     Array.prototype.forEach.call(list.querySelectorAll('[data-edit-agent]'), function (button) {
       button.addEventListener('click', function (event) {
@@ -1176,10 +1330,11 @@
         post({ type: 'openAgentThread', agent: row.getAttribute('data-open-agent') });
       });
     });
+    Array.prototype.forEach.call(list.querySelectorAll('[data-back-ceo]'), function (row) {
+      row.addEventListener('click', backToCeo);
+    });
   }
 
-  /* ---------------------------------------------------------------- agent chats (v2.0.1)
-     One row per CEO ↔ worker delegation. A running one pulses; clicking opens the live conversation. */
   function renderThreads(s) {
     var list = el('nx-thread-list');
     if (!list) return;
@@ -1187,11 +1342,17 @@
     var threads = s.threads || [];
 
     if (!threads.length) {
-      list.innerHTML = '<p class="px-2 text-[11px] text-slate-500">No delegations yet. Ask the CEO for something — every agent it uses gets a chat here.</p>';
+      var empty = '<p class="px-2 text-[11px] text-slate-500">No delegations yet. Ask the CEO for something — every agent it uses gets a chat here.</p>';
+
+      if (empty !== threadListSignature) {
+        threadListSignature = empty;
+        list.innerHTML = empty;
+      }
+
       return;
     }
 
-    list.innerHTML = threads.map(function (thread) {
+    var markup = threads.map(function (thread) {
       var running = !!thread.running;
       return '' +
         '<div class="flex items-center space-x-2 px-2 py-1.5 rounded-lg hover:bg-obsidian-850 transition cursor-pointer" data-open-thread="' + escapeHtml(thread.id) + '">' +
@@ -1211,12 +1372,22 @@
         '</div>';
     }).join('');
 
+    // Only repaint (and re-bind) when the list really changed; a live run appends lines, not rows.
+    if (markup === threadListSignature) return;
+
+    threadListSignature = markup;
+    list.innerHTML = markup;
+
     Array.prototype.forEach.call(list.querySelectorAll('[data-open-thread]'), function (row) {
       row.addEventListener('click', function () {
         post({ type: 'openThread', id: row.getAttribute('data-open-thread') });
       });
     });
   }
+
+  /* v2.0.2: one view at a time. `#nx-ceo-view` and `#nx-thread` are siblings and the router gives
+     exactly one of them a display; the other is hidden AND emptied, so a hidden conversation is
+     never painted, never laid out and never scrolled behind the visible one. */
 
   /* ---------------------------------------------------------------- WhatsApp transcript (v2.0.1)
      Right: you (green). Left: the CEO and any agent (dark grey). Everything else — the plan, the
@@ -1236,7 +1407,7 @@
 
     if (kind === 'user') {
       return bubble('out', '<p class="nx-bubble-text">' + escapeHtml(item.text) + '</p>',
-        '<span class="text-emerald-950/60">You</span>');
+        '<span>You</span>');
     }
 
     if (kind === 'ceo') {
@@ -1302,6 +1473,9 @@
   }
 
   function renderFeed(s) {
+    // A hidden chat is not painted: no string building, no DOM writes, no scrolling.
+    if (currentView !== VIEW_CEO) return;
+
     var feed = s.feed || [];
     var hasFeed = feed.length > 0 || !!s.approval;
 
@@ -1310,13 +1484,13 @@
 
     var list = el('nx-feed');
     if (list) {
-      list.innerHTML = feed.map(feedItemHtml).join('');
+      var html = feed.map(feedItemHtml).join('');
 
-      Array.prototype.forEach.call(list.querySelectorAll('[data-open-thread]'), function (button) {
-        button.addEventListener('click', function () {
-          post({ type: 'openThread', id: button.getAttribute('data-open-thread') });
-        });
-      });
+      if (html !== feedSignature) {
+        feedSignature = html;
+        list.innerHTML = html;
+        bindThreadLinks(list);
+      }
     }
 
     // The CEO's final answer is the last bubble of the conversation, not a separate card. The view
@@ -1335,11 +1509,10 @@
       show(final, showFinal);
     }
 
-    var stage = el('nx-stage');
-    if (stage) stage.scrollTop = stage.scrollHeight;
+    scrollToEnd('nx-stage', false);
   }
 
-  /* ---------------------------------------------------------------- worker detail (v2.0.1)
+  /* ---------------------------------------------------------------- worker detail (v2.0.2)
      The CEO ↔ agent conversation: the instruction, every thought, every command and its output, and
      the answer the agent handed back. Repainted on every hub signal, so it is live. */
   function threadEntryHtml(entry) {
@@ -1347,7 +1520,7 @@
 
     if (kind === 'instruction') {
       return bubble('out', '<p class="nx-bubble-text">' + escapeHtml(entry.text) + '</p>',
-        '<span class="text-emerald-950/60">CEO → agent</span>');
+        '<span>CEO → agent</span>');
     }
 
     if (kind === 'thought') {
@@ -1378,7 +1551,7 @@
 
     if (kind === 'approval_result') {
       return bubble('out', '<p class="nx-bubble-text">' + escapeHtml(entry.text) + '</p>',
-        '<span class="text-emerald-950/60">You · ' + escapeHtml(entry.at) + '</span>');
+        '<span>You · ' + escapeHtml(entry.at) + '</span>');
     }
 
     if (kind === 'output') {
@@ -1396,11 +1569,9 @@
   }
 
   function renderThread(s) {
-    var panel = el('nx-thread');
-    if (!panel) return;
+    if (currentView !== VIEW_THREAD) return;
 
     var detail = s.openThread;
-    show(panel, !!detail);
 
     if (!detail) return;
 
@@ -1423,11 +1594,17 @@
     text('nx-thread-updated', entries.length ? entries[entries.length - 1].at : '');
 
     var feed = el('nx-thread-feed');
-    if (feed) feed.innerHTML = entries.map(threadEntryHtml).join('') ||
-      '<p class="text-center text-[12px] text-slate-500">Waiting for the first step…</p>';
+    if (feed) {
+      var html = entries.map(threadEntryHtml).join('') ||
+        '<p class="text-center text-[12px] text-slate-500">Waiting for the first step…</p>';
 
-    var stage = el('nx-thread-stage');
-    if (stage) stage.scrollTop = stage.scrollHeight;
+      if (html !== threadSignature) {
+        threadSignature = html;
+        feed.innerHTML = html;
+      }
+    }
+
+    scrollToEnd('nx-thread-stage', false);
   }
 
   /* ---------------------------------------------------------------- sign-in (v2.0.1) */
@@ -1577,6 +1754,10 @@
      state.approval is non-null while a worker's write_file / run_command is parked. The card shows
      the diff or the command and blocks the run until it is answered. */
   function renderApproval(s) {
+    // The approval card lives in the CEO transcript; while a worker chat is on screen there is
+    // nothing to paint (and the card must not be touched, so a typed reason survives the switch).
+    if (currentView !== VIEW_CEO) return;
+
     var box = el('nx-approval');
     if (!box) return;
 
@@ -1652,7 +1833,7 @@
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[13px]' : 'fa-solid fa-paper-plane text-[13px]';
     // The dim state belongs to renderConnection (v1.0.16): dispatch is inert until a connection
     // exists, so this function must not clear it.
-    text('nx-version', s.version ? 'v' + s.version : 'v2.0.1');
+    text('nx-version', s.version ? 'v' + s.version : 'v2.0.2');
 
     var approvals = el('nx-approvals');
     if (approvals && approvals.checked !== !!s.approvalsEnabled) approvals.checked = !!s.approvalsEnabled;
@@ -1676,9 +1857,17 @@
     renderSpaces(s);
     renderAgents(s);
     renderThreads(s);
-    renderFeed(s);
-    renderApproval(s);
-    renderThread(s);
+
+    // Exactly one chat is painted: the router decides which, then only that one is rendered.
+    routeViews(s);
+
+    if (currentView === VIEW_THREAD) {
+      renderThread(s);
+    } else {
+      renderFeed(s);
+      renderApproval(s);
+    }
+
     renderAuth(s);
     renderComposer(s);
   }
@@ -1787,7 +1976,18 @@
     });
 
     /* v2.0.1: the worker detail view */
-    el('nx-thread-close').addEventListener('click', function () { post({ type: 'closeThread' }); });
+    // v2.0.2: "← Back to CEO" switches the view immediately and tells the host to close the thread.
+    el('nx-thread-close').addEventListener('click', backToCeo);
+
+    // Escape is the same gesture as the back button, but only while a worker chat is on screen and
+    // no modal is in front of it (those have their own cancel/close affordances).
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' || currentView !== VIEW_THREAD) return;
+      if (isModalOpen()) return;
+
+      event.preventDefault();
+      backToCeo();
+    });
 
     /* v2.0.1: device-flow sign-in */
     Array.prototype.forEach.call(document.querySelectorAll('[data-signin]'), function (button) {
