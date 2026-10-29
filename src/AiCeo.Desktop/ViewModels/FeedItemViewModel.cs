@@ -12,7 +12,13 @@ public enum FeedKind
     Note,
 
     /// <summary>v2.0.0: a write or a command is waiting for the user's decision.</summary>
-    Approval
+    Approval,
+
+    /// <summary>v2.0.1: the user's own message (the right-hand bubble in the chat).</summary>
+    User,
+
+    /// <summary>v2.0.1: a CEO message in the chat (the left-hand bubble).</summary>
+    Ceo
 }
 
 /// <summary>One rendered line of the execution feed.</summary>
@@ -25,6 +31,15 @@ public sealed class FeedItemViewModel : ObservableObject
     public string AgentName { get; init; } = string.Empty;
 
     public string? ToolName { get; init; }
+
+    /// <summary>
+    /// v2.0.1: the CEO ↔ worker thread this line belongs to. Set on the delegation card, so the
+    /// chat can offer "open the worker's conversation", and on its result.
+    /// </summary>
+    public Guid? ThreadId { get; init; }
+
+    /// <summary>v2.0.1: for a delegation, the worker the user can click.</summary>
+    public string? ThreadAgent { get; init; }
 
     public string Text { get; init; } = string.Empty;
 
@@ -63,6 +78,15 @@ public sealed class FeedItemViewModel : ObservableObject
 
     public bool ShowApproval => Kind == FeedKind.Approval;
 
+    public bool ShowUser => Kind == FeedKind.User;
+
+    public bool ShowCeo => Kind == FeedKind.Ceo;
+
+    /// <summary>True when the chat can offer to open the worker's own conversation.</summary>
+    public bool HasThread => ThreadId is not null;
+
+    public string ThreadAgentName => ThreadAgent ?? AgentName;
+
     public bool HasSteps => Steps.Count > 0;
 
     public bool ShowPlanRaw => Kind == FeedKind.Plan && Steps.Count == 0;
@@ -76,6 +100,7 @@ public sealed class FeedItemViewModel : ObservableObject
         FeedKind.ToolCall => AgentName,
         FeedKind.ToolResult => Failed ? "refused / failed" : "result",
         FeedKind.Approval => "waiting for your approval",
+        FeedKind.Ceo => "CEO",
         _ => string.Empty
     };
 

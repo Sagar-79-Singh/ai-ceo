@@ -34,6 +34,7 @@ public sealed class NexusPresenter : IDisposable
     private readonly UserSettingsService _settings;
     private readonly LlmSetupProvider _connection;
     private readonly ApprovalCoordinator _approvals;
+    private readonly DeviceFlowCoordinator _signIn;
     private readonly AppRuntimeInfo _runtime;
     private readonly Action<string> _sendWebMessage;
     private readonly HashSet<FeedItemViewModel> _watchedFeedItems = new();
@@ -48,6 +49,7 @@ public sealed class NexusPresenter : IDisposable
         UserSettingsService settings,
         LlmSetupProvider connection,
         ApprovalCoordinator approvals,
+        DeviceFlowCoordinator signIn,
         AppRuntimeInfo runtime,
         Action<string> sendWebMessage)
     {
@@ -55,12 +57,17 @@ public sealed class NexusPresenter : IDisposable
         _settings = settings;
         _connection = connection;
         _approvals = approvals;
+        _signIn = signIn;
         _runtime = runtime;
         _sendWebMessage = sendWebMessage;
 
         // v2.0.0: the gate is armed as soon as the UI exists. Every parked write/command now waits
         // for the approval card, and cancellation or a closed window never leaves it parked.
         _approvals.Attach(_ => SchedulePush());
+
+        // v2.0.1: a device-flow sign-in is started from the page and finishes on the thread pool;
+        // every state change repaints the modal.
+        _signIn.Changed += SchedulePush;
 
         // A thread-pool timer rather than a UI-thread DispatcherTimer: the tick only schedules a
         // push, and Push() marshals itself onto the message loop. Nothing waits on the UI thread.
@@ -140,12 +147,29 @@ public sealed class NexusPresenter : IDisposable
                     info.Hint,
                     info.RequiresApiKey))
                 .ToList(),
-            Connection: ToState(_connection.Current),
+            Connection: ToState(_connection.Current, _connection.Auth),
             Footer: $"sqlite · {Path.GetFileName(_runtime.DatabasePath)}",
             Spaces: _viewModel.Spaces.Select(ToState).ToList(),
             ActiveSpaceId: _viewModel.ActiveSpace?.Id.ToString(),
             ApprovalsEnabled: _approvals.Enabled,
-            Approval: ToState(_approvals.Current));
+            Approval: ToState(_approvals.Current),
+            Threads: _viewModel.Threads.Select(ToState).ToList(),
+            OpenThread: ToState(_viewModel.OpenThread),
+            Auth: new NexusAuthState(
+                Method: _viewModel.Auth.Method.ToString(),
+                Display: AuthMethodCatalog.DisplayNameFor(_viewModel.Auth.Method),
+                Login: _viewModel.Auth.Login,
+                SignedIn: _viewModel.IsSignedIn,
+                Badge: _viewModel.AuthBadge),
+            SignIn: ToState(_viewModel.SignIn),
+            AuthMethods: AuthMethodCatalog.All
+                .Where(info => info.IsDeviceFlow)
+                .Select(info => new NexusAuthOption(
+                    info.Value,
+                    info.DisplayName,
+                    info.ShortName,
+                    info.Description))
+                .ToList());
 
         return JsonSerializer.Serialize(state, NexusJson.Options);
     }
@@ -271,6 +295,62 @@ public sealed class NexusPresenter : IDisposable
                         ResolveApproval(approvalId, ReadBool(root, "approved", false), ReadString(root, "reason"));
                     }
 
+                    break;
+
+                case "openThread":
+                    if (Guid.TryParse(ReadString(root, "id"), out var threadId))
+                    {
+                        await GuardAsync(() => _viewModel.NexusOpenThreadAsync(threadId));
+                        Push();
+                    }
+
+                    break;
+
+                case "openAgentThread":
+                    await GuardAsync(() => _viewModel.NexusOpenThreadForAgentAsync(ReadString(root, "agent")));
+                    Push();
+                    break;
+
+                case "closeThread":
+                    _viewModel.NexusCloseThread();
+                    Push();
+                    break;
+
+                case "signIn":
+                    if (AuthMethodCatalog.TryParse(ReadString(root, "method"), out var authMethod))
+                    {
+                        if (!_viewModel.NexusStartSignIn(authMethod))
+                        {
+                            Toast("A sign-in is already running. Finish or cancel it first.", isError: true);
+                        }
+                    }
+
+                    Push();
+                    break;
+
+                case "cancelSignIn":
+                    _viewModel.NexusCancelSignIn();
+                    Push();
+                    break;
+
+                case "dismissSignIn":
+                    _viewModel.NexusDismissSignIn();
+                    Push();
+                    break;
+
+                case "openSignInPage":
+                    // The modal shows the code; this saves the user from retyping the URL.
+                    if (!LinkLauncher.Open(_signIn.State.VerificationUri))
+                    {
+                        Toast("Could not open a browser. Copy the link shown in the sign-in window.", isError: true);
+                    }
+
+                    break;
+
+                case "signOut":
+                    await GuardAsync(_viewModel.NexusSignOutAsync);
+                    await GuardAsync(_viewModel.NexusRefreshHealthAsync);
+                    Push();
                     break;
 
                 case "setApprovals":
@@ -508,9 +588,12 @@ public sealed class NexusPresenter : IDisposable
 
     // ----------------------------------------------------------------------------------- mapping
 
-    private static NexusConnectionState ToState(LlmSetup setup)
+    private static NexusConnectionState ToState(LlmSetup setup, LlmAuthState auth)
     {
         var provider = LlmProviderCatalog.Get(setup.Provider);
+
+        // A device-flow token reads as "GitHub Copilot · octocat" instead of a bare key.
+        var summary = auth.Describe();
 
         return new NexusConnectionState(
             Configured: setup.IsConfigured,
@@ -521,8 +604,49 @@ public sealed class NexusPresenter : IDisposable
             Model: setup.ModelId ?? string.Empty,
             KeyMask: setup.MaskedApiKey ?? string.Empty,
             HasKey: setup.HasApiKey,
-            Summary: setup.Describe());
+            Summary: summary is null ? setup.Describe() : $"{setup.ProviderName} · {summary}",
+            AuthMethod: auth.Method.ToString(),
+            AuthLogin: auth.Login,
+            SignedIn: auth.IsDeviceFlow);
     }
+
+    private static NexusThreadState ToState(AgentThreadView thread) => new(
+        Id: thread.Id.ToString(),
+        AgentName: thread.AgentName,
+        Role: thread.Role,
+        Status: thread.Status,
+        Instructions: thread.Instructions,
+        EntryCount: thread.EntryCount,
+        UpdatedAt: thread.UpdatedAt.ToLocalTime().ToString("HH:mm"),
+        Running: thread.IsRunning);
+
+    private static NexusThreadDetailState? ToState(AgentThreadDetail? detail) => detail is null
+        ? null
+        : new NexusThreadDetailState(
+            Id: detail.Thread.Id.ToString(),
+            AgentName: detail.Thread.AgentName,
+            Role: detail.Thread.Role,
+            Status: detail.Thread.Status,
+            Instructions: detail.Thread.Instructions,
+            Output: detail.Output,
+            Running: detail.Thread.IsRunning,
+            Entries: detail.Entries
+                .Select(entry => new NexusThreadEntryState(
+                    entry.Kind,
+                    entry.Text,
+                    entry.ToolName,
+                    entry.Failed,
+                    entry.At))
+                .ToList());
+
+    private static NexusSignInState ToState(DeviceFlowSnapshot signIn) => new(
+        Method: signIn.Method.ToString(),
+        Status: signIn.Status.ToString(),
+        UserCode: signIn.UserCode,
+        VerificationUri: signIn.VerificationUri,
+        Message: signIn.Message,
+        Active: signIn.Active,
+        Login: signIn.Login);
 
     private static NexusSpaceState ToState(SpaceView space) => new(
         Id: space.Id.ToString(),
@@ -569,6 +693,8 @@ public sealed class NexusPresenter : IDisposable
             FeedKind.Approval => "approval",
             FeedKind.Result => "result",
             FeedKind.Error => "error",
+            FeedKind.User => "user",
+            FeedKind.Ceo => "ceo",
             _ => "note"
         },
         Agent: item.AgentName,
@@ -579,7 +705,10 @@ public sealed class NexusPresenter : IDisposable
         Title: item.Kind == FeedKind.Delegation ? item.DelegationTitle : item.ToolStateText,
         Steps: item.Steps
             .Select(step => new NexusStepState(step.Index, step.Role, step.Instructions))
-            .ToList());
+            .ToList(),
+        ThreadId: item.ThreadId?.ToString(),
+        ThreadAgent: item.ThreadAgent,
+        HasThread: item.ThreadId is not null);
 
     private static string Initials(string name)
     {
@@ -663,6 +792,7 @@ public sealed class NexusPresenter : IDisposable
 
         _viewModel.PropertyChanged -= OnViewModelChanged;
         _viewModel.Feed.CollectionChanged -= OnFeedChanged;
+        _signIn.Changed -= SchedulePush;
 
         foreach (var item in _watchedFeedItems)
         {
@@ -674,5 +804,9 @@ public sealed class NexusPresenter : IDisposable
 
         // v2.0.0: nothing may stay parked on a decision once the window is gone.
         _approvals.ResolveAll(false, "the window was closed.");
+
+        // v2.0.1: and no device flow may keep polling for a page that no longer exists.
+        _signIn.Changed -= SchedulePush;
+        _signIn.Cancel();
     }
 }

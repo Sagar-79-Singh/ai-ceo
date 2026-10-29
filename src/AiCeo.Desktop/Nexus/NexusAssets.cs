@@ -64,8 +64,22 @@ public static class NexusAssets
                 && html.Contains("chrome.webview.postMessage", StringComparison.Ordinal)
                 && html.Contains("window.nexusReceive", StringComparison.Ordinal)
                 && html.Contains("window.nexusToast", StringComparison.Ordinal);
-            var hasShader = html.Contains("shader-canvas-ANIMATION_5", StringComparison.Ordinal)
-                && html.Contains("precision highp float", StringComparison.Ordinal);
+            // v2.0.1: the WebGL shader is gone on purpose — the chat must be readable, and nothing
+            // on this page may burn the GPU. The page has to carry the chat surfaces instead: the
+            // bubble styles, the transcript, the worker detail view and the sign-in modal.
+            var hasChat = html.Contains("nx-bubble-out", StringComparison.Ordinal)
+                && html.Contains("nx-bubble-in", StringComparison.Ordinal)
+                && html.Contains("nx-chat-grid", StringComparison.Ordinal)
+                && !html.Contains("shader-canvas-ANIMATION_5", StringComparison.Ordinal);
+            var hasThreadView = html.Contains("id=\"nx-thread\"", StringComparison.Ordinal)
+                && html.Contains("threadEntryHtml", StringComparison.Ordinal);
+            var hasSignIn = html.Contains("id=\"nx-signin\"", StringComparison.Ordinal)
+                && html.Contains("data-signin=\"GitHubCopilot\"", StringComparison.Ordinal)
+                && html.Contains("data-signin=\"OpenAICodex\"", StringComparison.Ordinal);
+            // v2.0.1: the badge in the header is the version the release ships; a bump that forgets
+            // the page would otherwise ship a build that calls itself 2.0.0 in its own title bar.
+            var hasVersion = html.Contains(">v2.0.1<", StringComparison.Ordinal)
+                && html.Contains("v2.0.1: sign in instead of pasting a key", StringComparison.Ordinal);
             var hasStyles = html.Contains("href=\"nexus.css\"", StringComparison.Ordinal)
                 && css.Contains("--obsidian-950-rgb", StringComparison.Ordinal)
                 && css.Contains("font-family:\"Font Awesome 6 Free\"");
@@ -81,10 +95,12 @@ public static class NexusAssets
                 && html.Contains("createSpaceWithFolder", StringComparison.Ordinal);
 
             detail = $"nexus.html {html.Length / 1024} KB · nexus.css {css.Length / 1024} KB"
-                + $" · bridge: {hasBridge} · shader: {hasShader} · styles: {hasStyles}"
-                + $" · approval: {hasApprovalCard} · spaces: {hasSpaces}";
+                + $" · bridge: {hasBridge} · chat: {hasChat} · styles: {hasStyles}"
+                + $" · approval: {hasApprovalCard} · spaces: {hasSpaces}"
+                + $" · threads: {hasThreadView} · sign-in: {hasSignIn} · version: {hasVersion}";
 
-            return hasBridge && hasShader && hasStyles && hasApprovalCard && hasSpaces;
+            return hasBridge && hasChat && hasStyles && hasApprovalCard && hasSpaces
+                && hasThreadView && hasSignIn && hasVersion;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException)
         {

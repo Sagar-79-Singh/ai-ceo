@@ -17,6 +17,9 @@ namespace AiCeo.Data;
 ///   <item>v1.0.16 → v2.0.0: the <c>Spaces</c> table (named workspaces) and
 ///   <c>SpaceFeedEntries</c> (the conversation each space keeps), plus the index that makes
 ///   restoring the last active space a single lookup</item>
+///   <item>v2.0.0 → v2.0.1: the <c>AgentThreads</c> and <c>AgentThreadEntries</c> tables (the
+///   CEO ↔ worker conversation behind each delegation), <c>TaskLogs.ThreadId</c> and the sign-in
+///   columns <c>UserSettings.AuthMethod</c>, <c>AuthLogin</c> and <c>SignedInAt</c></item>
 /// </list>
 /// Runs on every start and is a no-op once applied.
 /// </summary>
@@ -32,7 +35,8 @@ public static class SchemaUpgrader
 
     private static readonly (string Column, string Ddl)[] TaskLogColumns =
     {
-        ("ToolName", "ALTER TABLE \"TaskLogs\" ADD COLUMN \"ToolName\" TEXT NULL")
+        ("ToolName", "ALTER TABLE \"TaskLogs\" ADD COLUMN \"ToolName\" TEXT NULL"),
+        ("ThreadId", "ALTER TABLE \"TaskLogs\" ADD COLUMN \"ThreadId\" TEXT NULL")
     };
 
     private const string WorkspaceTableDdl = """
@@ -54,6 +58,9 @@ public static class SchemaUpgrader
             "BaseUrl" TEXT NULL,
             "ApiKey" TEXT NULL,
             "ModelId" TEXT NULL,
+            "AuthMethod" TEXT NOT NULL DEFAULT 'ApiKey',
+            "AuthLogin" TEXT NULL,
+            "SignedInAt" TEXT NULL,
             "UpdatedAt" TEXT NOT NULL
         );
         """;
@@ -98,13 +105,54 @@ public static class SchemaUpgrader
             ON "SpaceFeedEntries" ("SpaceId", "Ordinal");
         """;
 
+    /// <summary>v2.0.1: one CEO ↔ worker conversation per delegation.</summary>
+    private const string AgentThreadsTableDdl = """
+        CREATE TABLE IF NOT EXISTS "AgentThreads" (
+            "Id" TEXT NOT NULL CONSTRAINT "PK_AgentThreads" PRIMARY KEY,
+            "TaskId" TEXT NOT NULL,
+            "AgentName" TEXT NOT NULL,
+            "Role" TEXT NOT NULL DEFAULT '',
+            "Instructions" TEXT NOT NULL DEFAULT '',
+            "Status" TEXT NOT NULL DEFAULT 'running',
+            "Output" TEXT NOT NULL DEFAULT '',
+            "CreatedAt" TEXT NOT NULL,
+            "UpdatedAt" TEXT NOT NULL
+        );
+        """;
+
+    /// <summary>v2.0.1: every thought, tool call and answer inside such a thread.</summary>
+    private const string AgentThreadEntriesTableDdl = """
+        CREATE TABLE IF NOT EXISTS "AgentThreadEntries" (
+            "Id" TEXT NOT NULL CONSTRAINT "PK_AgentThreadEntries" PRIMARY KEY,
+            "ThreadId" TEXT NOT NULL,
+            "Ordinal" INTEGER NOT NULL,
+            "Kind" TEXT NOT NULL,
+            "Text" TEXT NOT NULL DEFAULT '',
+            "ToolName" TEXT NULL,
+            "Failed" INTEGER NOT NULL DEFAULT 0,
+            "CreatedAt" TEXT NOT NULL,
+            CONSTRAINT "FK_AgentThreadEntries_AgentThreads_ThreadId" FOREIGN KEY ("ThreadId")
+                REFERENCES "AgentThreads" ("Id") ON DELETE CASCADE
+        );
+        """;
+
+    private const string AgentThreadIndexesDdl = """
+        CREATE INDEX IF NOT EXISTS "IX_AgentThreads_TaskId" ON "AgentThreads" ("TaskId");
+        CREATE INDEX IF NOT EXISTS "IX_AgentThreads_AgentName" ON "AgentThreads" ("AgentName");
+        CREATE INDEX IF NOT EXISTS "IX_AgentThreadEntries_ThreadId_Ordinal"
+            ON "AgentThreadEntries" ("ThreadId", "Ordinal");
+        """;
+
     /// <summary>v1.0.16: the LLM connection columns, added to an existing row without touching it.</summary>
     private static readonly (string Column, string Ddl)[] UserSettingsColumns =
     {
         ("Provider", "ALTER TABLE \"UserSettings\" ADD COLUMN \"Provider\" TEXT NOT NULL DEFAULT 'OmniRoute'"),
         ("BaseUrl", "ALTER TABLE \"UserSettings\" ADD COLUMN \"BaseUrl\" TEXT NULL"),
         ("ApiKey", "ALTER TABLE \"UserSettings\" ADD COLUMN \"ApiKey\" TEXT NULL"),
-        ("ModelId", "ALTER TABLE \"UserSettings\" ADD COLUMN \"ModelId\" TEXT NULL")
+        ("ModelId", "ALTER TABLE \"UserSettings\" ADD COLUMN \"ModelId\" TEXT NULL"),
+        ("AuthMethod", "ALTER TABLE \"UserSettings\" ADD COLUMN \"AuthMethod\" TEXT NOT NULL DEFAULT 'ApiKey'"),
+        ("AuthLogin", "ALTER TABLE \"UserSettings\" ADD COLUMN \"AuthLogin\" TEXT NULL"),
+        ("SignedInAt", "ALTER TABLE \"UserSettings\" ADD COLUMN \"SignedInAt\" TEXT NULL")
     };
 
     public static async Task UpgradeAsync(AppDbContext db, ILogger logger, CancellationToken cancellationToken = default)
@@ -167,6 +215,21 @@ public static class SchemaUpgrader
             }
 
             await ExecuteAsync(connection, SpaceIndexesDdl, cancellationToken);
+
+            // v2.0.1 — the CEO ↔ worker conversations behind every delegation.
+            if (!await TableExistsAsync(connection, "AgentThreads", cancellationToken))
+            {
+                await ExecuteAsync(connection, AgentThreadsTableDdl, cancellationToken);
+                logger.LogInformation("Schema upgrade: created AgentThreads table");
+            }
+
+            if (!await TableExistsAsync(connection, "AgentThreadEntries", cancellationToken))
+            {
+                await ExecuteAsync(connection, AgentThreadEntriesTableDdl, cancellationToken);
+                logger.LogInformation("Schema upgrade: created AgentThreadEntries table");
+            }
+
+            await ExecuteAsync(connection, AgentThreadIndexesDdl, cancellationToken);
         }
         finally
         {

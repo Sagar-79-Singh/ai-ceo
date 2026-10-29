@@ -1,12 +1,12 @@
 ; ===========================================================================================
-;  AI CEO Orchestrator — Inno Setup script (v2.0.0)
+;  AI CEO Orchestrator — Inno Setup script (v2.0.1)
 ;
 ;  Packages the published, self-contained single-file executable into one Setup.exe:
 ;
 ;      ISCC.exe installer.iss
-;      ISCC.exe /DAppVersion=2.0.0 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64-v2.0.0.exe installer.iss
+;      ISCC.exe /DAppVersion=2.0.1 /DAppArch=x64 /DAppSourceExe=dist\AiCeo-win-x64-v2.0.1.exe installer.iss
 ;
-;  v2.0.0 design
+;  v2.0.1 design
 ;    * A stock Inno Setup wizard — no custom palette, no hand-painted controls, no custom
 ;      artwork, no altered [Messages]. It looks and behaves exactly like the native installer
 ;      every other Windows program uses, which is also what makes it accessible and DPI-safe.
@@ -32,7 +32,7 @@
 ; ===========================================================================================
 
 #ifndef AppVersion
-  #define AppVersion "2.0.0"
+  #define AppVersion "2.0.1"
 #endif
 
 ; The Evergreen WebView2 bootstrapper. The release workflow drops it next to the published

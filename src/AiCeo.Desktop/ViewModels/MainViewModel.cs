@@ -18,6 +18,10 @@ public sealed class MainViewModel : ObservableObject
     private readonly WorkspaceService _workspace;
     private readonly SpaceService _spaces;
     private readonly ApprovalCoordinator _approvals;
+    private readonly WorkerThreadStore _threads;
+    private readonly WorkerThreadHub _threadHub;
+    private readonly DeviceFlowCoordinator _signIn;
+    private readonly LlmSetupProvider _connection;
     private readonly IWorkspacePicker _picker;
     private readonly AppRuntimeInfo _runtime;
     private readonly ILogger<MainViewModel> _logger;
@@ -39,6 +43,8 @@ public sealed class MainViewModel : ObservableObject
     private IReadOnlyList<SpaceView> _spaceList = Array.Empty<SpaceView>();
     private SpaceView? _activeSpace;
     private bool _isSpaceManagerOpen;
+    private IReadOnlyList<AgentThreadView> _threadList = Array.Empty<AgentThreadView>();
+    private AgentThreadDetail? _openThread;
 
     public MainViewModel(
         AgentDirectory directory,
@@ -47,6 +53,10 @@ public sealed class MainViewModel : ObservableObject
         WorkspaceService workspace,
         SpaceService spaces,
         ApprovalCoordinator approvals,
+        WorkerThreadStore threads,
+        WorkerThreadHub threadHub,
+        DeviceFlowCoordinator signIn,
+        LlmSetupProvider connection,
         IWorkspacePicker picker,
         AppRuntimeInfo runtime,
         ILogger<MainViewModel> logger)
@@ -57,6 +67,10 @@ public sealed class MainViewModel : ObservableObject
         _workspace = workspace;
         _spaces = spaces;
         _approvals = approvals;
+        _threads = threads;
+        _threadHub = threadHub;
+        _signIn = signIn;
+        _connection = connection;
         _picker = picker;
         _runtime = runtime;
         _logger = logger;
@@ -68,6 +82,14 @@ public sealed class MainViewModel : ObservableObject
         RefreshHealthCommand = new AsyncRelayCommand(RefreshHealthAsync, () => !IsRefreshingHealth);
         NewAgentCommand = new RelayCommand(BeginCreate, () => !IsRunning);
         Feed.CollectionChanged += OnFeedChanged;
+
+        // v2.0.1: a worker thread changes on the orchestrator's thread; the presenter repaints
+        // from the message loop. The hub is the only signal, so there is no polling anywhere.
+        _threadHub.Changed += OnThreadChanged;
+
+        // v2.0.1: the sign-in runs in the background. When it lands, the badge changes and the
+        // provider is re-probed so the header stops saying OFFLINE without a restart.
+        _signIn.Changed += OnSignInChanged;
     }
 
     // -------------------------------------------------------------------------------- commands
@@ -433,6 +455,217 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Reloads the active space's conversation (used by the smoke test and on demand).</summary>
     internal async Task NexusRestoreActiveSpaceAsync() => await RestoreActiveSpaceAsync();
 
+    // ------------------------------------------------------- v2.0.1 worker threads (Nexus)
+
+    /// <summary>The most recent CEO ↔ worker conversations, newest first.</summary>
+    public IReadOnlyList<AgentThreadView> Threads => _threadList;
+
+    /// <summary>The conversation the detail view is showing, or null when it is closed.</summary>
+    public AgentThreadDetail? OpenThread => _openThread;
+
+    public bool IsThreadOpen => _openThread is not null;
+
+    /// <summary>Opens one worker's conversation (from the sidebar or from a chat card).</summary>
+    internal async Task NexusOpenThreadAsync(Guid id)
+    {
+        try
+        {
+            var detail = await _threads.GetAsync(id);
+
+            if (detail is null)
+            {
+                SetBanner("That worker conversation is no longer stored.", isError: true);
+                return;
+            }
+
+            _openThread = detail;
+            OnPropertyChanged(nameof(OpenThread), nameof(IsThreadOpen));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Could not open worker thread {Thread}", id);
+            SetBanner("Could not open the worker conversation: " + exception.Message, isError: true);
+        }
+    }
+
+    /// <summary>Opens the newest conversation of a named worker.</summary>
+    internal async Task NexusOpenThreadForAgentAsync(string agentName)
+    {
+        try
+        {
+            var latest = await _threads.LatestForAgentAsync(agentName);
+
+            if (latest is null)
+            {
+                SetBanner($"{agentName} has not been delegated anything yet.", isError: false);
+                return;
+            }
+
+            await NexusOpenThreadAsync(latest.Id);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Could not open the latest thread of {Agent}", agentName);
+            SetBanner("Could not open the worker conversation: " + exception.Message, isError: true);
+        }
+    }
+
+    /// <summary>Closes the detail view. The live thread keeps running.</summary>
+    internal void NexusCloseThread()
+    {
+        _openThread = null;
+        OnPropertyChanged(nameof(OpenThread), nameof(IsThreadOpen));
+    }
+
+    /// <summary>Reloads the thread list and, when the detail view is open, refreshes it in place.</summary>
+    internal async Task NexusReloadThreadsAsync() => await ReloadThreadsAsync();
+
+    /// <summary>The worker behind a delegation card, so the chat can link to its conversation.</summary>
+    internal static string DescribeThreadHeading(AgentThreadDetail detail)
+        => $"{detail.Thread.AgentName} · {detail.Thread.Role}".TrimEnd(' ', '·');
+
+    private async Task ReloadThreadsAsync()
+    {
+        try
+        {
+            _threadList = await _threads.ListRecentAsync();
+            OnPropertyChanged(nameof(Threads));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogWarning(exception, "Could not list worker threads");
+        }
+
+        if (_openThread is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var refreshed = await _threads.GetAsync(_openThread.Thread.Id);
+
+            if (refreshed is not null)
+            {
+                _openThread = refreshed;
+                OnPropertyChanged(nameof(OpenThread));
+            }
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogWarning(exception, "Could not refresh the open worker thread");
+        }
+    }
+
+    private void OnSignInChanged()
+        => UiThread.Post(() =>
+        {
+            RaiseAuthChanged();
+            OnPropertyChanged(nameof(ProviderText), nameof(ProviderOnline), nameof(ProviderChecking));
+
+            if (_signIn.State.Status == DeviceFlowStatus.Complete)
+            {
+                SetBanner("Signed in. The token is stored locally and every agent now uses it.", isError: false);
+                _ = RefreshHealthAsync();
+            }
+            else if (_signIn.State.Status == DeviceFlowStatus.Failed)
+            {
+                SetBanner(_signIn.State.Message ?? "The sign-in did not complete.", isError: true);
+            }
+        });
+
+    private void OnThreadChanged(Guid threadId)
+        => UiThread.Post(() => _ = NexusReloadThreadsAsync());
+
+    /// <summary>
+    /// The CEO's reply as a chat message. It is the final answer when there is one, and the plan
+    /// summary otherwise, so the conversation always ends with the CEO speaking.
+    /// </summary>
+    private void AppendCeoMessage()
+    {
+        var text = FinalOutput;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            var delegations = Feed
+                .Where(item => item.Kind == FeedKind.Delegation)
+                .Select(item => item.AgentName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            text = delegations.Count > 0
+                ? $"I delegated this to {string.Join(", ", delegations)}. Their conversations are in the sidebar."
+                : "The run ended without an answer.";
+        }
+
+        Feed.Add(new FeedItemViewModel
+        {
+            Kind = FeedKind.Ceo,
+            AgentName = CeoName,
+            Text = text!.Trim()
+        });
+    }
+
+    // ------------------------------------------------------ v2.0.1 device-flow sign-in (Nexus)
+
+    /// <summary>The state of the running (or last) sign-in, for the modal.</summary>
+    public DeviceFlowSnapshot SignIn => _signIn.State;
+
+    /// <summary>Where the stored key came from.</summary>
+    public LlmAuthState Auth => _connection.Auth;
+
+    /// <summary>True when the app is signed in through Copilot or ChatGPT rather than a pasted key.</summary>
+    public bool IsSignedIn => _connection.IsSignedIn;
+
+    /// <summary>A short badge for the telemetry strip: "GitHub Copilot · octocat" or null.</summary>
+    public string? AuthBadge => _connection.Auth.Describe();
+
+    /// <summary>Starts a device-flow sign-in. Returns false when one is already running.</summary>
+    internal bool NexusStartSignIn(AuthMethod method)
+    {
+        var started = _signIn.Start(method);
+        RaiseAuthChanged();
+        return started;
+    }
+
+    /// <summary>Aborts the running sign-in.</summary>
+    internal void NexusCancelSignIn()
+    {
+        _signIn.Cancel();
+        _signIn.Dismiss();
+        RaiseAuthChanged();
+    }
+
+    /// <summary>Closes a finished sign-in modal.</summary>
+    internal void NexusDismissSignIn()
+    {
+        _signIn.Dismiss();
+        RaiseAuthChanged();
+    }
+
+    /// <summary>Forgets a device-flow token and returns to "no key".</summary>
+    internal async Task NexusSignOutAsync()
+    {
+        try
+        {
+            await _signIn.SignOutAsync();
+            RaiseAuthChanged();
+            SetBanner("Signed out. Add an API key or sign in again to run the swarm.", isError: false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Could not sign out");
+            SetBanner("Could not sign out: " + exception.Message, isError: true);
+        }
+    }
+
+    private void RaiseAuthChanged()
+        => OnPropertyChanged(
+            nameof(SignIn),
+            nameof(Auth),
+            nameof(IsSignedIn),
+            nameof(AuthBadge));
+
     // -------------------------------------------------------------- v2.0.0 approvals (Nexus)
 
     /// <summary>True while a tool call is parked on the approval card.</summary>
@@ -482,6 +715,9 @@ public sealed class MainViewModel : ObservableObject
 
         // v2.0.0: reopen the space that was open last, with its folder and its conversation.
         await RestoreActiveSpaceAsync();
+
+        // v2.0.1: the worker conversations the sidebar offers.
+        await ReloadThreadsAsync();
 
         await RefreshHealthAsync();
 
@@ -769,6 +1005,16 @@ public sealed class MainViewModel : ObservableObject
         CurrentPrompt = text;
         FinalOutput = null;
         Feed.Clear();
+
+        // v2.0.1: the chat starts with what the user typed, as a right-hand bubble. The CEO's answer
+        // arrives as the final message, so the transcript reads like a conversation, not a log.
+        Feed.Add(new FeedItemViewModel
+        {
+            Kind = FeedKind.User,
+            AgentName = "You",
+            Text = text
+        });
+
         ClearBanner();
         OnPropertyChanged(nameof(ShowEmptyState));
 
@@ -800,6 +1046,9 @@ public sealed class MainViewModel : ObservableObject
         {
             IsRunning = false;
             OnPropertyChanged(nameof(ShowEmptyState));
+
+            AppendCeoMessage();
+            await ReloadThreadsAsync();
 
             // v2.0.0: the conversation belongs to the active space and survives a restart.
             await PersistConversationAsync();
@@ -855,7 +1104,11 @@ public sealed class MainViewModel : ObservableObject
                     Kind = FeedKind.Delegation,
                     AgentName = log.AgentName,
                     Text = log.Content,
-                    IsPending = true
+                    IsPending = true,
+
+                    // v2.0.1: the conversation behind this delegation, one click away.
+                    ThreadId = log.ThreadId,
+                    ThreadAgent = log.AgentName
                 });
                 break;
 
@@ -865,7 +1118,9 @@ public sealed class MainViewModel : ObservableObject
                     Kind = FeedKind.ToolCall,
                     AgentName = log.AgentName,
                     ToolName = log.ToolName,
-                    Text = log.Content
+                    Text = log.Content,
+                    ThreadId = log.ThreadId,
+                    ThreadAgent = log.AgentName
                 });
                 break;
 
@@ -885,7 +1140,9 @@ public sealed class MainViewModel : ObservableObject
                 {
                     Kind = FeedKind.Result,
                     AgentName = log.AgentName,
-                    Text = log.Content
+                    Text = log.Content,
+                    ThreadId = log.ThreadId,
+                    ThreadAgent = log.AgentName
                 });
                 CompleteDelegation(log.AgentName);
                 break;
@@ -1139,6 +1396,8 @@ public sealed class MainViewModel : ObservableObject
             FeedKind.Result => "result",
             FeedKind.Error => "error",
             FeedKind.Approval => "approval",
+            FeedKind.User => "user",
+            FeedKind.Ceo => "ceo",
             _ => "note"
         },
         AgentName: item.AgentName,
@@ -1163,6 +1422,8 @@ public sealed class MainViewModel : ObservableObject
             "result" => FeedKind.Result,
             "error" => FeedKind.Error,
             "approval" => FeedKind.Approval,
+            "user" => FeedKind.User,
+            "ceo" => FeedKind.Ceo,
             _ => FeedKind.Note
         },
         AgentName = item.AgentName,
