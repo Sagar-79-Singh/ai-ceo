@@ -165,6 +165,45 @@ public class SchemaUpgraderTests
     }
 
     [Fact]
+    public async Task Adds_the_v2_0_0_space_tables_to_an_existing_database()
+    {
+        await using var legacy = await LegacyDatabase.CreateAsync();
+
+        Assert.False(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "Spaces"));
+        Assert.False(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "SpaceFeedEntries"));
+
+        await SchemaUpgrader.UpgradeAsync(legacy.Db, NullLogger.Instance);
+
+        Assert.True(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "Spaces"));
+        Assert.True(await SchemaUpgrader.TableExistsAsync(legacy.Connection, "SpaceFeedEntries"));
+
+        // The tables are usable straight after the upgrade, through the model the app uses.
+        var space = new AiCeo.Models.Space { Name = "Python Game", FolderPath = "/tmp/game", IsActive = true };
+        legacy.Db.Spaces.Add(space);
+        legacy.Db.SpaceFeedEntries.Add(new AiCeo.Models.SpaceFeedEntry
+        {
+            SpaceId = space.Id,
+            Ordinal = 0,
+            Kind = "note",
+            AgentName = "Atlas",
+            Text = "hello",
+            StepsJson = "[]"
+        });
+        await legacy.Db.SaveChangesAsync();
+
+        var stored = await legacy.Db.Spaces.AsNoTracking().SingleAsync();
+        Assert.Equal("Python Game", stored.Name);
+        Assert.True(stored.IsActive);
+        Assert.Equal(1, legacy.Db.SpaceFeedEntries.Count(entry => entry.SpaceId == space.Id));
+
+        // Deleting the space takes its conversation with it (FK cascade).
+        legacy.Db.Spaces.Remove(await legacy.Db.Spaces.SingleAsync());
+        await legacy.Db.SaveChangesAsync();
+
+        Assert.Equal(0, legacy.Db.SpaceFeedEntries.Count());
+    }
+
+    [Fact]
     public async Task Is_idempotent()
     {
         await using var legacy = await LegacyDatabase.CreateAsync();

@@ -20,7 +20,38 @@ public sealed record NexusState(
     NexusSettingsState Settings,
     IReadOnlyList<NexusProviderOption> Providers,
     NexusConnectionState Connection,
-    string Footer);
+    string Footer,
+    IReadOnlyList<NexusSpaceState> Spaces,
+    string? ActiveSpaceId,
+    bool ApprovalsEnabled,
+    NexusApprovalState? Approval);
+
+/// <summary>
+/// v2.0.0 — a named workspace as the header dropdown sees it. <see cref="Active"/> marks the space
+/// the window is showing; <see cref="FeedCount"/> is how many lines of conversation it keeps.
+/// </summary>
+public sealed record NexusSpaceState(
+    string Id,
+    string Name,
+    string Path,
+    bool Active,
+    int FeedCount,
+    string UpdatedAt);
+
+/// <summary>
+/// v2.0.0 — a tool call parked until the user presses Approve or Reject. <see cref="Preview"/> is a
+/// line diff for a write and the command line for a command; nothing has run yet.
+/// </summary>
+public sealed record NexusApprovalState(
+    string Id,
+    string AgentName,
+    string ToolName,
+    string Target,
+    string Preview,
+    string Summary,
+    bool IsWrite,
+    string CreatedAt,
+    string Label);
 
 public sealed record NexusWorkspaceState(
     string Path,

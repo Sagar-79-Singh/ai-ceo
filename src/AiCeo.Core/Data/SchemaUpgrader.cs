@@ -14,6 +14,9 @@ namespace AiCeo.Data;
 ///   <item>v1.0.4 → v1.0.5: the <c>UserSettings</c> table (theme, accent colour, font size)</item>
 ///   <item>v1.0.15 → v1.0.16: <c>UserSettings.Provider</c>, <c>BaseUrl</c>, <c>ApiKey</c> and
 ///   <c>ModelId</c> — the LLM connection the first-run setup stores</item>
+///   <item>v1.0.16 → v2.0.0: the <c>Spaces</c> table (named workspaces) and
+///   <c>SpaceFeedEntries</c> (the conversation each space keeps), plus the index that makes
+///   restoring the last active space a single lookup</item>
 /// </list>
 /// Runs on every start and is a no-op once applied.
 /// </summary>
@@ -53,6 +56,46 @@ public static class SchemaUpgrader
             "ModelId" TEXT NULL,
             "UpdatedAt" TEXT NOT NULL
         );
+        """;
+
+    /// <summary>v2.0.0: named workspaces ("Spaces").</summary>
+    private const string SpacesTableDdl = """
+        CREATE TABLE IF NOT EXISTS "Spaces" (
+            "Id" TEXT NOT NULL CONSTRAINT "PK_Spaces" PRIMARY KEY,
+            "Name" TEXT NOT NULL,
+            "FolderPath" TEXT NULL,
+            "IsActive" INTEGER NOT NULL DEFAULT 0,
+            "LastPrompt" TEXT NOT NULL DEFAULT '',
+            "FinalOutput" TEXT NOT NULL DEFAULT '',
+            "CreatedAt" TEXT NOT NULL,
+            "UpdatedAt" TEXT NOT NULL
+        );
+        """;
+
+    /// <summary>v2.0.0: the saved conversation of every space.</summary>
+    private const string SpaceFeedTableDdl = """
+        CREATE TABLE IF NOT EXISTS "SpaceFeedEntries" (
+            "Id" TEXT NOT NULL CONSTRAINT "PK_SpaceFeedEntries" PRIMARY KEY,
+            "SpaceId" TEXT NOT NULL,
+            "Ordinal" INTEGER NOT NULL,
+            "Kind" TEXT NOT NULL,
+            "AgentName" TEXT NOT NULL DEFAULT '',
+            "Text" TEXT NOT NULL DEFAULT '',
+            "ToolName" TEXT NULL,
+            "Failed" INTEGER NOT NULL DEFAULT 0,
+            "Pending" INTEGER NOT NULL DEFAULT 0,
+            "StepsJson" TEXT NOT NULL DEFAULT '[]',
+            "Title" TEXT NOT NULL DEFAULT '',
+            "CreatedAt" TEXT NOT NULL,
+            CONSTRAINT "FK_SpaceFeedEntries_Spaces_SpaceId" FOREIGN KEY ("SpaceId")
+                REFERENCES "Spaces" ("Id") ON DELETE CASCADE
+        );
+        """;
+
+    private const string SpaceIndexesDdl = """
+        CREATE INDEX IF NOT EXISTS "IX_Spaces_IsActive" ON "Spaces" ("IsActive");
+        CREATE INDEX IF NOT EXISTS "IX_SpaceFeedEntries_SpaceId_Ordinal"
+            ON "SpaceFeedEntries" ("SpaceId", "Ordinal");
         """;
 
     /// <summary>v1.0.16: the LLM connection columns, added to an existing row without touching it.</summary>
@@ -108,6 +151,22 @@ public static class SchemaUpgrader
                 var settingsColumns = await ReadColumnsAsync(connection, "UserSettings", cancellationToken);
                 await AddMissingAsync(connection, "UserSettings", UserSettingsColumns, settingsColumns, logger, cancellationToken);
             }
+
+            // v2.0.0 — persistent workspaces. Both tables and their indexes are created on an
+            // existing database; a fresh one already has them from EnsureCreated.
+            if (!await TableExistsAsync(connection, "Spaces", cancellationToken))
+            {
+                await ExecuteAsync(connection, SpacesTableDdl, cancellationToken);
+                logger.LogInformation("Schema upgrade: created Spaces table");
+            }
+
+            if (!await TableExistsAsync(connection, "SpaceFeedEntries", cancellationToken))
+            {
+                await ExecuteAsync(connection, SpaceFeedTableDdl, cancellationToken);
+                logger.LogInformation("Schema upgrade: created SpaceFeedEntries table");
+            }
+
+            await ExecuteAsync(connection, SpaceIndexesDdl, cancellationToken);
         }
         finally
         {

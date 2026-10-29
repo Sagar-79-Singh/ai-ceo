@@ -35,6 +35,7 @@ public sealed class AgentOrchestrator
     private readonly WorkspaceService _workspace;
     private readonly LlmSetupProvider _setup;
     private readonly OmniRouteOptions _options;
+    private readonly ApprovalCoordinator _approvals;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     public AgentOrchestrator(
@@ -44,7 +45,8 @@ public sealed class AgentOrchestrator
         WorkspaceService workspace,
         LlmSetupProvider setup,
         IOptions<OmniRouteOptions> options,
-        ILogger<AgentOrchestrator> logger)
+        ILogger<AgentOrchestrator> logger,
+        ApprovalCoordinator? approvals = null)
     {
         _factory = factory;
         _llm = llm;
@@ -52,6 +54,10 @@ public sealed class AgentOrchestrator
         _workspace = workspace;
         _setup = setup;
         _options = options.Value;
+
+        // v2.0.0: no coordinator means "no UI attached", which approves every call immediately —
+        // exactly the pre-approval behaviour the tests and --self-test rely on.
+        _approvals = approvals ?? new ApprovalCoordinator();
         _logger = logger;
     }
 
@@ -324,6 +330,7 @@ public sealed class AgentOrchestrator
 
         var toolCallsUsed = 0;
         var finalText = new StringBuilder();
+        var rejections = new List<string>();
 
         for (var round = 1; round <= MaxToolRounds; round++)
         {
@@ -347,9 +354,7 @@ public sealed class AgentOrchestrator
 
             if (!reply.WantsTools)
             {
-                return finalText.Length > 0
-                    ? finalText.ToString().Trim()
-                    : "(the worker finished without a summary)";
+                return ComposeWorkerOutput(finalText, rejections);
             }
 
             messages.Add(new LlmAssistantMessage(reply.Text, reply.ToolCalls));
@@ -378,6 +383,19 @@ public sealed class AgentOrchestrator
 
                 toolCallsUsed++;
                 await LogAsync(db, task, worker.Name, LogActions.Tool, call.ArgumentsJson, onLog, cancellationToken, call.Name);
+
+                // v2.0.0: a write or a command stops here until the user says yes. The loop is
+                // parked — no other worker runs, and nothing touches the disk meanwhile, because the
+                // topology is strictly sequential.
+                var decision = await RequestApprovalAsync(db, task, worker, call, rejections, onLog, cancellationToken);
+
+                if (!decision.Approved)
+                {
+                    // The refusal travels back to the model as the tool result, so the worker (and
+                    // through it the CEO) can plan a different approach instead of retrying blindly.
+                    messages.Add(new LlmToolMessage(call.Id, RejectionContent(call.Name, decision).ToToolContent()));
+                    continue;
+                }
 
                 var result = await _tools.ExecuteAsync(call.Name, call.ArgumentsJson, cancellationToken);
 
@@ -429,10 +447,108 @@ public sealed class AgentOrchestrator
             finalText.AppendLine(wrapUp.Text);
         }
 
-        return finalText.Length > 0
-            ? finalText.ToString().Trim()
-            : "(the worker hit the tool-round limit without a summary)";
+        if (finalText.Length == 0)
+        {
+            finalText.AppendLine("(the worker hit the tool-round limit without a summary)");
+        }
+
+        return ComposeWorkerOutput(finalText, rejections);
     }
+
+    /// <summary>
+    /// The worker's answer plus the user's decisions, so the CEO always learns that an action was
+    /// refused — even when the worker forgot to mention it.
+    /// </summary>
+    private static string ComposeWorkerOutput(StringBuilder finalText, IReadOnlyList<string> rejections)
+    {
+        var output = new StringBuilder(finalText.ToString().Trim());
+
+        if (rejections.Count > 0)
+        {
+            output.AppendLine();
+            output.AppendLine();
+            output.AppendLine("Actions the user rejected (do NOT repeat them unchanged):");
+            foreach (var rejection in rejections)
+            {
+                output.AppendLine("- " + rejection);
+            }
+        }
+
+        return output.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Asks the user before a write or a command. Returns an approval immediately when the tool is
+    /// read-only or when nothing is attached to answer (tests, headless runs).
+    /// </summary>
+    private async Task<ApprovalDecision> RequestApprovalAsync(
+        AppDbContext db,
+        TaskItem task,
+        Agent worker,
+        LlmToolCallRequest call,
+        List<string> rejections,
+        Func<TaskLog, Task>? onLog,
+        CancellationToken cancellationToken)
+    {
+        if (!ApprovalPolicy.Requires(call.Name) || !_approvals.ShouldAsk)
+        {
+            return ApprovalDecision.Approve();
+        }
+
+        PendingApproval request;
+
+        try
+        {
+            request = await _tools.DescribeAsync(worker.Name, task.Id, call.Name, call.ArgumentsJson, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Could not build the approval preview for {Tool}", call.Name);
+
+            request = new PendingApproval
+            {
+                TaskId = task.Id,
+                AgentName = worker.Name,
+                ToolName = call.Name,
+                ArgumentsJson = call.ArgumentsJson ?? string.Empty,
+                Target = call.Name,
+                Preview = call.ArgumentsJson ?? string.Empty,
+                Summary = $"Run {call.Name}"
+            };
+        }
+
+        await LogAsync(db, task, worker.Name, LogActions.Approval, request.Preview, onLog, cancellationToken, request.ToolName);
+
+        var decision = await _approvals.RequestAsync(request, cancellationToken);
+
+        await LogAsync(
+            db,
+            task,
+            worker.Name,
+            LogActions.ApprovalResult,
+            decision.Approved
+                ? $"approved · {request.Summary}"
+                : $"rejected · {decision.Reason}",
+            onLog,
+            cancellationToken,
+            request.ToolName);
+
+        if (!decision.Approved)
+        {
+            rejections.Add($"{request.Summary} — {decision.Reason}");
+        }
+
+        return decision;
+    }
+
+    /// <summary>What the model sees when the user refuses a call.</summary>
+    private static ToolResult RejectionContent(string toolName, ApprovalDecision decision)
+        => ToolResult.Failure(
+            toolName,
+            $"The user REJECTED this call, so it was NOT executed. Reason: {decision.Reason} "
+            + "Do not retry the same action unchanged. Either propose a different approach "
+            + "(another path, another command, a smaller change) or explain the limitation in your "
+            + "final answer so the CEO can plan around it.");
 
     /// <summary>
     /// Drops old assistant/tool rounds so long tool sessions stay inside the context window, while

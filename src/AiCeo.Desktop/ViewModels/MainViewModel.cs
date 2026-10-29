@@ -16,6 +16,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly AgentOrchestrator _orchestrator;
     private readonly AgentHealthService _health;
     private readonly WorkspaceService _workspace;
+    private readonly SpaceService _spaces;
+    private readonly ApprovalCoordinator _approvals;
     private readonly IWorkspacePicker _picker;
     private readonly AppRuntimeInfo _runtime;
     private readonly ILogger<MainViewModel> _logger;
@@ -34,12 +36,17 @@ public sealed class MainViewModel : ObservableObject
     private bool _bannerIsError;
     private CancellationTokenSource? _runCts;
     private bool _initialised;
+    private IReadOnlyList<SpaceView> _spaceList = Array.Empty<SpaceView>();
+    private SpaceView? _activeSpace;
+    private bool _isSpaceManagerOpen;
 
     public MainViewModel(
         AgentDirectory directory,
         AgentOrchestrator orchestrator,
         AgentHealthService health,
         WorkspaceService workspace,
+        SpaceService spaces,
+        ApprovalCoordinator approvals,
         IWorkspacePicker picker,
         AppRuntimeInfo runtime,
         ILogger<MainViewModel> logger)
@@ -48,6 +55,8 @@ public sealed class MainViewModel : ObservableObject
         _orchestrator = orchestrator;
         _health = health;
         _workspace = workspace;
+        _spaces = spaces;
+        _approvals = approvals;
         _picker = picker;
         _runtime = runtime;
         _logger = logger;
@@ -276,6 +285,176 @@ public sealed class MainViewModel : ObservableObject
 
     internal Task NexusSetToolsAsync(bool enabled) => PersistToolsAsync(enabled);
 
+    // ----------------------------------------------------------------- v2.0.0 spaces (Nexus)
+
+    /// <summary>Every saved space, most recently used first.</summary>
+    public IReadOnlyList<SpaceView> Spaces => _spaceList;
+
+    /// <summary>The space the window is showing, or <c>null</c> when none exists yet.</summary>
+    public SpaceView? ActiveSpace => _activeSpace;
+
+    public string ActiveSpaceName => _activeSpace?.Name ?? "No space";
+
+    public bool HasActiveSpace => _activeSpace is not null;
+
+    /// <summary>True while the Nexus workspace manager is on screen.</summary>
+    public bool IsSpaceManagerOpen
+    {
+        get => _isSpaceManagerOpen;
+        private set => SetProperty(ref _isSpaceManagerOpen, value);
+    }
+
+    internal void NexusOpenSpaceManager() => IsSpaceManagerOpen = true;
+
+    internal void NexusCloseSpaceManager() => IsSpaceManagerOpen = false;
+
+    /// <summary>Creates a space in the folder that is selected right now.</summary>
+    internal async Task NexusCreateSpaceAsync(string name)
+    {
+        if (IsRunning)
+        {
+            return;
+        }
+
+        await CreateSpaceCoreAsync(name, _workspaceView.RootPath);
+    }
+
+    /// <summary>Creates a space in a folder the user picks in the native dialog.</summary>
+    internal async Task NexusCreateSpaceFromFolderAsync(string name)
+    {
+        if (IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            var picked = await _picker.PickFolderAsync();
+
+            if (picked.Error is not null)
+            {
+                SetBanner(picked.Error, isError: true);
+                return;
+            }
+
+            if (!picked.Selected || string.IsNullOrWhiteSpace(picked.Path))
+            {
+                return;
+            }
+
+            await CreateSpaceCoreAsync(name, picked.Path);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Failed to create a space from a folder");
+            SetBanner("Could not create the space: " + exception.Message, isError: true);
+        }
+    }
+
+    /// <summary>Switches the window to another space: folder first, then its conversation.</summary>
+    internal async Task NexusSelectSpaceAsync(Guid id)
+    {
+        if (IsRunning || _activeSpace?.Id == id)
+        {
+            return;
+        }
+
+        try
+        {
+            await PersistConversationAsync();
+
+            var activated = await _spaces.ActivateAsync(id);
+            if (activated is null)
+            {
+                SetBanner("That space no longer exists.", isError: true);
+                await ReloadSpacesAsync();
+                return;
+            }
+
+            await ReloadSpacesAsync();
+            await ApplySpaceAsync(activated, restoreFeed: true, refreshWorkspace: true);
+
+            SetBanner($"Switched to \"{activated.Name}\"{DescribeFolder(activated)}.", isError: false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Failed to switch space");
+            SetBanner("Could not switch space: " + exception.Message, isError: true);
+        }
+    }
+
+    internal async Task NexusDeleteSpaceAsync(Guid id)
+    {
+        if (IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            var name = _spaceList.FirstOrDefault(space => space.Id == id)?.Name ?? "space";
+
+            if (!await _spaces.DeleteAsync(id))
+            {
+                await ReloadSpacesAsync();
+                return;
+            }
+
+            _activeSpace = null;
+            await ReloadSpacesAsync();
+
+            var next = _spaceList.FirstOrDefault(space => space.IsActive) ?? _spaceList.FirstOrDefault();
+
+            if (next is null)
+            {
+                Feed.Clear();
+                CurrentPrompt = null;
+                FinalOutput = null;
+                OnPropertyChanged(nameof(ShowEmptyState));
+                _activeSpace = null;
+            }
+            else
+            {
+                await ApplySpaceAsync(next, restoreFeed: true, refreshWorkspace: true);
+            }
+
+            SetBanner($"Space \"{name}\" deleted.", isError: false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Failed to delete space");
+            SetBanner("Could not delete the space: " + exception.Message, isError: true);
+        }
+    }
+
+    /// <summary>Saves the on-screen conversation into the active space (called after every run).</summary>
+    internal async Task NexusSaveConversationAsync() => await PersistConversationAsync();
+
+    /// <summary>Reloads the active space's conversation (used by the smoke test and on demand).</summary>
+    internal async Task NexusRestoreActiveSpaceAsync() => await RestoreActiveSpaceAsync();
+
+    // -------------------------------------------------------------- v2.0.0 approvals (Nexus)
+
+    /// <summary>True while a tool call is parked on the approval card.</summary>
+    public bool HasPendingApproval => _approvals.Current is not null;
+
+    /// <summary>Delivers the user's answer to the parked tool call.</summary>
+    internal bool NexusResolveApproval(Guid id, bool approved, string? reason)
+    {
+        var resolved = _approvals.Resolve(id, approved, reason);
+
+        OnPropertyChanged(nameof(HasPendingApproval));
+
+        return resolved;
+    }
+
+    /// <summary>Arms or disarms the approval gate for this session.</summary>
+    internal void NexusSetApprovalsEnabled(bool enabled)
+    {
+        _approvals.Enabled = enabled;
+        OnPropertyChanged(nameof(HasPendingApproval));
+    }
+
     internal AgentCardViewModel? FindAgent(Guid id) => Agents.FirstOrDefault(card => card.Id == id);
 
     internal Task NexusDeleteAgentAsync(AgentCardViewModel card) => ConfirmDeleteAsync(card);
@@ -300,6 +479,10 @@ public sealed class MainViewModel : ObservableObject
 
         await LoadAgentsAsync();
         await LoadWorkspaceAsync();
+
+        // v2.0.0: reopen the space that was open last, with its folder and its conversation.
+        await RestoreActiveSpaceAsync();
+
         await RefreshHealthAsync();
 
         _initialised = true;
@@ -391,8 +574,8 @@ public sealed class MainViewModel : ObservableObject
             }
 
             _workspaceView = await _workspace.SetPathAsync(picked.Path);
-            OnPropertyChanged(nameof(WorkspacePath), nameof(WorkspaceStatusText), nameof(WorkspaceProblem), nameof(HasWorkspaceProblem), nameof(HasWorkspace));
-            ClearWorkspaceCommand.RaiseCanExecuteChanged();
+            OnWorkspaceChanged();
+            await SyncActiveSpaceFolderAsync(_workspaceView.RootPath);
 
             SetBanner($"Workspace set to {_workspaceView.DisplayPath}. Agents can only touch files inside this folder.", isError: false);
         }
@@ -413,8 +596,8 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _workspaceView = await _workspace.SetPathAsync(null);
-            OnPropertyChanged(nameof(WorkspacePath), nameof(WorkspaceStatusText), nameof(WorkspaceProblem), nameof(HasWorkspaceProblem), nameof(HasWorkspace));
-            ClearWorkspaceCommand.RaiseCanExecuteChanged();
+            OnWorkspaceChanged();
+            await SyncActiveSpaceFolderAsync(null);
 
             SetBanner("Workspace cleared. File and terminal tools stay off until you pick a folder.", isError: false);
         }
@@ -617,6 +800,10 @@ public sealed class MainViewModel : ObservableObject
         {
             IsRunning = false;
             OnPropertyChanged(nameof(ShowEmptyState));
+
+            // v2.0.0: the conversation belongs to the active space and survives a restart.
+            await PersistConversationAsync();
+
             _runCts?.Dispose();
             _runCts = null;
         }
@@ -625,7 +812,13 @@ public sealed class MainViewModel : ObservableObject
     private void OnFeedChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs args)
         => OnPropertyChanged(nameof(ShowEmptyState));
 
-    private void Stop() => _runCts?.Cancel();
+    private void Stop()
+    {
+        // v2.0.0: a parked tool call must not outlive the run. Answering every pending approval
+        // with a rejection lets the worker wind down (and tells the CEO why) instead of hanging.
+        _approvals.ResolveAll(false, "the run was stopped by the user.");
+        _runCts?.Cancel();
+    }
 
     private Task HandleLogAsync(TaskLog log)
     {
@@ -697,6 +890,27 @@ public sealed class MainViewModel : ObservableObject
                 CompleteDelegation(log.AgentName);
                 break;
 
+            case LogActions.Approval:
+                Feed.Add(new FeedItemViewModel
+                {
+                    Kind = FeedKind.Approval,
+                    AgentName = log.AgentName,
+                    ToolName = log.ToolName,
+                    Text = log.Content
+                });
+                break;
+
+            case LogActions.ApprovalResult:
+                Feed.Add(new FeedItemViewModel
+                {
+                    Kind = FeedKind.Note,
+                    AgentName = log.AgentName,
+                    ToolName = log.ToolName,
+                    Text = log.Content,
+                    Failed = log.Content.StartsWith("rejected", StringComparison.OrdinalIgnoreCase)
+                });
+                break;
+
             case LogActions.Error:
                 Feed.Add(new FeedItemViewModel
                 {
@@ -735,6 +949,231 @@ public sealed class MainViewModel : ObservableObject
             }
         }
     }
+
+    // ------------------------------------------------------------------- spaces (v2.0.0 internals)
+
+    /// <summary>
+    /// Reopening the app must land the user exactly where they left: the last active space, its
+    /// folder and the conversation that happened inside it.
+    /// </summary>
+    private async Task RestoreActiveSpaceAsync()
+    {
+        try
+        {
+            await ReloadSpacesAsync();
+
+            var active = _spaceList.FirstOrDefault(space => space.IsActive);
+
+            if (active is null)
+            {
+                _activeSpace = null;
+                OnPropertyChanged(nameof(ActiveSpace), nameof(ActiveSpaceName), nameof(HasActiveSpace));
+                return;
+            }
+
+            await ApplySpaceAsync(active, restoreFeed: true, refreshWorkspace: true);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Failed to restore the active space");
+            SetBanner("Could not restore the last space: " + exception.Message, isError: true);
+        }
+    }
+
+    private async Task ReloadSpacesAsync()
+    {
+        _spaceList = await _spaces.ListAsync();
+
+        OnPropertyChanged(nameof(Spaces), nameof(ActiveSpace), nameof(ActiveSpaceName), nameof(HasActiveSpace));
+    }
+
+    /// <summary>Points the window at a space: workspace root first, then the saved feed.</summary>
+    private async Task ApplySpaceAsync(SpaceView space, bool restoreFeed, bool refreshWorkspace)
+    {
+        _activeSpace = space;
+
+        if (refreshWorkspace && space.HasFolder && Directory.Exists(space.FolderPath!))
+        {
+            _workspaceView = await _workspace.SetPathAsync(space.FolderPath);
+            _suppressToolPersist = true;
+            ToolsEnabled = _workspaceView.ToolsEnabled;
+            _suppressToolPersist = false;
+            OnWorkspaceChanged();
+        }
+
+        OnPropertyChanged(nameof(ActiveSpace), nameof(ActiveSpaceName), nameof(HasActiveSpace));
+
+        if (!restoreFeed)
+        {
+            return;
+        }
+
+        var snapshot = await _spaces.LoadConversationAsync(space.Id);
+
+        Feed.Clear();
+
+        if (snapshot is not null)
+        {
+            foreach (var item in snapshot.Feed)
+            {
+                Feed.Add(FromSpaceItem(item));
+            }
+
+            CurrentPrompt = string.IsNullOrWhiteSpace(snapshot.LastPrompt) ? null : snapshot.LastPrompt;
+            FinalOutput = string.IsNullOrWhiteSpace(snapshot.FinalOutput) ? null : snapshot.FinalOutput;
+        }
+        else
+        {
+            CurrentPrompt = null;
+            FinalOutput = null;
+        }
+
+        OnPropertyChanged(nameof(ShowEmptyState));
+    }
+
+    /// <summary>Writes the conversation currently on screen into the active space.</summary>
+    private async Task PersistConversationAsync()
+    {
+        if (_activeSpace is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _spaces.SaveConversationAsync(
+                _activeSpace.Id,
+                CurrentPrompt,
+                FinalOutput,
+                Feed.Select(ToSpaceItem).ToList());
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Losing the history is not a reason to break the run that produced it.
+            _logger.LogWarning(exception, "Could not save the conversation of space {Space}", _activeSpace.Name);
+        }
+    }
+
+    private async Task CreateSpaceCoreAsync(string name, string? folderPath)
+    {
+        try
+        {
+            await PersistConversationAsync();
+
+            var created = await _spaces.CreateAsync(name, folderPath);
+
+            if (!string.IsNullOrWhiteSpace(folderPath))
+            {
+                _workspaceView = await _workspace.SetPathAsync(folderPath);
+                OnWorkspaceChanged();
+            }
+
+            await ReloadSpacesAsync();
+            await ApplySpaceAsync(created, restoreFeed: true, refreshWorkspace: false);
+
+            SetBanner($"Space \"{created.Name}\" created{DescribeFolder(created)}. Its folder is the sandbox.", isError: false);
+        }
+        catch (ArgumentException exception)
+        {
+            SetBanner(exception.Message, isError: true);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogError(exception, "Failed to create a space");
+            SetBanner("Could not create the space: " + exception.Message, isError: true);
+        }
+    }
+
+    /// <summary>Keeps the active space's folder equal to the workspace the user selected.</summary>
+    private async Task SyncActiveSpaceFolderAsync(string? folderPath)
+    {
+        if (_activeSpace is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var updated = await _spaces.SetFolderAsync(_activeSpace.Id, folderPath);
+
+            if (updated is not null)
+            {
+                _activeSpace = updated;
+                await ReloadSpacesAsync();
+            }
+        }
+        catch (ArgumentException exception)
+        {
+            SetBanner(exception.Message, isError: true);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogWarning(exception, "Could not update the space folder");
+        }
+    }
+
+    private void OnWorkspaceChanged()
+    {
+        OnPropertyChanged(
+            nameof(WorkspacePath),
+            nameof(WorkspaceRootPath),
+            nameof(WorkspaceStatusText),
+            nameof(WorkspaceProblem),
+            nameof(HasWorkspaceProblem),
+            nameof(HasWorkspace));
+        ClearWorkspaceCommand.RaiseCanExecuteChanged();
+        SelectWorkspaceCommand.RaiseCanExecuteChanged();
+    }
+
+    private static string DescribeFolder(SpaceView space)
+        => space.HasFolder ? $" · {space.FolderPath}" : " · no folder yet";
+
+    /// <summary>The live feed item as it is stored in a space.</summary>
+    private static SpaceFeedItem ToSpaceItem(FeedItemViewModel item) => new(
+        Kind: item.Kind switch
+        {
+            FeedKind.Plan => "plan",
+            FeedKind.Delegation => "delegation",
+            FeedKind.ToolCall => "tool_call",
+            FeedKind.ToolResult => "tool_result",
+            FeedKind.Result => "result",
+            FeedKind.Error => "error",
+            FeedKind.Approval => "approval",
+            _ => "note"
+        },
+        AgentName: item.AgentName,
+        Text: item.Text,
+        ToolName: item.ToolName,
+        Failed: item.Failed,
+        Pending: item.IsPending,
+        Title: item.Kind == FeedKind.Delegation ? item.DelegationTitle : item.ToolStateText,
+        Steps: item.Steps
+            .Select(step => new SpaceStep(step.Index, step.Role, step.Instructions))
+            .ToList());
+
+    /// <summary>A stored line as the feed renders it.</summary>
+    private static FeedItemViewModel FromSpaceItem(SpaceFeedItem item) => new()
+    {
+        Kind = item.Kind switch
+        {
+            "plan" => FeedKind.Plan,
+            "delegation" => FeedKind.Delegation,
+            "tool_call" => FeedKind.ToolCall,
+            "tool_result" => FeedKind.ToolResult,
+            "result" => FeedKind.Result,
+            "error" => FeedKind.Error,
+            "approval" => FeedKind.Approval,
+            _ => FeedKind.Note
+        },
+        AgentName = item.AgentName,
+        Text = item.Text,
+        ToolName = item.ToolName,
+        Failed = item.Failed,
+        IsPending = item.Pending,
+        Steps = item.Steps
+            .Select(step => new PlanStepViewModel(step.Index, step.Role, step.Instructions))
+            .ToList()
+    };
 
     // ------------------------------------------------------------------------------------ banner
 

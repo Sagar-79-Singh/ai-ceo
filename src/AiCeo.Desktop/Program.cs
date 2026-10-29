@@ -5,6 +5,7 @@ using AiCeo.Desktop.Nexus;
 using AiCeo.Desktop.ViewModels;
 using AiCeo.Models;
 using AiCeo.Services;
+using AiCeo.Tools;
 using Microsoft.Extensions.Logging;
 using Photino.NET;
 
@@ -147,6 +148,7 @@ internal static class Program
         private readonly NexusPresenter _presenter;
         private readonly MainViewModel _viewModel;
         private readonly LlmSetupProvider _connection;
+        private readonly ApprovalCoordinator _approvals;
         private readonly TaskCompletionSource<bool> _backendReady =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly string _page;
@@ -164,6 +166,8 @@ internal static class Program
                 AppBootstrap.GetRequiredService<AgentOrchestrator>(),
                 AppBootstrap.GetRequiredService<AgentHealthService>(),
                 AppBootstrap.GetRequiredService<WorkspaceService>(),
+                AppBootstrap.GetRequiredService<SpaceService>(),
+                AppBootstrap.GetRequiredService<ApprovalCoordinator>(),
                 new PhotinoWorkspacePicker(() => window),
                 AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                 AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
@@ -179,11 +183,13 @@ internal static class Program
             window = Window;
 
             _connection = AppBootstrap.GetRequiredService<LlmSetupProvider>();
+            _approvals = AppBootstrap.GetRequiredService<ApprovalCoordinator>();
 
             _presenter = new NexusPresenter(
                 _viewModel,
                 AppBootstrap.GetRequiredService<UserSettingsService>(),
                 _connection,
+                _approvals,
                 AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                 SendToPage);
 
@@ -432,7 +438,108 @@ internal static class Program
                 ok = false;
             }
 
+            // v2.0.0: a space is a named workspace; creating one must persist it, make it active and
+            // appear in the snapshot the header dropdown is painted from.
+            await _presenter.HandleMessageAsync("{\"type\":\"createSpace\",\"name\":\"Smoke Space\"}");
+
+            var spaceJson = _presenter.BuildState();
+            var space = _viewModel.Spaces.FirstOrDefault(candidate => candidate.Name == "Smoke Space");
+            var spacesOk = space is not null
+                && space.IsActive
+                && spaceJson.Contains("\"activeSpaceId\":\"" + space.Id + "\"", StringComparison.Ordinal)
+                && spaceJson.Contains("\"spaces\":", StringComparison.Ordinal);
+
+            Say($"UI SMOKE: spaces round-trip = {spacesOk} (space: {space?.Name ?? "none"})");
+
+            if (!spacesOk)
+            {
+                Say("UI SMOKE FAILED: creating a space did not persist or publish it");
+                ok = false;
+            }
+
+            // The conversation belongs to the space: saving, clearing and restoring must bring it back.
+            _viewModel.Feed.Add(new FeedItemViewModel
+            {
+                Kind = FeedKind.Result,
+                AgentName = "Smoke",
+                Text = "restored line"
+            });
+
+            await _viewModel.NexusSaveConversationAsync();
+            _viewModel.Feed.Clear();
+            await _viewModel.NexusRestoreActiveSpaceAsync();
+
+            var restored = _viewModel.Feed.Any(item => item.Text == "restored line");
+            Say($"UI SMOKE: conversation restore = {restored} ({_viewModel.Feed.Count} lines)");
+
+            if (!restored)
+            {
+                Say("UI SMOKE FAILED: the space did not restore its conversation");
+                ok = false;
+            }
+
+            // v2.0.0: a write or a command parks until the page answers.
+            var approvalsOk = await VerifyApprovalAsync();
+            Say($"UI SMOKE: approval round-trip = {approvalsOk}");
+
+            if (!approvalsOk)
+            {
+                Say("UI SMOKE FAILED: the approval gate did not park and resolve a tool call");
+                ok = false;
+            }
+
+            // Leave the database the way we found it: a second smoke run must not trip over its
+            // own space name, and the user's real spaces must stay untouched.
+            if (space is not null)
+            {
+                await _presenter.HandleMessageAsync(
+                    "{\"type\":\"deleteSpace\",\"id\":\"" + space.Id + "\"}");
+            }
+
             return ok;
+        }
+
+        /// <summary>
+        /// Parks a synthetic <c>run_command</c>, asserts that it is waiting (and published in the
+        /// snapshot), rejects it and checks that the rejection reason comes back to the caller.
+        /// </summary>
+        private async Task<bool> VerifyApprovalAsync()
+        {
+            if (_approvals.Current is not null)
+            {
+                return false;
+            }
+
+            var request = new AiCeo.Models.PendingApproval
+            {
+                TaskId = Guid.NewGuid(),
+                AgentName = "Smoke",
+                ToolName = ToolCatalog.RunCommand,
+                ArgumentsJson = "{\"command\":\"echo smoke\"}",
+                Target = "echo smoke",
+                Preview = "$ echo smoke",
+                Summary = "Run a terminal command"
+            };
+
+            Task<ApprovalDecision> pending = _approvals.RequestAsync(request);
+
+            // A call that must be approved may not complete on its own.
+            if (pending.IsCompleted)
+            {
+                return false;
+            }
+
+            var parked = _approvals.Current?.Id == request.Id
+                && _presenter.BuildState().Contains(request.Id.ToString(), StringComparison.Ordinal);
+
+            var resolved = _approvals.Resolve(request.Id, approved: false, reason: "smoke test rejection");
+            var decision = await pending;
+
+            return parked
+                && resolved
+                && !decision.Approved
+                && decision.Reason == "smoke test rejection"
+                && _approvals.Current is null;
         }
     }
 

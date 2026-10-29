@@ -19,6 +19,11 @@ public class AppDbContext : DbContext
 
     public DbSet<UserSettings> UserSettings { get; set; } = null!;
 
+    /// <summary>v2.0.0: the named workspaces and their saved conversations.</summary>
+    public DbSet<Space> Spaces { get; set; } = null!;
+
+    public DbSet<SpaceFeedEntry> SpaceFeedEntries { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -65,6 +70,34 @@ public class AppDbContext : DbContext
             entity.Property(row => row.BaseUrl).HasMaxLength(500);
             entity.Property(row => row.ApiKey).HasMaxLength(500);
             entity.Property(row => row.ModelId).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<Space>(entity =>
+        {
+            entity.ToTable("Spaces");
+            entity.HasKey(space => space.Id);
+            entity.Property(space => space.Name).HasMaxLength(60).IsRequired();
+            entity.Property(space => space.FolderPath).HasMaxLength(1000);
+            entity.Property(space => space.IsActive);
+            entity.HasIndex(space => space.IsActive);
+
+            // Deleting a space deletes the conversation that belongs to it.
+            entity.HasMany(space => space.Feed)
+                .WithOne(entry => entry.Space)
+                .HasForeignKey(entry => entry.SpaceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SpaceFeedEntry>(entity =>
+        {
+            entity.ToTable("SpaceFeedEntries");
+            entity.HasKey(entry => entry.Id);
+            entity.Property(entry => entry.Kind).HasMaxLength(32).IsRequired();
+            entity.Property(entry => entry.AgentName).HasMaxLength(120);
+            entity.Property(entry => entry.ToolName).HasMaxLength(64);
+            entity.Property(entry => entry.Title).HasMaxLength(200);
+            entity.Property(entry => entry.StepsJson).IsRequired();
+            entity.HasIndex(entry => new { entry.SpaceId, entry.Ordinal });
         });
 
         modelBuilder.Entity<TaskItem>(entity =>

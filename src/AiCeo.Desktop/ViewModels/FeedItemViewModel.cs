@@ -9,7 +9,10 @@ public enum FeedKind
     ToolResult,
     Result,
     Error,
-    Note
+    Note,
+
+    /// <summary>v2.0.0: a write or a command is waiting for the user's decision.</summary>
+    Approval
 }
 
 /// <summary>One rendered line of the execution feed.</summary>
@@ -58,6 +61,8 @@ public sealed class FeedItemViewModel : ObservableObject
 
     public bool ShowNote => Kind == FeedKind.Note;
 
+    public bool ShowApproval => Kind == FeedKind.Approval;
+
     public bool HasSteps => Steps.Count > 0;
 
     public bool ShowPlanRaw => Kind == FeedKind.Plan && Steps.Count == 0;
@@ -70,6 +75,7 @@ public sealed class FeedItemViewModel : ObservableObject
     {
         FeedKind.ToolCall => AgentName,
         FeedKind.ToolResult => Failed ? "refused / failed" : "result",
+        FeedKind.Approval => "waiting for your approval",
         _ => string.Empty
     };
 
@@ -77,6 +83,7 @@ public sealed class FeedItemViewModel : ObservableObject
     {
         FeedKind.Plan => "CEO plan",
         FeedKind.Result => "worker result",
+        FeedKind.Approval => "approval",
         _ => AgentName
     };
 }

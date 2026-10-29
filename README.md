@@ -4,7 +4,8 @@ A **cross-platform desktop** AI orchestrator written in **C# / .NET 10**, hosted
 native OS window around the **Nexus** interface, a live HTML/WebGL console rendered by the operating
 system's own WebView (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux) — no browser
 tab, no local web server, no bundled UI toolkit, no Node.js. It runs a strict star topology of agents
-that can read, write and build inside a folder **you** choose. Windows users can grab the native
+that can read, write and build inside a folder **you** choose — and, since v2.0.0, **nothing is
+written and no command is run until you press Approve**. Windows users can grab the native
 installer, and the whole console can be re-themed (dark / light / system, five accent colours, three
 text sizes) from the settings modal.
 
@@ -15,22 +16,21 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v1.0.16 — first-run setup, readable output, versioned file names
+## What's new in v2.0.0 — human-in-the-loop approvals, persistent workspaces, clean releases
 
 | Area | Change |
 | --- | --- |
-| **No hardcoded key or model** | The seeded OmniRoute key/model, the `DefaultModel` catalog entries, the seeded `ModelId` values and `FallbackApiKey` are gone. `LlmSetupProvider` is the only source of provider, base URL, key and model — and a fresh install starts with none of them. |
-| **Blocking first-run setup** | On launch, if no key **and** model are stored, the console sits behind a setup sheet asking for **provider** (OmniRoute, OpenAI, Gemini, custom), **base URL**, **API key** and **model**. Saving writes them to the `UserSettings` row in `aiceo.db` (`SchemaUpgrader` adds `Provider`, `BaseUrl`, `ApiKey`, `ModelId`) and unlocks the UI in the same snapshot. |
-| **Nothing runs unconfigured** | `AgentOrchestrator` refuses to start a run — before any token is spent — and the health probe reports *not configured* instead of dialling a provider with a key that does not exist. |
-| **Connection in Settings** | Settings → **Connection** shows the masked key, provider, base URL and model, and reopens the same sheet at any time. A blank key keeps the stored one; a blank base URL uses the provider default. |
-| **Readable output** | The final-answer card and all feed cards are solid `bg-obsidian-850/95` (they used to be a 5 %-tinted surface over the WebGL canvas), the prompt placeholder is `placeholder-slate-400` at full opacity, and body text is pinned at `text-slate-100` / `text-opacity-100`. |
-| **Versioned release file names** | Every asset carries the version: `AiCeo-win-x64-v1.0.16.exe`, `Setup-win-arm64-v1.0.16.exe`, `AiCeo-linux-arm64-v1.0.16.deb`, `AiCeo-osx-x64-v1.0.16.dmg`. The release job fails if `release.yml`, the `.csproj`, `installer.iss` and the Nexus badge disagree. |
-| **Version** | `1.0.16` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge, the release notes and every asset name. |
+| **Approve before it touches anything** | Every `write_file` and `run_command` a worker asks for now **parks the orchestrator** before it executes. `ApprovalCoordinator` publishes a `PendingApproval` (tool, agent, target, and the arguments), the Nexus page renders an amber **Approval Card** with a real line diff (or the exact command line), and the run continues only when you press **Approve**. |
+| **Reject with a reason** | **Reject** aborts that single call — nothing is written, nothing is executed — and the reason travels back to the worker as the tool result, with a "do not retry unchanged" instruction. `ComposeWorkerOutput` also appends an *Actions the user rejected* block, so the CEO always learns what was refused and plans around it. |
+| **Arm / disarm** | Workspace panel → *Ask before every write or command* (on by default) posts `setApprovals`; with it off the swarm behaves exactly as it did in v1.0.16. Stopping a run or closing the window resolves every parked call, so a rejection reason always reaches the model instead of hanging. |
+| **Persistent workspaces ("Spaces")** | `Space` + `SpaceService` store a **name**, a **folder** and the **whole conversation** (prompt, final answer, every feed line, plan steps) in SQLite. The header gains a space dropdown and a **Workspace manager** to create a space (with the current folder or the native picker), switch between them and delete one. |
+| **Reopen where you left off** | On launch the last active space is restored — its folder becomes the sandbox root again and its feed is repainted from `SpaceFeedEntries`, so a conversation survives closing the app. Deleting the active space promotes the most recently used survivor. |
+| **Cleaner releases** | The release body is now a short summary, the download table and the SmartScreen note. GitHub's generated commit changelog is switched off (`generate_release_notes: false`), and the Claude Code / `Co-Authored-By` trailer stays in the **commit**, not in the published notes. |
+| **Version** | `2.0.0` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge (`v2.0.0`), `release.yml`'s `PRODUCT_VERSION` and every asset name. |
 
 ### Older releases
+- **v1.0.16** — no hardcoded key or model, blocking first-run connection sheet, readable feed/final-answer surfaces, versioned asset names.
 - **v1.0.15** — Avalonia removed; PhotinoX hosts the OS WebView (WebView2 / WKWebView / WebKitGTK 4.1), native messaging, native folder picker, no VC++ prerequisite.
-
-### Older releases
 - **v1.0.13** — the window always appears: window built and assigned first, `PresentWindow()` show/activate contract, fully asynchronous WebView2 initialisation.
 - **v1.0.12** — start-up reverted to the v1.0.8 code; stock installer wizard with OS-aware WebView2 (109 on Windows 7/8/8.1) and VC++ checks; `.deb` depends on `libgtk-3-0` + `libwebkit2gtk-4.1-0`; `.dmg` targets macOS 10.13+.
 - **v1.0.11** — explicit show/activate start-up path and Claude release attribution (the window path was reverted in v1.0.12).
@@ -52,17 +52,17 @@ Download one file from the **Releases** page and run it.
 
 | Platform | Installer | Portable |
 | --- | --- | --- |
-| **Windows x64 (recommended)** | `Setup-win-x64-v1.0.16.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v1.0.16.exe` |
-| Windows x86 | `Setup-win-x86-v1.0.16.exe` | `AiCeo-win-x86-v1.0.16.exe` |
-| Windows ARM64 | `Setup-win-arm64-v1.0.16.exe` | `AiCeo-win-arm64-v1.0.16.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v1.0.16.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v1.0.16.tar.gz` |
-| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v1.0.16.deb` | `AiCeo-linux-arm64-v1.0.16.tar.gz` |
-| macOS Intel | `AiCeo-osx-x64-v1.0.16.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v1.0.16.tar.gz` |
-| macOS Apple Silicon | `AiCeo-osx-arm64-v1.0.16.dmg` | `AiCeo-osx-arm64-v1.0.16.tar.gz` |
+| **Windows x64 (recommended)** | `Setup-win-x64-v2.0.0.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v2.0.0.exe` |
+| Windows x86 | `Setup-win-x86-v2.0.0.exe` | `AiCeo-win-x86-v2.0.0.exe` |
+| Windows ARM64 | `Setup-win-arm64-v2.0.0.exe` | `AiCeo-win-arm64-v2.0.0.exe` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v2.0.0.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v2.0.0.tar.gz` |
+| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v2.0.0.deb` | `AiCeo-linux-arm64-v2.0.0.tar.gz` |
+| macOS Intel | `AiCeo-osx-x64-v2.0.0.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v2.0.0.tar.gz` |
+| macOS Apple Silicon | `AiCeo-osx-arm64-v2.0.0.dmg` | `AiCeo-osx-arm64-v2.0.0.tar.gz` |
 
 Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
-`Setup-win-<arch>-v1.0.16.exe` checks its prerequisites before it copies anything:
+`Setup-win-<arch>-v2.0.0.exe` checks its prerequisites before it copies anything:
 
 - **Microsoft Edge WebView2 Runtime** — the Nexus interface draws itself with it. Windows 10/11 get
   the current Evergreen bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the
@@ -71,7 +71,7 @@ Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
   the WebView the system provides, so the redistributable is not a dependency of this build.
 - **.NET is not checked**: the executable is published with `--self-contained true`.
 
-> **32-bit Windows:** `AiCeo-win-x86-v1.0.16.exe` / `Setup-win-x86-v1.0.16.exe` still build and install, but the
+> **32-bit Windows:** `AiCeo-win-x86-v2.0.0.exe` / `Setup-win-x86-v2.0.0.exe` still build and install, but the
 > native window/WebView bridge PhotinoX ships is x64/ARM64 only, so the 32-bit build cannot open the
 > Nexus window — it says so in `crash.log` instead of failing obscurely. A 32-bit Windows 10
 > installation running on 64-bit hardware can and should use the **x64** build.
@@ -231,6 +231,8 @@ on macOS). Override with the `AICEO_DB_PATH` environment variable.
 - v1.0.4 → v1.0.5: creates `UserSettings` (`Theme`, `AccentColor`, `FontSize` stored as readable text)
 - v1.0.15 → v1.0.16: adds `UserSettings.Provider`, `BaseUrl`, `ApiKey`, `ModelId` — the LLM
   connection the first-run setup writes (an existing row keeps its theme and starts unconfigured)
+- v1.0.16 → v2.0.0: creates `Spaces` (name, folder, last prompt/answer, active flag) and
+  `SpaceFeedEntries` (each space's conversation), plus the indexes that list and restore them
 
 Existing agents, tasks and logs are preserved.
 
@@ -258,15 +260,15 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 # the Windows installers (need Inno Setup 6.3+ on Windows: choco install innosetup)
 mkdir -p dist
 for arch in x64 x86 arm64; do
-  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v1.0.16.exe"
-  ISCC.exe "/DAppVersion=1.0.16" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v1.0.16.exe" installer.iss
-done                      # → dist\installer\Setup-win-<arch>-v1.0.16.exe (x64, x86, arm64)
+  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v2.0.0.exe"
+  ISCC.exe "/DAppVersion=2.0.0" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v2.0.0.exe" installer.iss
+done                      # → dist\installer\Setup-win-<arch>-v2.0.0.exe (x64, x86, arm64)
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
-dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v1.0.16.deb
+dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v2.0.0.deb
 
 # the macOS disk image (needs macOS: hdiutil + iconutil)
-hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v1.0.16.dmg
+hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v2.0.0.dmg
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
@@ -303,7 +305,9 @@ Every published binary accepts `--self-test`. It opens the database, prints the 
 exercises the workspace guardrail (relative path allowed, `..` and absolute escapes refused), then
 exits with `0`. `--smoke-ui` additionally opens the real native window on a display (Xvfb in CI),
 waits for the page's `ready` handshake over the native web-message bridge, round-trips a settings
-command through the host, and exits `0` only if all of that worked. CI runs exactly that on the real
+command through the host, then (v2.0.0) creates a **space**, asserts it was persisted, published and
+that its conversation comes back after a reload, and parks a synthetic `run_command` to prove the
+approval gate waits and returns the rejection reason. It exits `0` only if all of that worked. CI runs exactly that on the real
 single-file binary, so a build that cannot start — or whose WebView cannot render the console —
 never reaches a release.
 
@@ -320,7 +324,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v1.0.16** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v2.0.0** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 

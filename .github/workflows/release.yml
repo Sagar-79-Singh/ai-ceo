@@ -1,6 +1,6 @@
 name: Release
 
-# v1.0.16 ships a portable build *and* a native installer for every platform, and every file name
+# v2.0.0 ships a portable build *and* a native installer for every platform, and every file name
 # carries the version, so two releases can never be confused once they are downloaded:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>-v<version>.exe    (portable)
 #                                            → Setup-win-<arch>-v<version>.exe    (Inno Setup)
@@ -27,8 +27,8 @@ env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
-  # v1.0.16: the version that appears in every asset name ("AiCeo-win-x64-v1.0.16.exe").
-  PRODUCT_VERSION: "1.0.16"
+  # v2.0.0: the version that appears in every asset name ("AiCeo-win-x64-v2.0.0.exe").
+  PRODUCT_VERSION: "2.0.0"
 
 jobs:
   # ------------------------------------------------------------------ portable binaries
@@ -844,227 +844,48 @@ jobs:
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          # v2.0.0: the notes are written by hand below. GitHub's generated changelog (every commit
+          # subject since the last tag) is deliberately off — it buried the download table in
+          # developer noise nobody installing the app can use.
+          generate_release_notes: false
           body: |
             ## AI CEO Orchestrator v${{ env.PRODUCT_VERSION }}
 
-            A **cross-platform desktop** AI orchestrator (.NET 10 · PhotinoX + native WebView ·
-            Nexus console) that opens in a native window — no browser, no local web server, no
-            bundled UI toolkit. Workers can read, write and run commands inside a folder you choose.
+            A cross-platform desktop AI orchestrator (.NET 10 · PhotinoX + native WebView · Nexus
+            console) where a CEO agent plans, delegates to one worker at a time, and synthesizes the
+            answer. Workers can only touch the folder you choose — and in this release every file
+            write and terminal command waits for your **Approve** or **Reject**.
 
-            Every platform now ships **both** a portable build and a native installer.
+            - **Human-in-the-loop approvals** — a stopped write or command is shown as a card with
+              the exact diff or command line. Reject with a reason and the CEO plans another way.
+            - **Persistent workspaces (Spaces)** — name a workspace ("Python Game", "React App"); the
+              folder and its conversation are stored in SQLite and restored on the next launch.
+            - **Cleaner releases** — versioned file names, one short summary, no generated changelog.
 
-            ### Windows
+            ### Downloads
 
-            | Architecture | Portable | Installer |
+            | Platform | Portable | Installer |
             | --- | --- | --- |
-            | **x64 (recommended)** | `AiCeo-win-x64-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-x64-v${{ env.PRODUCT_VERSION }}.exe` |
-            | x86 (32-bit) | `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-x86-v${{ env.PRODUCT_VERSION }}.exe` |
-            | ARM64 (Surface / Snapdragon) | `AiCeo-win-arm64-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-arm64-v${{ env.PRODUCT_VERSION }}.exe` |
+            | Windows x64 (recommended) | `AiCeo-win-x64-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-x64-v${{ env.PRODUCT_VERSION }}.exe` |
+            | Windows x86 (32-bit) | `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-x86-v${{ env.PRODUCT_VERSION }}.exe` |
+            | Windows ARM64 | `AiCeo-win-arm64-v${{ env.PRODUCT_VERSION }}.exe` | `Setup-win-arm64-v${{ env.PRODUCT_VERSION }}.exe` |
+            | Linux x64 | `AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.deb` |
+            | Linux ARM64 | `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.deb` |
+            | macOS Intel | `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.dmg` |
+            | macOS Apple Silicon | `AiCeo-osx-arm64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-osx-arm64-v${{ env.PRODUCT_VERSION }}.dmg` |
 
-            The installers are stock Inno Setup wizards — the same native shell, buttons and pages
-            every other Windows program uses, with no custom theme or artwork. Per-user install (no
-            UAC prompt, administrator override available), desktop and Start-menu shortcuts, and a
-            clean entry in *Apps & features*. Before copying anything, Setup checks the real
-            prerequisites and asks before installing them:
+            Portable: run the file (Linux/macOS: `tar -xzf … && ./AiCeo`). Debian/Ubuntu:
+            `sudo apt install ./AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.deb`. macOS: open the
+            `.dmg` and drag the app to Applications. Every executable is single-file and
+            self-contained — .NET is inside it, nothing needs installing first.
 
-            - **Microsoft Edge WebView2 Runtime** — Windows 10/11 get the current Evergreen
-              bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the last runtime
-              that supports them. Declining this prompt cancels the installation.
-            - **Visual C++ 2015-2022 Redistributable** — no longer checked: PhotinoX uses the WebView
-              the system already provides, so the redistributable is not a dependency of this build.
-            - **.NET is not checked** — the executable is published with `--self-contained true`.
+            ### Windows SmartScreen
 
-            ### Linux
+            The builds are **not code-signed**, so SmartScreen will show *"Windows protected your PC"*
+            the first time you run the portable `.exe` or `Setup-…exe`. Click **More info → Run anyway**,
+            or verify the download against `SHA256SUMS.txt` first. On macOS, if Gatekeeper blocks the
+            ad-hoc signed app, right-click → **Open** once.
 
-            | Architecture | Portable | Installer |
-            | --- | --- | --- |
-            | x64 | `AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.deb` |
-            | ARM64 | `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.deb` |
-
-            Portable: `tar -xzf AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.tar.gz && ./AiCeo`. Debian/Ubuntu:
-            `sudo apt install ./AiCeo-linux-x64-v${{ env.PRODUCT_VERSION }}.deb` — installs to `/usr/lib/aiceo`, adds the
-            `aiceo` command, a desktop entry and the icon. The package **depends** on `libgtk-3-0`
-            and `libwebkit2gtk-4.1-0`, so `apt` resolves the window toolkit and the web engine for
-            the Nexus surface instead of leaving the app to fall back.
-
-            ### macOS
-
-            | Architecture | Portable | Installer |
-            | --- | --- | --- |
-            | Intel | `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.dmg` |
-            | Apple Silicon | `AiCeo-osx-arm64-v${{ env.PRODUCT_VERSION }}.tar.gz` | `AiCeo-osx-arm64-v${{ env.PRODUCT_VERSION }}.dmg` |
-
-            The `.dmg` contains a real `AI CEO Orchestrator.app` bundle (icon, versioned `Info.plist`,
-            ad-hoc signature) plus an **Applications** shortcut: open the image, drag the app across.
-            It targets **macOS 10.13 (High Sierra) or later**: the packaging script aborts below that
-            version, `Info.plist` declares it as `LSMinimumSystemVersion`, and the app itself refuses
-            to start on an older system with a clear alert. Portable: `tar -xzf … && ./AiCeo`.
-
-            ### Notes
-
-            Every portable executable is **single-file and self-contained**: the .NET runtime is
-            inside it, so nothing needs to be installed first. Application data (agents, keys, task
-            history, theme) lives in your per-user data folder — `%APPDATA%\AiCeoOrchestrator`,
-            `~/.local/share/AiCeoOrchestrator` or
-            `~/Library/Application Support/AiCeoOrchestrator` — overridable with `AICEO_DB_PATH`.
-
-            If the app ever exits without showing a window, `crash.log` and `startup.log` in
-            `%APPDATA%\AiCeoOrchestrator` (also written next to the executable and in `%TEMP%`) record
-            the failing exception and the last start-up step it reached.
-
-            Windows SmartScreen may warn because the builds are not code-signed: **More info → Run
-            anyway**. On macOS, if Gatekeeper blocks the ad-hoc signed app, right-click → **Open** the
-            first time. The `.deb` is not in a signed repository, so `apt` may ask you to trust the
-            local file.
-
-            ### What's new in v1.0.16 — your key, your model, readable output
-
-            v1.0.16 removes the last hardcoded credentials. Nothing in this build carries an API key
-            or a model id: on first launch the console is **blocked** by a setup sheet that asks for
-            the four values the app needs — **provider** (OmniRoute, OpenAI, Gemini or any
-            OpenAI-compatible server), **base URL**, **API key** and **model**. Saving writes them to
-            the `UserSettings` row of the local SQLite database and unlocks the UI in the very next
-            snapshot; every agent, the health probe and the orchestrator read that one connection.
-
-            - **No key, no model, no run.** `LlmSetupProvider` is the single source of truth. A fresh
-              install reports *not configured*, the dispatch button goes inert and the orchestrator
-              refuses to spend a single token until the sheet has been completed.
-            - **Nothing is baked in.** The seeded gateway key and model, every `DefaultModel` catalog
-              entry, the seeded `ModelId` values and the fallback key are deleted. A model is
-              something the user chooses, never something the binary assumes.
-            - **Editable later.** Settings → **Connection** shows the masked key, the provider, the
-              base URL and the model, and reopens the same sheet at any time. A blank key field keeps
-              the stored key; a blank base URL falls back to the provider default.
-            - **Readable AI output.** The final-answer card and every feed card are solid
-              (`bg-obsidian-850/95` instead of a 5 %-tinted surface over the WebGL canvas), the
-              prompt-box placeholder is `slate-400` at full opacity instead of `slate-500`, and body
-              text is pinned at `text-slate-100` / `text-opacity-100`. Answers stay legible on every
-              accent preset and in light mode.
-            - **Versioned file names.** Every asset carries the release version —
-              `AiCeo-win-x64-v${{ env.PRODUCT_VERSION }}.exe`, `Setup-win-arm64-v${{ env.PRODUCT_VERSION }}.exe`,
-              `AiCeo-linux-arm64-v${{ env.PRODUCT_VERSION }}.deb`, `AiCeo-osx-x64-v${{ env.PRODUCT_VERSION }}.dmg` —
-              so two releases can never be confused once downloaded. The release job fails when
-              `release.yml`, `AiCeo.Desktop.csproj`, `installer.iss` and the Nexus badge disagree
-              about the number.
-
-            CI drives the new path end to end: the Linux smoke test asserts that a fresh database
-            reports *setup required*, that a `saveConnection` command validates, persists and flips
-            the snapshot to `configured: true`, and that an invalid submission is rejected without
-            touching the stored connection.
-
-            ### Previous release — v1.0.15, Avalonia is gone, PhotinoX hosts the native WebView
-
-            - **The managed UI stack is deleted.** No Avalonia packages, XAML or compositor: the shell
-              is a **PhotinoX** native window around the WebView the operating system already ships —
-              WebView2, WKWebView or WebKitGTK 4.1.
-            - **The window always appears** — `PhotinoApplication.Run(window)` shows it and pumps the
-              native message loop in one call; the database, the agents and the provider probe run
-              afterwards on a background task, so there is no start-up freeze either.
-            - **Native messaging instead of script evaluation** — page→host through
-              `window.external.sendMessage`, host→page through `SendWebMessage`; the page is loaded
-              with `LoadString` and its stylesheet inlined, so no `file://` access is involved.
-            - **The folder picker is native** (`ShowOpenFolder`), and the Visual C++ redistributable
-              check is gone; the WebView2 check, including the **109** line for Windows 7 / 8 / 8.1,
-              is unchanged.
-
-            **Attribution.** Releases are recorded with the official Claude Code footer:
-            `🤖 Generated with Claude Code` and
-            `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`.
-
-            Everything from earlier releases is intact: the Nexus surface and its providers, strict
-            star topology with one worker at a time, the workspace guardrail and tool loop, the stock
-            installer wizard with its OS-aware WebView2 prerequisite, the `.deb` dependencies on
-            `libgtk-3-0` and `libwebkit2gtk-4.1-0`, and the macOS 10.13 floor.
-
-            ### Previous release — v1.0.13, the window always appears
-
-            - **The window was built and assigned first** — `desktop.MainWindow` before the one call
-              on that path that blocks (the saved theme, a SQLite read).
-            - **Both windows showed and activated themselves** — `PresentWindow()` cleared a
-              `FullScreen`/`Minimized` state, forced `ShowInTaskbar="True"` and `Topmost="False"`, then
-              called `Show()` and `Activate()`.
-            - **WebView2 initialisation was fully asynchronous** — page extraction on the thread pool,
-              awaited navigation, no `.Result`/`.Wait()` on any WebView2 call.
-
-            ### Previous release — v1.0.12, start-up reverted and smart installers
-
-            - **The v1.0.11 start-up path was reverted**, back to the v1.0.8 code where the portable
-              `.exe` opened reliably.
-            - **Stock Inno Setup wizard** with OS-aware **WebView2** (current Evergreen on Windows
-              10/11, the **109** line on Windows 7 / 8 / 8.1) and **Visual C++** checks.
-            - **`.deb` depends on** `libgtk-3-0` and `libwebkit2gtk-4.1-0`; the **`.dmg` targets
-              macOS 10.13+**.
-
-            ### Previous release — v1.0.11, the window is guaranteed to appear
-
-            - **No blocking on the UI thread** — the theme row was read before the shell started.
-            - **The shell showed and activated itself** — `WindowPresentation.PrepareForDisplay`.
-            - **Oversized windows were fitted to the monitor.**
-            - **`Co-authored-by: Claude <noreply@anthropic.com>`** on the release commit.
-
-            ### Previous release — v1.0.10, the installer finishes the job
-
-            - **WebView2 prerequisite** — `Setup.exe` carries the Evergreen bootstrapper and installs
-              the runtime silently when it is missing.
-            - **Working directory** — `[Run]` and both shortcuts use `WorkingDir = {app}`.
-            - **Native libraries** — `SelfContained`, `PublishSingleFile` and
-              `IncludeNativeLibrariesForSelfExtract` are declared in the project file.
-
-            ### Previous release — v1.0.9, native window controls
-
-            - **Real OS window chrome** — `SystemDecorations="Full"`, real title bars everywhere, no
-              more fake traffic lights in the HTML header.
-            - **Taskbar / dock icon** — `Icon="avares://AiCeo/Assets/aiceo.ico"` with the
-              multi-resolution ICO embedded in the executable.
-
-            ### Previous release — v1.0.8, dispatch with Enter
-
-            - **Settings is discoverable.** The sliders glyph became a **gear** icon with a visible
-              `Settings` label in the title bar.
-            - **Enter dispatches.** `Enter` sends the prompt to the CEO and `Shift` + `Enter` inserts a
-              newline; IME composition is respected.
-            - **Provider CHECKING state.** The telemetry dot turns amber and the badge reads
-              `CHECKING…` while the health probe is in flight.
-
-            ### Previous release — v1.0.7, installers everywhere
-
-            The release pipeline is a matrix that produces a portable build *and* a native installer
-            for all seven targets:
-
-            - **Three Inno Setup installers** (`Setup-win-<arch>-v<version>.exe`), each compiled against
-              its own executable with the matching `ArchitecturesAllowed` guard.
-            - **Two Debian packages**, assembled with `dpkg-deb` from the published binary: launcher
-              in `/usr/bin`, desktop entry, icon, docs and dependency metadata.
-            - **Two disk images**, built with `hdiutil` around a complete `.app` bundle (icon from the
-              shipped PNG, `Info.plist`, ad-hoc signature) with the customary Applications drop
-              target.
-            - **Release gate**: the release job refuses to publish unless all 14 deliverables exist,
-              the executables are real PE files, the tarballs unzip, the `.deb` files are `ar`
-              archives and the `.dmg` files carry a UDIF trailer.
-
-            ### Unchanged
-            Strict star topology (you ↔ CEO only, one worker at a time), multi-provider LLM support
-            (OmniRoute / OpenAI / Gemini / custom), masked API keys, **Select Workspace Folder**, the
-            workspace-confined `list_files` / `read_file` / `write_file` / `run_command` tool loop,
-            and the Nexus interface with its offline-bundled Tailwind/WebGL surface.
-
-            ### 32-bit Windows note
-
-            `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` and `Setup-win-x86-v${{ env.PRODUCT_VERSION }}.exe` are still built and published, but the native
-            window/WebView bridge that PhotinoX ships is x64 / ARM64 only, so the 32-bit build cannot
-            open the Nexus window — it writes that reason to `crash.log` instead of failing obscurely.
-            A 32-bit Windows 10 installation on 64-bit hardware runs the **x64** build.
-
-            ### Windows 7 / 8 note
-            .NET 10 — bundled inside these executables — officially supports Windows 10 1809 (build
-            17763) and newer only, so that is the floor for the application itself. `Setup.exe` will
-            still run on Windows 7 SP1 / 8 / 8.1: it installs the WebView2 **109** runtime that those
-            systems support and says plainly that the app needs Windows 10 1809 or newer.
-            `AiCeo-win-x86-v${{ env.PRODUCT_VERSION }}.exe` is the right build for 32-bit Windows 10 machines.
-
-            ### Verify the download
-            `SHA256SUMS.txt` (and a `.sha256` per file) is attached to the release.
           files: |
             assets/*.exe
             assets/*.tar.gz
