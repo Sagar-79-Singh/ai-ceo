@@ -276,6 +276,18 @@ jobs:
             tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi
+          # v2.0.3: the CEO transcript carries only the user and the CEO — no delegation, tool or
+          # worker chatter — and a parked approval is a blocking modal, not an inline card.
+          if ! grep -q "chat isolation = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=chat-isolation::internal delegation or tool chatter reaches the CEO chat"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "blocking approval modal = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=approval-modal::the approval is not a blocking, automatically opened modal"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
 
           # Crash logging: with no display server the native window cannot be created. The binary
           # must exit non-zero AND leave a crash.log with the stack trace next to itself (the app

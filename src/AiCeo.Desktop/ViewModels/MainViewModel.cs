@@ -604,6 +604,13 @@ public sealed class MainViewModel : ObservableObject
     {
         var text = FinalOutput;
 
+        // v2.0.3: a failure or a cancellation has already been reported in the CEO's voice; adding a
+        // second bubble that says "the run ended without an answer" on top of it would contradict it.
+        if (string.IsNullOrWhiteSpace(text) && Feed.Count > 0 && Feed[^1].Kind == FeedKind.Ceo)
+        {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(text))
         {
             var delegations = Feed
@@ -613,8 +620,8 @@ public sealed class MainViewModel : ObservableObject
                 .ToList();
 
             text = delegations.Count > 0
-                ? $"I delegated this to {string.Join(", ", delegations)}. Their conversations are in the sidebar."
-                : "The run ended without an answer.";
+                ? $"I asked {string.Join(", ", delegations)} to handle this. Their chats are in the sidebar, and I will report back here."
+                : "I stopped before writing an answer.";
         }
 
         Feed.Add(new FeedItemViewModel
@@ -1050,15 +1057,33 @@ public sealed class MainViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             SetBanner("Run cancelled. The CEO stopped before writing a final answer.", isError: false);
+
+            // v2.0.3: it is the CEO who tells the user, in the chat, like everything else.
+            Feed.Add(new FeedItemViewModel
+            {
+                Kind = FeedKind.Ceo,
+                AgentName = CeoName,
+                Text = "Stopped. Nothing else ran — the worker chats keep everything they had done so far."
+            });
         }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Run failed");
+
+            // The internal line stays in the feed (and in the space that is saved); the user reads a
+            // sentence from the CEO instead of a stack of framework noise.
             Feed.Add(new FeedItemViewModel
             {
                 Kind = FeedKind.Error,
                 AgentName = CeoName,
                 Text = exception.Message
+            });
+
+            Feed.Add(new FeedItemViewModel
+            {
+                Kind = FeedKind.Ceo,
+                AgentName = CeoName,
+                Text = "I could not finish that: " + exception.Message
             });
         }
         finally
@@ -1128,6 +1153,16 @@ public sealed class MainViewModel : ObservableObject
                     // v2.0.1: the conversation behind this delegation, one click away.
                     ThreadId = log.ThreadId,
                     ThreadAgent = log.AgentName
+                });
+
+                // v2.0.3: the delegation card itself is internal traffic and stays out of the CEO
+                // chat. What the user reads is one sentence in the CEO's voice; the instruction, the
+                // commands and the result live in that worker's own conversation.
+                Feed.Add(new FeedItemViewModel
+                {
+                    Kind = FeedKind.Ceo,
+                    AgentName = CeoName,
+                    Text = DelegationAnnouncement(log.AgentName, log.Content)
                 });
                 break;
 
@@ -1208,6 +1243,57 @@ public sealed class MainViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(ShowEmptyState));
+    }
+
+    /// <summary>
+    /// v2.0.3: the one line the user reads when the CEO hands work to a worker.
+    ///
+    /// The main transcript is a conversation between two voices; everything the CEO and a worker say
+    /// to each other — the instruction, the reasoning, the tool calls, the result — is internal and is
+    /// read in that worker's own chat. This is the high-level summary that closes the gap, so the user
+    /// is never staring at a silent window while a delegation runs.
+    /// </summary>
+    internal static string DelegationAnnouncement(string agentName, string instructions)
+    {
+        var summary = Summarise(instructions);
+
+        return summary.Length == 0
+            ? $"I have asked {agentName} to take this one. I will let you know when it is done."
+            : $"I have asked {agentName} to {summary}. I will let you know when it is done.";
+    }
+
+    /// <summary>One clause of an instruction, short enough to read in a chat bubble.</summary>
+    private static string Summarise(string instructions)
+    {
+        var text = string.Join(' ', (instructions ?? string.Empty)
+            .Split(new[] { '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        if (text.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        // First sentence only: a plan step can be a paragraph, and the chat bubble is one line.
+        var stop = text.IndexOfAny(new[] { '.', ';', ':' });
+        if (stop > 12)
+        {
+            text = text[..stop];
+        }
+
+        const int limit = 140;
+        if (text.Length > limit)
+        {
+            var cut = text.LastIndexOf(' ', limit);
+            text = text[..(cut > 40 ? cut : limit)].TrimEnd(',', ' ', '.') + "…";
+        }
+
+        // "Write the script" → "write the script", so it reads as a clause of the CEO's sentence.
+        if (text.Length > 1 && char.IsUpper(text[0]) && !char.IsUpper(text[1]))
+        {
+            text = char.ToLowerInvariant(text[0]).ToString() + text[1..];
+        }
+
+        return text.TrimEnd('.', ' ');
     }
 
     private void CompleteDelegation(string agentName)

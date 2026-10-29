@@ -24,6 +24,10 @@ public sealed record NexusState(
     IReadOnlyList<NexusSpaceState> Spaces,
     string? ActiveSpaceId,
     bool ApprovalsEnabled,
+
+    // v2.0.3: true for exactly as long as a tool call is parked — this is the flag the page reads to
+    // open the blocking approval modal. Approval carries the tool, the command/path and the preview.
+    bool PendingApproval,
     NexusApprovalState? Approval,
     IReadOnlyList<NexusThreadState> Threads,
     NexusThreadDetailState? OpenThread,

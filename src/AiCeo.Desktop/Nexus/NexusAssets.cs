@@ -83,13 +83,26 @@ public static class NexusAssets
                 && html.Contains("data-back-ceo", StringComparison.Ordinal)
                 && html.Contains("id=\"nx-thread\" class=\"nx-hidden nx-view", StringComparison.Ordinal)
                 && !html.Contains("id=\"nx-thread\" class=\"nx-hidden absolute", StringComparison.Ordinal);
+            // v2.0.3: the CEO transcript carries only the two voices, and an approval blocks the
+            // window instead of sitting inline where it could be scrolled past. If a build ever ships
+            // the unfiltered feed again (internal chatter in the main chat) or the inline card, these
+            // markers disappear and the build is rejected here.
+            var hasChatIsolation = html.Contains("function isChatMessage(", StringComparison.Ordinal)
+                && html.Contains("var CHAT_KINDS = { user: true, ceo: true };", StringComparison.Ordinal)
+                && html.Contains("chatMessages(s.feed)", StringComparison.Ordinal)
+                && html.Contains("v2.0.3: only the user's messages", StringComparison.Ordinal);
+            var hasApprovalModal = html.Contains("id=\"nx-approval\" class=\"nx-hidden fixed inset-0", StringComparison.Ordinal)
+                && html.Contains("data-approval-modal", StringComparison.Ordinal)
+                && html.Contains("id=\"nx-approval-tool\"", StringComparison.Ordinal)
+                && html.Contains("id=\"nx-approval-target\"", StringComparison.Ordinal)
+                && html.Contains("s.pendingApproval === false", StringComparison.Ordinal);
             var hasSignIn = html.Contains("id=\"nx-signin\"", StringComparison.Ordinal)
                 && html.Contains("data-signin=\"GitHubCopilot\"", StringComparison.Ordinal)
                 && html.Contains("data-signin=\"OpenAICodex\"", StringComparison.Ordinal);
             // v2.0.1: the badge in the header is the version the release ships; a bump that forgets
             // the page would otherwise ship a build that calls itself 2.0.0 in its own title bar.
-            var hasVersion = html.Contains(">v2.0.2<", StringComparison.Ordinal)
-                && html.Contains("v2.0.2: one view at a time", StringComparison.Ordinal);
+            var hasVersion = html.Contains(">v2.0.3<", StringComparison.Ordinal)
+                && html.Contains("v2.0.3: only the user's messages", StringComparison.Ordinal);
             var hasStyles = html.Contains("href=\"nexus.css\"", StringComparison.Ordinal)
                 && css.Contains("--obsidian-950-rgb", StringComparison.Ordinal)
                 && css.Contains("font-family:\"Font Awesome 6 Free\"");
@@ -108,10 +121,12 @@ public static class NexusAssets
                 + $" · bridge: {hasBridge} · chat: {hasChat} · styles: {hasStyles}"
                 + $" · approval: {hasApprovalCard} · spaces: {hasSpaces}"
                 + $" · threads: {hasThreadView} · router: {hasRouter}"
+                + $" · chat isolation: {hasChatIsolation} · approval modal: {hasApprovalModal}"
                 + $" · sign-in: {hasSignIn} · version: {hasVersion}";
 
             return hasBridge && hasChat && hasStyles && hasApprovalCard && hasSpaces
-                && hasThreadView && hasRouter && hasSignIn && hasVersion;
+                && hasThreadView && hasRouter && hasSignIn && hasVersion
+                && hasChatIsolation && hasApprovalModal;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException)
         {

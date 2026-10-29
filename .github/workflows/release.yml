@@ -28,7 +28,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
   # The version that appears in every asset name ("AiCeo-win-x64-v2.0.2.exe").
-  PRODUCT_VERSION: "2.0.2"
+  PRODUCT_VERSION: "2.0.3"
 
 jobs:
   # ------------------------------------------------------------------ portable binaries
@@ -844,7 +844,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
-          # v2.0.2: the notes are written by hand below and are short and user-facing — what
+          # v2.0.3: the notes are written by hand below and are short and user-facing — what
           # changed, then the download table. GitHub's generated changelog (every commit subject
           # since the last tag) stays off, and nothing from the developer tooling appears here.
           generate_release_notes: false
@@ -855,25 +855,23 @@ jobs:
             plans, delegates to one specialist at a time, and answers you — inside a folder you choose, with
             every file write and command still waiting for your **Approve** or **Reject**.
 
-            ### What's New in v2.0.2
+            ### What's New in v2.0.3
 
-            **The two chats no longer overlap.** Opening a worker used to paint its transcript *on top* of the
-            CEO's, which left both conversations stacked and unreadable. The window now has two sibling views
-            and a small router: the CEO chat and the worker chat are never on screen at the same time. Opening a
-            worker hides the CEO transcript and empties it from the page, so only one conversation exists at a
-            time — and going back restores the CEO chat exactly where you left it.
+            **One conversation, two voices.** The main chat is now only you and the CEO. Delegations, worker
+            results, tool calls and command output no longer flood the transcript — those lines belong to the
+            worker that produced them. When the CEO hands work to an agent it says so in one sentence, for
+            example *"I have asked Forge to write the Python script. I will let you know when it is done."*, and
+            the full CEO ↔ worker conversation stays one click away in the sidebar.
 
-            **A way back.** The worker view has a clear **← Back to CEO** button, `Esc` does the same, and
-            clicking the CEO in the sidebar always returns you to the main conversation.
+            **Approvals block the window.** A pending write or command used to appear as a card inside the
+            transcript, where it was easy to scroll past while the run sat there waiting. It is now a
+            full-screen, centered modal that opens by itself, dims everything behind it and cannot be missed.
+            It shows the tool, the exact command or file path, the diff or command line, and the **Approve** /
+            **Reject** buttons — with a reason box that is sent back to the CEO when you reject.
 
-            **Smoother and sharper.** Bubbles are fully opaque (no transparency, no bleeding text), the
-            transcript is a fixed-height scroller that never pushes the composer around, and the page no longer
-            repaints a chat you cannot see: while a worker view is open the app stops sending the CEO transcript
-            over the message channel, identical renders are skipped, and live thread updates are coalesced
-            instead of arriving once per line. Long delegations stay responsive.
-
-            Everything from v2.0.1 is still here: the WhatsApp-style transcript, the live agent chats, and
-            sign-in with GitHub Copilot or ChatGPT (Codex) instead of a pasted key.
+            Everything from v2.0.2 is still here: one chat view at a time with **← Back to CEO**, opaque bubbles,
+            fixed-height transcripts, no repainting of hidden chats, plus the v2.0.1 WhatsApp-style surface, live
+            agent chats and sign-in with GitHub Copilot or ChatGPT (Codex) instead of a pasted key.
 
             ### Downloads
 

@@ -165,6 +165,7 @@ public sealed class NexusPresenter : IDisposable
             Spaces: _viewModel.Spaces.Select(ToState).ToList(),
             ActiveSpaceId: _viewModel.ActiveSpace?.Id.ToString(),
             ApprovalsEnabled: _approvals.Enabled,
+            PendingApproval: _approvals.Current is not null,
             Approval: ToState(_approvals.Current),
             Threads: _viewModel.Threads.Select(ToState).ToList(),
             OpenThread: ToState(_viewModel.OpenThread),

@@ -11,9 +11,9 @@
 
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator with a local workspace and tool-using agents.</Description>
-    <Version>2.0.2</Version>
-    <AssemblyVersion>2.0.2.0</AssemblyVersion>
-    <FileVersion>2.0.2.0</FileVersion>
+    <Version>2.0.3</Version>
+    <AssemblyVersion>2.0.3.0</AssemblyVersion>
+    <FileVersion>2.0.3.0</FileVersion>
 
     <!-- The icon shown in Explorer/taskbar. Windows-only; ignored by the other targets. PhotinoX
          also picks it up for the native window, so no window-icon plumbing is needed. -->

@@ -18,17 +18,19 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v2.0.2 — one chat at a time, a way back, and no lag
+## What's new in v2.0.3 — one conversation, and approvals you cannot miss
 
 | Area | Change |
 | --- | --- |
-| **The chats no longer overlap** | `#nx-main` now holds **two sibling views**, `#nx-ceo-view` and `#nx-thread`, and `applyView()` gives exactly one of them a display. The worker transcript used to be an absolutely positioned overlay above the CEO chat, so opening a worker painted two conversations on top of each other. Now opening a worker hides the CEO view **and empties its message list**, so only one conversation exists in the DOM. |
-| **A way back** | The worker view carries a **← Back to CEO** button, `Esc` does the same, and the CEO row in the sidebar (`data-back-ceo`) returns to the main chat. Going back re-renders the transcript from the snapshot that is already in the page, so it is instant and scrolls to the newest message. |
-| **Opaque, crisp bubbles** | Every bubble is a solid colour — `#1f6f52` outgoing, `rgb(--obsidian-800)` incoming, white / `#d9fdd3` in light mode — with no `rgba` background, no `backdrop-filter`, and its own meta/code colours, so nothing behind it can bleed through the text. |
-| **A transcript that scrolls, not a page that grows** | `#nx-stage` and `#nx-thread-stage` are the only scrollers in the window: `overflow-y:auto`, `min-height:0` inside a flex column, `scrollbar-gutter:stable`. The composer never moves, and the transcript only auto-scrolls when you are already at the bottom. |
-| **No work for hidden chats** | `renderAll()` routes first and paints one view; `renderFeed`, `renderApproval` and `renderThread` return immediately when their view is hidden, identical markup is skipped by signature, and `NexusPresenter` stops pushing feed-only snapshots while a worker chat is on screen (one fresh snapshot on the way back). Live thread updates are coalesced to one reload per 150 ms, and host pushes to one per 150 ms. |
-| **Version** | `2.0.2` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge (`v2.0.2`), `release.yml`'s `PRODUCT_VERSION` and every asset name. |
+| **The CEO chat is only you and the CEO** | The transcript now paints exactly two kinds of message: the ones you send and the ones the CEO sends. Delegations, worker results, tool calls and command output are no longer mixed into it — `renderFeed` filters the snapshot through `isChatMessage`, and `feedItemHtml` refuses anything that is not `user` or `ceo` even if a caller forgets. |
+| **Delegations are summarised, not dumped** | When the CEO hands work over it says so in one sentence — *"I have asked Forge to write the Python script. I will let you know when it is done."* (`MainViewModel.DelegationAnnouncement` reduces the plan step to one clause). Failures and cancellations are reported the same way, in the CEO's voice. |
+| **Internal traffic lives in the worker chat** | The instruction, the agent's reasoning, every tool call, its output, your approval decision and the answer handed back are all in that worker's own conversation (sidebar → the agent). Nothing is lost — it is just no longer in the way of the conversation. |
+| **Approvals block the window** | A parked `write_file` / `run_command` opens a full-screen modal that dims and disables everything behind it. It shows the tool, the exact command or file path, the diff or command line, the agent that asked and the time, with **Approve** / **Reject** and a reason box whose text is sent back to the CEO on rejection. The host publishes `pendingApproval` in the snapshot for as long as a call is parked, so the modal opens by itself — even if you were reading a worker chat. |
+| **Version** | `2.0.3` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge (`v2.0.3`), `release.yml`'s `PRODUCT_VERSION` and every asset name. |
 
+### Older releases
+- **v2.0.2** — one chat view at a time with **← Back to CEO**, opaque bubbles, fixed-height transcripts,
+  no repainting of hidden chats.
 ### Older releases
 - **v2.0.1** — WhatsApp-style chat transcript, live agent chats (one thread per delegation), GitHub
   Copilot & ChatGPT (Codex) device-flow sign-in, WebGL shader removed.
@@ -56,17 +58,17 @@ Download one file from the **Releases** page and run it.
 
 | Platform | Installer | Portable |
 | --- | --- | --- |
-| **Windows x64 (recommended)** | `Setup-win-x64-v2.0.2.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v2.0.2.exe` |
-| Windows x86 | `Setup-win-x86-v2.0.2.exe` | `AiCeo-win-x86-v2.0.2.exe` |
-| Windows ARM64 | `Setup-win-arm64-v2.0.2.exe` | `AiCeo-win-arm64-v2.0.2.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v2.0.2.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v2.0.2.tar.gz` |
-| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v2.0.2.deb` | `AiCeo-linux-arm64-v2.0.2.tar.gz` |
-| macOS Intel | `AiCeo-osx-x64-v2.0.2.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v2.0.2.tar.gz` |
-| macOS Apple Silicon | `AiCeo-osx-arm64-v2.0.2.dmg` | `AiCeo-osx-arm64-v2.0.2.tar.gz` |
+| **Windows x64 (recommended)** | `Setup-win-x64-v2.0.3.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v2.0.3.exe` |
+| Windows x86 | `Setup-win-x86-v2.0.3.exe` | `AiCeo-win-x86-v2.0.3.exe` |
+| Windows ARM64 | `Setup-win-arm64-v2.0.3.exe` | `AiCeo-win-arm64-v2.0.3.exe` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v2.0.3.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v2.0.3.tar.gz` |
+| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v2.0.3.deb` | `AiCeo-linux-arm64-v2.0.3.tar.gz` |
+| macOS Intel | `AiCeo-osx-x64-v2.0.3.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v2.0.3.tar.gz` |
+| macOS Apple Silicon | `AiCeo-osx-arm64-v2.0.3.dmg` | `AiCeo-osx-arm64-v2.0.3.tar.gz` |
 
 Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
-`Setup-win-<arch>-v2.0.2.exe` checks its prerequisites before it copies anything:
+`Setup-win-<arch>-v2.0.3.exe` checks its prerequisites before it copies anything:
 
 - **Microsoft Edge WebView2 Runtime** — the Nexus interface draws itself with it. Windows 10/11 get
   the current Evergreen bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the
@@ -75,7 +77,7 @@ Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
   the WebView the system provides, so the redistributable is not a dependency of this build.
 - **.NET is not checked**: the executable is published with `--self-contained true`.
 
-> **32-bit Windows:** `AiCeo-win-x86-v2.0.2.exe` / `Setup-win-x86-v2.0.2.exe` still build and install, but the
+> **32-bit Windows:** `AiCeo-win-x86-v2.0.3.exe` / `Setup-win-x86-v2.0.3.exe` still build and install, but the
 > native window/WebView bridge PhotinoX ships is x64/ARM64 only, so the 32-bit build cannot open the
 > Nexus window — it says so in `crash.log` instead of failing obscurely. A 32-bit Windows 10
 > installation running on 64-bit hardware can and should use the **x64** build.
@@ -242,8 +244,8 @@ on macOS). Override with the `AICEO_DB_PATH` environment variable.
 - v2.0.0 → v2.0.1: creates `AgentThreads` / `AgentThreadEntries` (one CEO ↔ worker conversation per
   delegation), adds `TaskLogs.ThreadId` and the sign-in columns `UserSettings.AuthMethod`,
   `AuthLogin`, `SignedInAt`
-- v2.0.1 → v2.0.2: no schema change — the release fixes how the page renders the conversations it
-  already stores
+- v2.0.2 → v2.0.3: no schema change — the release changes which of the stored lines the CEO chat
+  paints, and how an approval is presented; the conversations themselves are unchanged
 
 Existing agents, tasks and logs are preserved.
 
@@ -271,15 +273,15 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 # the Windows installers (need Inno Setup 6.3+ on Windows: choco install innosetup)
 mkdir -p dist
 for arch in x64 x86 arm64; do
-  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v2.0.2.exe"
-  ISCC.exe "/DAppVersion=2.0.2" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v2.0.2.exe" installer.iss
-done                      # → dist\installer\Setup-win-<arch>-v2.0.2.exe (x64, x86, arm64)
+  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v2.0.3.exe"
+  ISCC.exe "/DAppVersion=2.0.3" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v2.0.3.exe" installer.iss
+done                      # → dist\installer\Setup-win-<arch>-v2.0.3.exe (x64, x86, arm64)
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
-dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v2.0.2.deb
+dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v2.0.3.deb
 
 # the macOS disk image (needs macOS: hdiutil + iconutil)
-hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v2.0.2.dmg
+hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v2.0.3.dmg
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
@@ -323,8 +325,10 @@ command through the host, creates a **space**, asserts it was persisted, publish
 conversation comes back after a reload, parks a synthetic `run_command` to prove the approval gate
 waits and returns the rejection reason, then (v2.0.1) checks that the transcript really carries a
 user bubble and a CEO bubble and that a delegation writes a readable **worker thread** — the
-instruction, the steps and the answer — that the window can open and close, and (v2.0.2) that only
-one of the two chat views is displayed at a time. It exits `0` only if all of that worked. CI runs exactly that on the real
+instruction, the steps and the answer — that the window can open and close, that (v2.0.2) only one of
+the two chat views is displayed at a time, and that (v2.0.3) internal delegation/tool chatter is kept
+out of the CEO chat while an approval is a blocking, self-opening modal. It exits `0` only if all of
+that worked. CI runs exactly that on the real
 single-file binary, so a build that cannot start — or whose WebView cannot render the console —
 never reaches a release.
 
@@ -341,7 +345,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v2.0.2** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v2.0.3** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
