@@ -24,6 +24,11 @@ public class AppDbContext : DbContext
 
     public DbSet<SpaceFeedEntry> SpaceFeedEntries { get; set; } = null!;
 
+    /// <summary>v2.0.1: the CEO ↔ worker conversations, one per delegation.</summary>
+    public DbSet<AgentThread> AgentThreads { get; set; } = null!;
+
+    public DbSet<AgentThreadEntry> AgentThreadEntries { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -70,6 +75,11 @@ public class AppDbContext : DbContext
             entity.Property(row => row.BaseUrl).HasMaxLength(500);
             entity.Property(row => row.ApiKey).HasMaxLength(500);
             entity.Property(row => row.ModelId).HasMaxLength(200);
+
+            // v2.0.1: where the key came from (a pasted key, GitHub Copilot or ChatGPT). Stored as
+            // text for the same reason as Provider: the upgraded rows get a readable DEFAULT.
+            entity.Property(row => row.AuthMethod).HasConversion<string>().HasMaxLength(32).IsRequired();
+            entity.Property(row => row.AuthLogin).HasMaxLength(200);
         });
 
         modelBuilder.Entity<Space>(entity =>
@@ -98,6 +108,32 @@ public class AppDbContext : DbContext
             entity.Property(entry => entry.Title).HasMaxLength(200);
             entity.Property(entry => entry.StepsJson).IsRequired();
             entity.HasIndex(entry => new { entry.SpaceId, entry.Ordinal });
+        });
+
+        modelBuilder.Entity<AgentThread>(entity =>
+        {
+            entity.ToTable("AgentThreads");
+            entity.HasKey(thread => thread.Id);
+            entity.Property(thread => thread.AgentName).HasMaxLength(120).IsRequired();
+            entity.Property(thread => thread.Role).HasMaxLength(120);
+            entity.Property(thread => thread.Status).HasMaxLength(32).IsRequired();
+            entity.HasIndex(thread => thread.TaskId);
+            entity.HasIndex(thread => thread.AgentName);
+
+            // Deleting the thread deletes the conversation in it.
+            entity.HasMany(thread => thread.Entries)
+                .WithOne(entry => entry.Thread)
+                .HasForeignKey(entry => entry.ThreadId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AgentThreadEntry>(entity =>
+        {
+            entity.ToTable("AgentThreadEntries");
+            entity.HasKey(entry => entry.Id);
+            entity.Property(entry => entry.Kind).HasMaxLength(32).IsRequired();
+            entity.Property(entry => entry.ToolName).HasMaxLength(64);
+            entity.HasIndex(entry => new { entry.ThreadId, entry.Ordinal });
         });
 
         modelBuilder.Entity<TaskItem>(entity =>

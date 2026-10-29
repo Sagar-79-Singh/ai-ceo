@@ -1,6 +1,6 @@
 name: Release
 
-# v2.0.0 ships a portable build *and* a native installer for every platform, and every file name
+# v2.0.1 ships a portable build *and* a native installer for every platform, and every file name
 # carries the version, so two releases can never be confused once they are downloaded:
 #   * Windows  win-x64 / win-x86 / win-arm64 → AiCeo-win-<arch>-v<version>.exe    (portable)
 #                                            → Setup-win-<arch>-v<version>.exe    (Inno Setup)
@@ -27,8 +27,8 @@ env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
-  # v2.0.0: the version that appears in every asset name ("AiCeo-win-x64-v2.0.0.exe").
-  PRODUCT_VERSION: "2.0.0"
+  # v2.0.1: the version that appears in every asset name ("AiCeo-win-x64-v2.0.1.exe").
+  PRODUCT_VERSION: "2.0.1"
 
 jobs:
   # ------------------------------------------------------------------ portable binaries
@@ -844,23 +844,38 @@ jobs:
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
-          # v2.0.0: the notes are written by hand below. GitHub's generated changelog (every commit
-          # subject since the last tag) is deliberately off — it buried the download table in
-          # developer noise nobody installing the app can use.
+          # v2.0.1: the notes are written by hand below and are short and user-facing — what
+          # changed, then the download table. GitHub's generated changelog (every commit subject
+          # since the last tag) stays off, and nothing from the developer tooling appears here.
           generate_release_notes: false
           body: |
             ## AI CEO Orchestrator v${{ env.PRODUCT_VERSION }}
 
-            A cross-platform desktop AI orchestrator (.NET 10 · PhotinoX + native WebView · Nexus
-            console) where a CEO agent plans, delegates to one worker at a time, and synthesizes the
-            answer. Workers can only touch the folder you choose — and in this release every file
-            write and terminal command waits for your **Approve** or **Reject**.
+            A cross-platform desktop AI orchestrator (.NET 10 · PhotinoX + native WebView) where a CEO agent
+            plans, delegates to one specialist at a time, and answers you — inside a folder you choose, with
+            every file write and command still waiting for your **Approve** or **Reject**.
 
-            - **Human-in-the-loop approvals** — a stopped write or command is shown as a card with
-              the exact diff or command line. Reject with a reason and the CEO plans another way.
-            - **Persistent workspaces (Spaces)** — name a workspace ("Python Game", "React App"); the
-              folder and its conversation are stored in SQLite and restored on the next launch.
-            - **Cleaner releases** — versioned file names, one short summary, no generated changelog.
+            ### What's New in v2.0.1
+
+            **The whole app is now a chat.** The console is gone. Your messages sit on the right in green, the
+            CEO's on the left, the input bar is pinned to the bottom, and the hologram is gone in favour of a
+            calm near-black surface. Type, hit Enter, and the conversation just scrolls.
+
+            **Live agent chat.** Every delegation now opens its own conversation. Say *"write me a Python
+            snake game"* and the CEO replies *"I have delegated this to the Writer"* — then click the worker's
+            name, in the sidebar or on that message, and watch its thread fill in step by step: the CEO's
+            instructions, the worker's reasoning, the exact commands and file writes it ran, and the answer it
+            handed back. Threads are stored in the same local database, so you can reopen any of them later.
+
+            **Sign in instead of hunting for a key.** Settings has two new buttons: **Sign in with GitHub
+            Copilot** and **Sign in with ChatGPT (Codex)**. Both use the browser hand-off you already know —
+            copy a short code, confirm it once, and the app keeps polling until you are in. The token is stored
+            locally, never shown and never logged, and an existing sign-in is detected on the next launch. An
+            API key still works exactly as before.
+
+            **Smaller things.** A slimmer header with the live worker count, a tidier sidebar, Enter to send and
+            Shift+Enter for a newline, lighter light theme, and the same approvals, spaces, workspace guard and
+            crash log as v2.0.0.
 
             ### Downloads
 
@@ -894,19 +909,17 @@ jobs:
             assets/*.sha256
             assets/SHA256SUMS.txt
 
-      # v1.0.15: record the release with the official Claude Code attribution footer.
+      # v2.0.1: record the release with the attribution this release was built with.
       #
-      # The commit is made by the GitHub Actions bot as an empty commit on main, carrying the exact
-      # default Claude Code footer:
+      # The commit is made by the GitHub Actions bot as an empty commit on main, carrying the
+      # trailer of the release commit:
       #
-      #     🤖 Generated with Claude Code
-      #
-      #     Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+      #     Co-Authored-By: Codex <noreply@openai.com>
       #
       # `[skip ci]` keeps this bookkeeping commit from launching another CI run; the tag-triggered
       # release workflow is unaffected by pushes to main. It runs last and is allowed to fail:
       # attribution must never be able to stop a release that has already been published.
-      - name: Commit the release with Claude attribution
+      - name: Commit the release with its attribution trailer
         continue-on-error: true
         shell: bash
         env:
@@ -929,8 +942,7 @@ jobs:
           git commit --allow-empty \
             -m "chore(release): v$version [skip ci]" \
             -m "Release v$version published by the Release workflow (run ${{ github.run_id }})." \
-            -m "🤖 Generated with Claude Code" \
-            -m "Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+            -m "Co-Authored-By: Codex <noreply@openai.com>"
 
           git log -1 --pretty=%B
 

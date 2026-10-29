@@ -26,5 +26,11 @@ public class TaskLog
     [MaxLength(64)]
     public string? ToolName { get; set; }
 
+    /// <summary>
+    /// v2.0.1: the CEO ↔ worker thread this line was produced in, so a feed card can open the
+    /// conversation behind it. Null for the CEO's own plan and synthesis lines.
+    /// </summary>
+    public Guid? ThreadId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

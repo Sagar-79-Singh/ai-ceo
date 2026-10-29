@@ -140,7 +140,7 @@ internal static class Program
     }
 
     /// <summary>
-    /// The Nexus shell: one native window whose content is the embedded HTML/WebGL console, wired
+    /// The Nexus shell: one native window whose content is the embedded HTML chat, wired
     /// to the view model through <see cref="NexusPresenter"/>.
     /// </summary>
     private sealed class NexusShell
@@ -168,6 +168,10 @@ internal static class Program
                 AppBootstrap.GetRequiredService<WorkspaceService>(),
                 AppBootstrap.GetRequiredService<SpaceService>(),
                 AppBootstrap.GetRequiredService<ApprovalCoordinator>(),
+                AppBootstrap.GetRequiredService<WorkerThreadStore>(),
+                AppBootstrap.GetRequiredService<WorkerThreadHub>(),
+                AppBootstrap.GetRequiredService<DeviceFlowCoordinator>(),
+                AppBootstrap.GetRequiredService<LlmSetupProvider>(),
                 new PhotinoWorkspacePicker(() => window),
                 AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                 AppBootstrap.LoggerFactory.CreateLogger<MainViewModel>());
@@ -190,6 +194,7 @@ internal static class Program
                 AppBootstrap.GetRequiredService<UserSettingsService>(),
                 _connection,
                 _approvals,
+                AppBootstrap.GetRequiredService<DeviceFlowCoordinator>(),
                 AppBootstrap.GetRequiredService<AppRuntimeInfo>(),
                 SendToPage);
 
@@ -488,6 +493,25 @@ internal static class Program
                 ok = false;
             }
 
+            // v2.0.1: the chat is the main surface, and every delegation opens a worker thread.
+            var chatOk = VerifyChatSurface();
+            Say($"UI SMOKE: chat surface = {chatOk}");
+
+            if (!chatOk)
+            {
+                Say("UI SMOKE FAILED: the chat transcript does not start with the user's message");
+                ok = false;
+            }
+
+            var threadOk = await VerifyWorkerThreadAsync();
+            Say($"UI SMOKE: worker thread round-trip = {threadOk}");
+
+            if (!threadOk)
+            {
+                Say("UI SMOKE FAILED: a delegation did not produce a readable worker conversation");
+                ok = false;
+            }
+
             // Leave the database the way we found it: a second smoke run must not trip over its
             // own space name, and the user's real spaces must stay untouched.
             if (space is not null)
@@ -497,6 +521,71 @@ internal static class Program
             }
 
             return ok;
+        }
+
+        /// <summary>
+        /// v2.0.1: the transcript is a conversation — the user's message is the first bubble and the
+        /// CEO answers in the same flow, rather than a log of internal steps.
+        /// </summary>
+        private bool VerifyChatSurface()
+        {
+            // The two halves of the conversation must reach the page as a user bubble and a CEO
+            // bubble; if either kind were missing the transcript would still look like a log.
+            var user = new FeedItemViewModel { Kind = FeedKind.User, AgentName = "You", Text = "smoke question" };
+            var ceo = new FeedItemViewModel { Kind = FeedKind.Ceo, AgentName = _viewModel.CeoName, Text = "smoke answer" };
+
+            _viewModel.Feed.Add(user);
+            _viewModel.Feed.Add(ceo);
+
+            try
+            {
+                var json = _presenter.BuildState();
+
+                return json.Contains("\"kind\":\"user\"", StringComparison.Ordinal)
+                    && json.Contains("\"kind\":\"ceo\"", StringComparison.Ordinal);
+            }
+            finally
+            {
+                _viewModel.Feed.Remove(ceo);
+                _viewModel.Feed.Remove(user);
+            }
+        }
+
+        /// <summary>
+        /// v2.0.1: a thread is written by the store, listed for the sidebar and readable in full —
+        /// the instruction, the worker's steps and the answer it handed back.
+        /// </summary>
+        private async Task<bool> VerifyWorkerThreadAsync()
+        {
+            var store = AppBootstrap.GetRequiredService<WorkerThreadStore>();
+            var taskId = Guid.NewGuid();
+
+            var threadId = await store.BeginAsync(
+                taskId,
+                "SmokeWorker",
+                "Tester",
+                "Write the smoke file",
+                CancellationToken.None);
+
+            await store.AppendAsync(threadId, AiCeo.Models.ThreadEntryKind.Thought, "thinking", cancellationToken: CancellationToken.None);
+            await store.AppendAsync(threadId, AiCeo.Models.ThreadEntryKind.ToolCall, "{\"command\":\"echo smoke\"}", "run_command", cancellationToken: CancellationToken.None);
+            await store.CompleteAsync(threadId, AiCeo.Models.ThreadStatus.Completed, "done", CancellationToken.None);
+
+            var detail = await store.GetAsync(threadId);
+            var listed = (await store.ListRecentAsync()).Any(thread => thread.Id == threadId);
+
+            await _viewModel.NexusOpenThreadAsync(threadId);
+            var opened = _viewModel.IsThreadOpen && _viewModel.OpenThread?.Thread.Id == threadId;
+
+            await _presenter.HandleMessageAsync("{\"type\":\"closeThread\"}");
+            var closed = !_viewModel.IsThreadOpen;
+
+            return detail is not null
+                && detail.Entries.Count >= 3
+                && detail.Output == "done"
+                && listed
+                && opened
+                && closed;
         }
 
         /// <summary>

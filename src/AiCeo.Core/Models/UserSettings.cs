@@ -66,9 +66,34 @@ public class UserSettings
     /// <summary>Model id the whole team uses. Never seeded with a placeholder.</summary>
     public string? ModelId { get; set; }
 
+    /// <summary>
+    /// v2.0.1: where <see cref="ApiKey"/> came from. A device-flow sign-in stores its token in the
+    /// same column (every provider wants it as a bearer token) and records the method here, so the
+    /// settings screen can say "Signed in with GitHub Copilot" instead of "API key".
+    /// </summary>
+    public AuthMethod AuthMethod { get; set; } = AuthMethod.ApiKey;
+
+    /// <summary>The account the device flow signed in as, when the provider told us.</summary>
+    public string? AuthLogin { get; set; }
+
+    /// <summary>When that token was stored.</summary>
+    public DateTime? SignedInAt { get; set; }
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public LlmSetup ToSetup() => new(Provider, BaseUrl, ApiKey, ModelId);
+
+    /// <summary>Where the key came from and who it belongs to.</summary>
+    public LlmAuthState ToAuth() => new(AuthMethod, AuthLogin, SignedInAt);
+
+    /// <summary>Records a successful device-flow sign-in.</summary>
+    public void ApplyAuth(LlmAuthState auth)
+    {
+        AuthMethod = auth.IsDeviceFlow ? auth.Method : AuthMethod.ApiKey;
+        AuthLogin = auth.IsDeviceFlow ? auth.Login : null;
+        SignedInAt = auth.IsDeviceFlow ? auth.SignedInAt ?? DateTime.UtcNow : null;
+        UpdatedAt = DateTime.UtcNow;
+    }
 
     public void ApplySetup(LlmSetup setup)
     {
@@ -80,7 +105,7 @@ public class UserSettings
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public UserSettingsSnapshot ToSnapshot() => new(Theme, AccentColor, FontSize, ToSetup());
+    public UserSettingsSnapshot ToSnapshot() => new(Theme, AccentColor, FontSize, ToSetup(), ToAuth());
 
     public static UserSettings Defaults() => new();
 }
@@ -90,16 +115,17 @@ public sealed record UserSettingsSnapshot(
     AppTheme Theme,
     AccentColor AccentColor,
     FontSizePreference FontSize,
-    LlmSetup Setup)
+    LlmSetup Setup,
+    LlmAuthState Auth)
 {
     /// <summary>Colour preferences only; the connection stays unconfigured.</summary>
     public UserSettingsSnapshot(AppTheme theme, AccentColor accentColor, FontSizePreference fontSize)
-        : this(theme, accentColor, fontSize, LlmSetup.Unconfigured)
+        : this(theme, accentColor, fontSize, LlmSetup.Unconfigured, LlmAuthState.PasteKey)
     {
     }
 
     public static UserSettingsSnapshot Default { get; }
-        = new(AppTheme.System, AccentColor.Green, FontSizePreference.Medium, LlmSetup.Unconfigured);
+        = new(AppTheme.System, AccentColor.Green, FontSizePreference.Medium, LlmSetup.Unconfigured, LlmAuthState.PasteKey);
 
     /// <summary>True once the first-run setup has stored a key and a model.</summary>
     public bool IsConnectionConfigured => Setup.IsConfigured;

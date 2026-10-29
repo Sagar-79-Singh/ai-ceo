@@ -258,6 +258,18 @@ jobs:
             tail -40 "$RUNNER_TEMP/uismoke.log"
             exit 1
           fi
+          # v2.0.1: the transcript must be a conversation (a user bubble and a CEO bubble), and a
+          # delegation must produce a readable CEO ↔ worker thread.
+          if ! grep -q "chat surface = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=chat-surface::the transcript is not rendering user and CEO bubbles"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
+          if ! grep -q "worker thread round-trip = True" "$RUNNER_TEMP/uismoke.log"; then
+            echo "::error title=worker-thread::a delegation did not produce a readable worker conversation"
+            tail -40 "$RUNNER_TEMP/uismoke.log"
+            exit 1
+          fi
 
           # Crash logging: with no display server the native window cannot be created. The binary
           # must exit non-zero AND leave a crash.log with the stack trace next to itself (the app

@@ -36,6 +36,7 @@ public sealed class AgentOrchestrator
     private readonly LlmSetupProvider _setup;
     private readonly OmniRouteOptions _options;
     private readonly ApprovalCoordinator _approvals;
+    private readonly WorkerThreadStore? _threads;
     private readonly ILogger<AgentOrchestrator> _logger;
 
     public AgentOrchestrator(
@@ -46,7 +47,8 @@ public sealed class AgentOrchestrator
         LlmSetupProvider setup,
         IOptions<OmniRouteOptions> options,
         ILogger<AgentOrchestrator> logger,
-        ApprovalCoordinator? approvals = null)
+        ApprovalCoordinator? approvals = null,
+        WorkerThreadStore? threads = null)
     {
         _factory = factory;
         _llm = llm;
@@ -58,6 +60,10 @@ public sealed class AgentOrchestrator
         // v2.0.0: no coordinator means "no UI attached", which approves every call immediately —
         // exactly the pre-approval behaviour the tests and --self-test rely on.
         _approvals = approvals ?? new ApprovalCoordinator();
+
+        // v2.0.1: without a store (tests, --self-test) the run simply does not record worker
+        // threads; nothing else changes.
+        _threads = threads;
         _logger = logger;
     }
 
@@ -210,18 +216,24 @@ public sealed class AgentOrchestrator
 
                 await LogAsync(db, task, worker.Name, LogActions.Delegated, step.Instructions, onLog, cancellationToken);
 
+                // v2.0.1: every delegation gets its own CEO ↔ worker thread, which the window can
+                // open while it runs (and after a restart).
+                var threadId = await BeginThreadAsync(task, worker, step, cancellationToken);
+
                 try
                 {
                     var output = worker.CanUseTools && workspaceRoot is not null
-                        ? await RunToolWorkerAsync(db, task, worker, workspaceRoot, prompt, step, results, onLog, cancellationToken)
-                        : await RunPlainWorkerAsync(task, worker, prompt, step, results, onLog, db, cancellationToken);
+                        ? await RunToolWorkerAsync(db, task, worker, workspaceRoot, prompt, step, results, onLog, threadId, cancellationToken)
+                        : await RunPlainWorkerAsync(task, worker, prompt, step, results, onLog, db, threadId, cancellationToken);
 
                     results.Add(new WorkerResult(worker.Name, worker.Role, step.Instructions, output));
 
-                    await LogAsync(db, task, worker.Name, LogActions.Result, output, onLog, cancellationToken);
+                    await LogAsync(db, task, worker.Name, LogActions.Result, output, onLog, cancellationToken, threadId: threadId);
+                    await FinishThreadAsync(threadId, ThreadStatus.Completed, output, cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
+                    await FinishThreadAsync(threadId, ThreadStatus.Stopped, "The run was stopped before the worker answered.", CancellationToken.None);
                     throw;
                 }
                 catch (Exception exception)
@@ -234,7 +246,9 @@ public sealed class AgentOrchestrator
                         LogActions.Error,
                         $"Worker failed: {exception.Message}",
                         onLog,
-                        cancellationToken);
+                        cancellationToken,
+                        threadId: threadId);
+                    await FinishThreadAsync(threadId, ThreadStatus.Failed, "Worker failed: " + exception.Message, CancellationToken.None);
                 }
             }
 
@@ -255,6 +269,85 @@ public sealed class AgentOrchestrator
     }
 
     // -----------------------------------------------------------------------------------------
+    // Worker threads (v2.0.1)
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>Opens the CEO ↔ worker thread for one delegation. Never throws.</summary>
+    private async Task<Guid?> BeginThreadAsync(
+        TaskItem task,
+        Agent worker,
+        PlanStep step,
+        CancellationToken cancellationToken)
+    {
+        if (_threads is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _threads.BeginAsync(
+                task.Id,
+                worker.Name,
+                string.IsNullOrWhiteSpace(worker.Role) ? step.Role : worker.Role,
+                step.Instructions,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // A conversation is a nice-to-have: never let recording it stop the delegation.
+            _logger.LogWarning(exception, "Could not open a worker thread for {Worker}", worker.Name);
+            return null;
+        }
+    }
+
+    /// <summary>Appends one line to the current thread, if there is one. Never throws.</summary>
+    private async Task AppendThreadAsync(
+        Guid? threadId,
+        ThreadEntryKind kind,
+        string? text,
+        CancellationToken cancellationToken,
+        string? toolName = null,
+        bool failed = false)
+    {
+        if (threadId is not { } id || _threads is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _threads.AppendAsync(id, kind, text, toolName, failed, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Could not append to worker thread {Thread}", id);
+        }
+    }
+
+    /// <summary>Closes a thread with its final answer (or the reason it stopped). Never throws.</summary>
+    private async Task FinishThreadAsync(
+        Guid? threadId,
+        string status,
+        string? output,
+        CancellationToken cancellationToken)
+    {
+        if (threadId is not { } id || _threads is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _threads.CompleteAsync(id, status, output, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "Could not close worker thread {Thread}", id);
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Workers
     // -----------------------------------------------------------------------------------------
 
@@ -267,6 +360,7 @@ public sealed class AgentOrchestrator
         IReadOnlyList<WorkerResult> previousResults,
         Func<TaskLog, Task>? onLog,
         AppDbContext db,
+        Guid? threadId,
         CancellationToken cancellationToken)
     {
         var connection = LlmConnections.Resolve(worker, _setup.Current, _options);
@@ -289,9 +383,13 @@ public sealed class AgentOrchestrator
             cancellationToken);
 
         // A tool-less worker may still hallucinate a tool call; ignore it and take its text.
-        return string.IsNullOrWhiteSpace(reply.Text)
+        var answer = string.IsNullOrWhiteSpace(reply.Text)
             ? "(the worker returned no text)"
             : reply.Text!;
+
+        await AppendThreadAsync(threadId, ThreadEntryKind.Thought, answer, cancellationToken);
+
+        return answer;
     }
 
     /// <summary>
@@ -307,6 +405,7 @@ public sealed class AgentOrchestrator
         PlanStep step,
         IReadOnlyList<WorkerResult> previousResults,
         Func<TaskLog, Task>? onLog,
+        Guid? threadId,
         CancellationToken cancellationToken)
     {
         var connection = LlmConnections.Resolve(worker, _setup.Current, _options);
@@ -350,11 +449,14 @@ public sealed class AgentOrchestrator
             if (reply.Text is not null)
             {
                 finalText.AppendLine(reply.Text);
+
+                // The worker's own words between tool calls: the reasoning the thread view shows.
+                await AppendThreadAsync(threadId, ThreadEntryKind.Thought, reply.Text, cancellationToken);
             }
 
             if (!reply.WantsTools)
             {
-                return ComposeWorkerOutput(finalText, rejections);
+                return await ComposeWorkerOutputAsync(finalText, rejections, threadId, cancellationToken);
             }
 
             messages.Add(new LlmAssistantMessage(reply.Text, reply.ToolCalls));
@@ -382,18 +484,33 @@ public sealed class AgentOrchestrator
                 }
 
                 toolCallsUsed++;
-                await LogAsync(db, task, worker.Name, LogActions.Tool, call.ArgumentsJson, onLog, cancellationToken, call.Name);
+                await LogAsync(db, task, worker.Name, LogActions.Tool, call.ArgumentsJson, onLog, cancellationToken, call.Name, threadId);
+
+                await AppendThreadAsync(
+                    threadId,
+                    ThreadEntryKind.ToolCall,
+                    call.ArgumentsJson,
+                    cancellationToken,
+                    call.Name);
 
                 // v2.0.0: a write or a command stops here until the user says yes. The loop is
                 // parked — no other worker runs, and nothing touches the disk meanwhile, because the
                 // topology is strictly sequential.
-                var decision = await RequestApprovalAsync(db, task, worker, call, rejections, onLog, cancellationToken);
+                var decision = await RequestApprovalAsync(db, task, worker, call, rejections, onLog, threadId, cancellationToken);
 
                 if (!decision.Approved)
                 {
                     // The refusal travels back to the model as the tool result, so the worker (and
                     // through it the CEO) can plan a different approach instead of retrying blindly.
                     messages.Add(new LlmToolMessage(call.Id, RejectionContent(call.Name, decision).ToToolContent()));
+
+                    await AppendThreadAsync(
+                        threadId,
+                        ThreadEntryKind.ApprovalResult,
+                        "Rejected: " + decision.Reason,
+                        cancellationToken,
+                        call.Name);
+
                     continue;
                 }
 
@@ -407,7 +524,16 @@ public sealed class AgentOrchestrator
                     result.Ok ? result.Content : $"ERROR: {result.Error}",
                     onLog,
                     cancellationToken,
-                    call.Name);
+                    call.Name,
+                    threadId);
+
+                await AppendThreadAsync(
+                    threadId,
+                    ThreadEntryKind.ToolResult,
+                    result.Ok ? result.Content : "ERROR: " + result.Error,
+                    cancellationToken,
+                    call.Name,
+                    failed: !result.Ok);
 
                 messages.Add(new LlmToolMessage(call.Id, result.ToToolContent()));
             }
@@ -452,14 +578,18 @@ public sealed class AgentOrchestrator
             finalText.AppendLine("(the worker hit the tool-round limit without a summary)");
         }
 
-        return ComposeWorkerOutput(finalText, rejections);
+        return await ComposeWorkerOutputAsync(finalText, rejections, threadId, cancellationToken);
     }
 
     /// <summary>
     /// The worker's answer plus the user's decisions, so the CEO always learns that an action was
     /// refused — even when the worker forgot to mention it.
     /// </summary>
-    private static string ComposeWorkerOutput(StringBuilder finalText, IReadOnlyList<string> rejections)
+    private async Task<string> ComposeWorkerOutputAsync(
+        StringBuilder finalText,
+        IReadOnlyList<string> rejections,
+        Guid? threadId,
+        CancellationToken cancellationToken)
     {
         var output = new StringBuilder(finalText.ToString().Trim());
 
@@ -474,7 +604,12 @@ public sealed class AgentOrchestrator
             }
         }
 
-        return output.ToString().Trim();
+        var composed = output.ToString().Trim();
+
+        // The same text the CEO receives is the last line of the worker's thread.
+        await AppendThreadAsync(threadId, ThreadEntryKind.Output, composed, cancellationToken);
+
+        return composed;
     }
 
     /// <summary>
@@ -488,6 +623,7 @@ public sealed class AgentOrchestrator
         LlmToolCallRequest call,
         List<string> rejections,
         Func<TaskLog, Task>? onLog,
+        Guid? threadId,
         CancellationToken cancellationToken)
     {
         if (!ApprovalPolicy.Requires(call.Name) || !_approvals.ShouldAsk)
@@ -517,7 +653,14 @@ public sealed class AgentOrchestrator
             };
         }
 
-        await LogAsync(db, task, worker.Name, LogActions.Approval, request.Preview, onLog, cancellationToken, request.ToolName);
+        await LogAsync(db, task, worker.Name, LogActions.Approval, request.Preview, onLog, cancellationToken, request.ToolName, threadId);
+
+        await AppendThreadAsync(
+            threadId,
+            ThreadEntryKind.Approval,
+            request.Summary + Environment.NewLine + request.Preview,
+            cancellationToken,
+            request.ToolName);
 
         var decision = await _approvals.RequestAsync(request, cancellationToken);
 
@@ -531,7 +674,8 @@ public sealed class AgentOrchestrator
                 : $"rejected · {decision.Reason}",
             onLog,
             cancellationToken,
-            request.ToolName);
+            request.ToolName,
+            threadId);
 
         if (!decision.Approved)
         {
@@ -856,7 +1000,8 @@ public sealed class AgentOrchestrator
         string content,
         Func<TaskLog, Task>? onLog,
         CancellationToken cancellationToken,
-        string? toolName = null)
+        string? toolName = null,
+        Guid? threadId = null)
     {
         var log = new TaskLog
         {
@@ -866,6 +1011,7 @@ public sealed class AgentOrchestrator
             Action = action,
             Content = content ?? string.Empty,
             ToolName = toolName,
+            ThreadId = threadId,
             CreatedAt = DateTime.UtcNow
         };
 

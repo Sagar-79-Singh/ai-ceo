@@ -8,9 +8,15 @@
     <AssemblyName>AiCeo.Core</AssemblyName>
     <Product>AI CEO Orchestrator</Product>
     <Description>Star-topology AI orchestrator core: agents, providers, tools, workspace guardrails.</Description>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- v2.0.1: the sign-in's JWT label helper and the thread plumbing are internal on purpose;
+         the test suite reads them directly rather than widening the public surface. -->
+    <InternalsVisibleTo Include="AiCeo.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- EF Core brings the Microsoft.Extensions.* assemblies (logging, options, DI) transitively,

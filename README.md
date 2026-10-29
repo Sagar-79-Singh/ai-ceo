@@ -1,13 +1,15 @@
 # AI CEO Orchestrator
 
 A **cross-platform desktop** AI orchestrator written in **C# / .NET 10**, hosted by **PhotinoX**: a
-native OS window around the **Nexus** interface, a live HTML/WebGL console rendered by the operating
+native OS window around the **Nexus** interface, a live HTML chat rendered by the operating
 system's own WebView (WebView2 on Windows, WKWebView on macOS, WebKitGTK 4.1 on Linux) — no browser
 tab, no local web server, no bundled UI toolkit, no Node.js. It runs a strict star topology of agents
-that can read, write and build inside a folder **you** choose — and, since v2.0.0, **nothing is
-written and no command is run until you press Approve**. Windows users can grab the native
-installer, and the whole console can be re-themed (dark / light / system, five accent colours, three
-text sizes) from the settings modal.
+that can read, write and build inside a folder **you** choose — and **nothing is written and no
+command is run until you press Approve**. Since v2.0.1 the whole thing is a **chat**: your messages
+on the right, the CEO's on the left, and a **separate conversation with every worker** you can open
+while it is running. Sign in with your GitHub Copilot or ChatGPT account instead of pasting a key,
+and re-theme the window (dark / light / system, five accent colours, three text sizes) from the
+settings modal.
 
 ```
 You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  ──▶  CEO  ──▶  You
@@ -16,19 +18,18 @@ You  ──▶  CEO  ──▶  worker 1  ──▶  CEO  ──▶  worker 2  �
 
 ---
 
-## What's new in v2.0.0 — human-in-the-loop approvals, persistent workspaces, clean releases
+## What's new in v2.0.1 — a chat, live agent conversations, sign-in instead of keys
 
 | Area | Change |
 | --- | --- |
-| **Approve before it touches anything** | Every `write_file` and `run_command` a worker asks for now **parks the orchestrator** before it executes. `ApprovalCoordinator` publishes a `PendingApproval` (tool, agent, target, and the arguments), the Nexus page renders an amber **Approval Card** with a real line diff (or the exact command line), and the run continues only when you press **Approve**. |
-| **Reject with a reason** | **Reject** aborts that single call — nothing is written, nothing is executed — and the reason travels back to the worker as the tool result, with a "do not retry unchanged" instruction. `ComposeWorkerOutput` also appends an *Actions the user rejected* block, so the CEO always learns what was refused and plans around it. |
-| **Arm / disarm** | Workspace panel → *Ask before every write or command* (on by default) posts `setApprovals`; with it off the swarm behaves exactly as it did in v1.0.16. Stopping a run or closing the window resolves every parked call, so a rejection reason always reaches the model instead of hanging. |
-| **Persistent workspaces ("Spaces")** | `Space` + `SpaceService` store a **name**, a **folder** and the **whole conversation** (prompt, final answer, every feed line, plan steps) in SQLite. The header gains a space dropdown and a **Workspace manager** to create a space (with the current folder or the native picker), switch between them and delete one. |
-| **Reopen where you left off** | On launch the last active space is restored — its folder becomes the sandbox root again and its feed is repainted from `SpaceFeedEntries`, so a conversation survives closing the app. Deleting the active space promotes the most recently used survivor. |
-| **Cleaner releases** | The release body is now a short summary, the download table and the SmartScreen note. GitHub's generated commit changelog is switched off (`generate_release_notes: false`), and the Claude Code / `Co-Authored-By` trailer stays in the **commit**, not in the published notes. |
-| **Version** | `2.0.0` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge (`v2.0.0`), `release.yml`'s `PRODUCT_VERSION` and every asset name. |
+| **The app is a chat** | `nexus.html` was rebuilt around a transcript: your messages are right-aligned green bubbles, the CEO's are left-aligned on the dark surface, the input bar is pinned to the bottom and grows with what you type (Enter sends, Shift+Enter adds a line). A solid `bg-obsidian-950` sheet with a faint grid replaced the WebGL shader and the holographic gyroscope — both are gone, so the page no longer touches the GPU. |
+| **Live agent chat** | Every delegation opens its own **`AgentThread`** (`AgentThreads` + `AgentThreadEntries`): the CEO's instruction, the worker's reasoning, every tool call with its arguments, every result, every approval and the answer handed back. The main chat says *"I have delegated this to the Writer"* with an inline link, and the sidebar lists the conversations; clicking either opens the **Worker Detail View**, which repaints from `WorkerThreadHub` while the worker is still running. |
+| **Sign in, don't hunt for a key** | Settings (and the first-run sheet) carry **Sign in with GitHub Copilot** and **Sign in with ChatGPT (Codex)**. `DeviceFlowService` runs the OAuth 2.0 device grant — `POST https://github.com/login/device/code` with the public client id and `scope=read:user`, then polls `https://github.com/login/oauth/access_token`; ChatGPT uses `/api/accounts/deviceauth/usercode` → `/deviceauth/token` → `/oauth/token`. The modal shows the `user_code`, offers a button that opens the page in the real browser, and updates itself when you approve. |
+| **The token is the provider key** | A successful sign-in stores the token in the same `UserSettings.ApiKey` column, so the gateway, the agents and the health probe use it exactly like a pasted key; `AuthMethod` / `AuthLogin` / `SignedInAt` only drive the badge (*"GitHub Copilot · octocat"*). The page never sees the token (`KeyMask` / `HasKey` only), nothing is logged, and an existing sign-in is detected on the next launch. Pasting a key later replaces it; **Sign out** forgets it. |
+| **Version** | `2.0.1` in both `.csproj` files, the assembly/file version, `installer.iss`, the Nexus badge (`v2.0.1`), `release.yml`'s `PRODUCT_VERSION` and every asset name. |
 
 ### Older releases
+- **v2.0.0** — human-in-the-loop approvals, persistent workspaces ("Spaces"), clean release notes.
 - **v1.0.16** — no hardcoded key or model, blocking first-run connection sheet, readable feed/final-answer surfaces, versioned asset names.
 - **v1.0.15** — Avalonia removed; PhotinoX hosts the OS WebView (WebView2 / WKWebView / WebKitGTK 4.1), native messaging, native folder picker, no VC++ prerequisite.
 - **v1.0.13** — the window always appears: window built and assigned first, `PresentWindow()` show/activate contract, fully asynchronous WebView2 initialisation.
@@ -52,17 +53,17 @@ Download one file from the **Releases** page and run it.
 
 | Platform | Installer | Portable |
 | --- | --- | --- |
-| **Windows x64 (recommended)** | `Setup-win-x64-v2.0.0.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v2.0.0.exe` |
-| Windows x86 | `Setup-win-x86-v2.0.0.exe` | `AiCeo-win-x86-v2.0.0.exe` |
-| Windows ARM64 | `Setup-win-arm64-v2.0.0.exe` | `AiCeo-win-arm64-v2.0.0.exe` |
-| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v2.0.0.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v2.0.0.tar.gz` |
-| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v2.0.0.deb` | `AiCeo-linux-arm64-v2.0.0.tar.gz` |
-| macOS Intel | `AiCeo-osx-x64-v2.0.0.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v2.0.0.tar.gz` |
-| macOS Apple Silicon | `AiCeo-osx-arm64-v2.0.0.dmg` | `AiCeo-osx-arm64-v2.0.0.tar.gz` |
+| **Windows x64 (recommended)** | `Setup-win-x64-v2.0.1.exe` — double-click, per-user, Start-menu + desktop shortcuts | `AiCeo-win-x64-v2.0.1.exe` |
+| Windows x86 | `Setup-win-x86-v2.0.1.exe` | `AiCeo-win-x86-v2.0.1.exe` |
+| Windows ARM64 | `Setup-win-arm64-v2.0.1.exe` | `AiCeo-win-arm64-v2.0.1.exe` |
+| Debian / Ubuntu x64 | `sudo apt install ./AiCeo-linux-x64-v2.0.1.deb` (depends on `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libnotify4`) | `AiCeo-linux-x64-v2.0.1.tar.gz` |
+| Debian / Ubuntu ARM64 | `sudo apt install ./AiCeo-linux-arm64-v2.0.1.deb` | `AiCeo-linux-arm64-v2.0.1.tar.gz` |
+| macOS Intel | `AiCeo-osx-x64-v2.0.1.dmg` — open, drag the app to Applications | `AiCeo-osx-x64-v2.0.1.tar.gz` |
+| macOS Apple Silicon | `AiCeo-osx-arm64-v2.0.1.dmg` | `AiCeo-osx-arm64-v2.0.1.tar.gz` |
 
 Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
 
-`Setup-win-<arch>-v2.0.0.exe` checks its prerequisites before it copies anything:
+`Setup-win-<arch>-v2.0.1.exe` checks its prerequisites before it copies anything:
 
 - **Microsoft Edge WebView2 Runtime** — the Nexus interface draws itself with it. Windows 10/11 get
   the current Evergreen bootstrapper; Windows 7 / 8 / 8.1 get the **109** line (109.0.1518.x), the
@@ -71,7 +72,7 @@ Portable Linux/macOS builds unpack with `tar -xzf <file>.tar.gz && ./AiCeo`.
   the WebView the system provides, so the redistributable is not a dependency of this build.
 - **.NET is not checked**: the executable is published with `--self-contained true`.
 
-> **32-bit Windows:** `AiCeo-win-x86-v2.0.0.exe` / `Setup-win-x86-v2.0.0.exe` still build and install, but the
+> **32-bit Windows:** `AiCeo-win-x86-v2.0.1.exe` / `Setup-win-x86-v2.0.1.exe` still build and install, but the
 > native window/WebView bridge PhotinoX ships is x64/ARM64 only, so the 32-bit build cannot open the
 > Nexus window — it says so in `crash.log` instead of failing obscurely. A 32-bit Windows 10
 > installation running on 64-bit hardware can and should use the **x64** build.
@@ -203,7 +204,8 @@ src/AiCeo.Core/            portable class library (no UI)
                            UiTheme (tokens + dark/light palettes + CSS export), …
   Data/                    AppDbContext, DbSeeder, SchemaUpgrader, DatabasePaths
   Services/                AgentOrchestrator, LlmGateway, LlmConnections, LlmSetupProvider,
-                           AgentDirectory, WorkspaceService, UserSettingsService, …
+                           AgentDirectory, WorkspaceService, UserSettingsService, SpaceService,
+                           ApprovalCoordinator, WorkerThreadStore/Hub, DeviceFlowService/Coordinator
   Tools/                   WorkspaceGuard, CommandGuard, ToolCatalog, ToolService, ToolResult
 src/AiCeo.Desktop/         PhotinoX desktop head (Windows · Linux · macOS) — no XAML at all
   Program.cs               entry point: PhotinoApplication.Run, the NexusShell window, crash.log
@@ -215,7 +217,8 @@ src/AiCeo.Desktop/         PhotinoX desktop head (Windows · Linux · macOS) —
   AppBootstrap.cs          DI container, database preparation, --self-test
   Assets/                  nexus.html + nexus.css (the Nexus console), aiceo.ico, aiceo.png, theme.css
 installer.iss              Inno Setup script (root) → Setup-win-<arch>-v<version>.exe (x64 / x86 / arm64)
-tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens
+tests/AiCeo.Tests/         xunit: topology, guardrail, tools, schema upgrade, provider, theme tokens,
+                           approvals, spaces, device flow, worker threads
 ```
 
 ### Database
@@ -233,6 +236,9 @@ on macOS). Override with the `AICEO_DB_PATH` environment variable.
   connection the first-run setup writes (an existing row keeps its theme and starts unconfigured)
 - v1.0.16 → v2.0.0: creates `Spaces` (name, folder, last prompt/answer, active flag) and
   `SpaceFeedEntries` (each space's conversation), plus the indexes that list and restore them
+- v2.0.0 → v2.0.1: creates `AgentThreads` / `AgentThreadEntries` (one CEO ↔ worker conversation per
+  delegation), adds `TaskLogs.ThreadId` and the sign-in columns `UserSettings.AuthMethod`,
+  `AuthLogin`, `SignedInAt`
 
 Existing agents, tasks and logs are preserved.
 
@@ -260,15 +266,15 @@ dotnet publish src/AiCeo.Desktop/AiCeo.Desktop.csproj \
 # the Windows installers (need Inno Setup 6.3+ on Windows: choco install innosetup)
 mkdir -p dist
 for arch in x64 x86 arm64; do
-  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v2.0.0.exe"
-  ISCC.exe "/DAppVersion=2.0.0" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v2.0.0.exe" installer.iss
-done                      # → dist\installer\Setup-win-<arch>-v2.0.0.exe (x64, x86, arm64)
+  cp "src/AiCeo.Desktop/bin/Release/net10.0/win-$arch/publish/AiCeo.exe" "dist/AiCeo-win-$arch-v2.0.1.exe"
+  ISCC.exe "/DAppVersion=2.0.1" "/DAppArch=$arch" "/DAppSourceExe=dist\AiCeo-win-$arch-v2.0.1.exe" installer.iss
+done                      # → dist\installer\Setup-win-<arch>-v2.0.1.exe (x64, x86, arm64)
 
 # the Debian package (needs dpkg-deb, i.e. any Debian/Ubuntu host)
-dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v2.0.0.deb
+dpkg-deb --root-owner-group --build pkgroot AiCeo-linux-x64-v2.0.1.deb
 
 # the macOS disk image (needs macOS: hdiutil + iconutil)
-hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v2.0.0.dmg
+hdiutil create -volname "AI CEO Orchestrator" -srcfolder "AI CEO Orchestrator.app" -ov -format UDZO AiCeo-osx-arm64-v2.0.1.dmg
 ```
 
 Swap `-r` for `linux-x64`, `linux-arm64`, `win-x86`, `win-arm64`, `osx-x64` or `osx-arm64`. Cross-
@@ -296,8 +302,11 @@ dependency, so the palette can be exported anywhere.
 | page → C# | `window.external.sendMessage("{\"type\":\"dispatch\",…}")` → `PhotinoWindow.RegisterWebMessageReceivedHandler` → `NexusPresenter.HandleMessageAsync`. |
 
 `window.chrome.webview.postMessage` is still understood as a fallback, so the same page also works in
-a plain WebView2 host. Command types: `ready`, `refresh`, `selectWorkspace`, `clearWorkspace`,
-`refreshHealth`, `setTools`, `dispatch`, `stop`, `settings`, `saveAgent`, `deleteAgent`, `makeCeo`.
+a plain WebView2 host. Command types: `ready`, `refresh`, `refreshHealth`, `selectWorkspace`,
+`clearWorkspace`, `setTools`, `setApprovals`, `dispatch`, `stop`, `settings`, `saveAgent`,
+`deleteAgent`, `makeCeo`, `createSpace`, `createSpaceWithFolder`, `selectSpace`, `deleteSpace`,
+`approval`, `openThread`, `openAgentThread`, `closeThread`, `signIn`, `cancelSignIn`,
+`dismissSignIn`, `openSignInPage`, `signOut`.
 
 ### Verifying a build without a GUI
 
@@ -305,9 +314,12 @@ Every published binary accepts `--self-test`. It opens the database, prints the 
 exercises the workspace guardrail (relative path allowed, `..` and absolute escapes refused), then
 exits with `0`. `--smoke-ui` additionally opens the real native window on a display (Xvfb in CI),
 waits for the page's `ready` handshake over the native web-message bridge, round-trips a settings
-command through the host, then (v2.0.0) creates a **space**, asserts it was persisted, published and
-that its conversation comes back after a reload, and parks a synthetic `run_command` to prove the
-approval gate waits and returns the rejection reason. It exits `0` only if all of that worked. CI runs exactly that on the real
+command through the host, creates a **space**, asserts it was persisted, published and that its
+conversation comes back after a reload, parks a synthetic `run_command` to prove the approval gate
+waits and returns the rejection reason, then (v2.0.1) checks that the transcript really carries a
+user bubble and a CEO bubble and that a delegation writes a readable **worker thread** — the
+instruction, the steps and the answer — that the window can open and close. It exits `0` only if all
+of that worked. CI runs exactly that on the real
 single-file binary, so a build that cannot start — or whose WebView cannot render the console —
 never reaches a release.
 
@@ -324,7 +336,7 @@ never reaches a release.
   `.exe`, Linux/macOS → `.tar.gz` with a `README.md` inside), smoke-tests every binary it can execute
   natively, then fans out into three installer jobs — Inno Setup ×3 on a Windows runner (installed
   through Chocolatey), `dpkg-deb` ×2 on Ubuntu, `hdiutil` ×2 on macOS — and finally creates the
-  **v2.0.0** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
+  **v2.0.1** release with all 14 deliverables plus `SHA256SUMS.txt`. The release job gates on the
   presence and file magic of every asset, so a missing or truncated installer fails the run instead
   of shipping.
 
