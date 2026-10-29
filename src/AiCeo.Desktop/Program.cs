@@ -503,6 +503,25 @@ internal static class Program
                 ok = false;
             }
 
+            // v2.0.3: the CEO chat shows only the user and the CEO; an approval blocks the window.
+            var isolationOk = VerifyChatIsolation();
+            Say($"UI SMOKE: chat isolation = {isolationOk}");
+
+            if (!isolationOk)
+            {
+                Say("UI SMOKE FAILED: internal delegation/tool chatter is not filtered out of the CEO chat");
+                ok = false;
+            }
+
+            var modalOk = VerifyApprovalModal();
+            Say($"UI SMOKE: blocking approval modal = {modalOk}");
+
+            if (!modalOk)
+            {
+                Say("UI SMOKE FAILED: the approval is not a blocking, automatically opened modal");
+                ok = false;
+            }
+
             // v2.0.1: the chat is the main surface, and every delegation opens a worker thread.
             var chatOk = VerifyChatSurface();
             Say($"UI SMOKE: chat surface = {chatOk}");
@@ -554,6 +573,80 @@ internal static class Program
             var oneScroller = page.Contains("#nx-stage, #nx-thread-stage {", StringComparison.Ordinal);
 
             return twoViews && router && wayBack && noOverlay && oneScroller;
+        }
+
+        /// <summary>
+        /// v2.0.3: the CEO transcript is a conversation between two voices. The page must carry the
+        /// filter, and the host must still record the internal lines that the filter removes — they
+        /// are what the worker chats and the saved spaces are made of.
+        /// </summary>
+        private bool VerifyChatIsolation()
+        {
+            var page = NexusAssets.ReadPage();
+
+            var filtered = page.Contains("function isChatMessage(", StringComparison.Ordinal)
+                && page.Contains("var CHAT_KINDS = { user: true, ceo: true };", StringComparison.Ordinal)
+                && page.Contains("chatMessages(s.feed)", StringComparison.Ordinal);
+
+            // A delegation is announced to the user as one sentence from the CEO, never as the
+            // internal card with the worker's instruction on it.
+            var announced = MainViewModel
+                .DelegationAnnouncement("Forge", "Write the Python script that draws a snake game.")
+                .Contains("I have asked Forge to write the Python script", StringComparison.Ordinal);
+
+            var user = new FeedItemViewModel { Kind = FeedKind.User, AgentName = "You", Text = "isolation smoke" };
+            var delegation = new FeedItemViewModel { Kind = FeedKind.Delegation, AgentName = "Forge", Text = "write the script", IsPending = true };
+            var tool = new FeedItemViewModel { Kind = FeedKind.ToolCall, AgentName = "Forge", ToolName = ToolCatalog.RunCommand, Text = "echo smoke" };
+
+            _viewModel.Feed.Add(user);
+            _viewModel.Feed.Add(delegation);
+            _viewModel.Feed.Add(tool);
+
+            try
+            {
+                var json = _presenter.BuildState();
+
+                // The internal traffic is still in the snapshot (the worker view reads it) — what
+                // keeps it out of the CEO chat is the page's filter, which is asserted above.
+                var recorded = json.Contains("\"kind\":\"delegation\"", StringComparison.Ordinal)
+                    && json.Contains("\"kind\":\"tool\"", StringComparison.Ordinal);
+
+                return filtered && announced && recorded;
+            }
+            finally
+            {
+                _viewModel.Feed.Remove(tool);
+                _viewModel.Feed.Remove(delegation);
+                _viewModel.Feed.Remove(user);
+            }
+        }
+
+        /// <summary>
+        /// v2.0.3: a parked tool call is a full-screen blocking sheet — its own overlay, opened by the
+        /// snapshot itself, with the tool, the exact command or path and the two decisions on it.
+        /// </summary>
+        private bool VerifyApprovalModal()
+        {
+            var page = NexusAssets.ReadPage();
+
+            var blocking = page.Contains("id=\"nx-approval\" class=\"nx-hidden fixed inset-0", StringComparison.Ordinal)
+                && page.Contains("data-approval-modal", StringComparison.Ordinal)
+                && page.Contains("aria-modal=\"true\"", StringComparison.Ordinal);
+
+            var detail = page.Contains("id=\"nx-approval-tool\"", StringComparison.Ordinal)
+                && page.Contains("id=\"nx-approval-target\"", StringComparison.Ordinal)
+                && page.Contains("id=\"nx-approval-preview\"", StringComparison.Ordinal);
+
+            var decisions = page.Contains("id=\"nx-approval-approve\"", StringComparison.Ordinal)
+                && page.Contains("id=\"nx-approval-reject\"", StringComparison.Ordinal)
+                && page.Contains("post({ type: 'approval'", StringComparison.Ordinal);
+
+            // Open by itself: the flag the host publishes is what the page reads, no extra round trip.
+            var automatic = page.Contains("s.pendingApproval === false", StringComparison.Ordinal)
+                && page.Contains("renderApproval(s);", StringComparison.Ordinal)
+                && page.Contains("s.approval || null", StringComparison.Ordinal);
+
+            return blocking && detail && decisions && automatic;
         }
 
         /// <summary>
@@ -651,8 +744,15 @@ internal static class Program
                 return false;
             }
 
+            var state = _presenter.BuildState();
+
             var parked = _approvals.Current?.Id == request.Id
-                && _presenter.BuildState().Contains(request.Id.ToString(), StringComparison.Ordinal);
+                && state.Contains(request.Id.ToString(), StringComparison.Ordinal)
+
+                // v2.0.3: the flag that opens the blocking modal has to be in the snapshot, and the
+                // exact command has to be on it — the user is approving a command, not a summary.
+                && state.Contains("\"pendingApproval\":true", StringComparison.Ordinal)
+                && state.Contains(request.Target, StringComparison.Ordinal);
 
             var resolved = _approvals.Resolve(request.Id, approved: false, reason: "smoke test rejection");
             var decision = await pending;

@@ -249,7 +249,7 @@
       <i class="fa-solid fa-microchip text-mint-400 text-xs"></i>
       <span class="font-semibold tracking-tight text-slate-100 font-mono text-[11px] flex items-center gap-1.5">
         AI CEO NEXUS
-        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v2.0.2</span>
+        <span id="nx-version" class="px-1.5 py-0.5 rounded text-[9px] bg-mint-500/15 text-mint-400 font-mono border border-mint-500/30">v2.0.3</span>
       </span>
     </div>
 
@@ -455,7 +455,6 @@
 
       <div id="nx-feed-wrap" class="nx-hidden max-w-3xl w-full mx-auto space-y-2">
         <div id="nx-feed" class="space-y-2"></div>
-        <div id="nx-approval" class="nx-hidden"></div>
         <div id="nx-final" class="nx-hidden"></div>
       </div>
     </section>
@@ -677,6 +676,59 @@
     <div class="px-4 py-2.5 border-t border-obsidian-750 flex items-center justify-end">
       <button id="nx-spaces-done" class="px-4 py-1.5 rounded-lg bg-gradient-to-r from-mint-500 to-emerald-500 text-obsidian-950 text-xs font-bold active:scale-95">Done</button>
     </div>
+  </div>
+</div>
+
+<!-- ============================================================ APPROVAL MODAL (v2.0.3)
+     A parked write or command blocks the whole window. v2.0.0 drew this inline in the transcript,
+     where it was easy to scroll past — and the run was parked forever while it waited. The host
+     publishes `state.approval` (and `state.pendingApproval`) for as long as a tool call is waiting,
+     so this sheet opens by itself and nothing behind it can be clicked until it is answered. -->
+<div id="nx-approval" class="nx-hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+     role="alertdialog" aria-modal="true" aria-labelledby="nx-approval-summary" data-approval-modal>
+  <div class="w-full max-w-xl bg-obsidian-900 border border-amber-500/50 rounded-2xl shadow-2xl p-5 space-y-3.5">
+    <div class="flex items-start justify-between gap-3">
+      <div class="flex items-center space-x-2.5 min-w-0">
+        <span class="w-9 h-9 rounded-full bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+          <i class="fa-solid fa-hand text-[13px]"></i>
+        </span>
+        <div class="min-w-0">
+          <h2 class="text-[13.5px] font-semibold text-slate-100">Permission required</h2>
+          <p id="nx-approval-summary" class="text-[11.5px] text-slate-400 truncate">A worker is waiting for your decision.</p>
+        </div>
+      </div>
+      <span id="nx-approval-label" class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">COMMAND</span>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div class="rounded-lg bg-obsidian-850 border border-obsidian-750 px-3 py-2 min-w-0">
+        <p class="text-[9px] uppercase tracking-wider text-slate-500 font-mono">Tool</p>
+        <p id="nx-approval-tool" class="text-[12px] font-mono text-cyan-300 truncate">run_command</p>
+      </div>
+      <div class="rounded-lg bg-obsidian-850 border border-obsidian-750 px-3 py-2 min-w-0">
+        <p class="text-[9px] uppercase tracking-wider text-slate-500 font-mono">Requested by</p>
+        <p id="nx-approval-agent" class="text-[12px] font-mono text-slate-300 truncate">worker</p>
+      </div>
+    </div>
+
+    <div class="min-w-0">
+      <p id="nx-approval-target-label" class="text-[9px] uppercase tracking-wider text-slate-500 font-mono mb-1">Command</p>
+      <p id="nx-approval-target" class="text-[12px] font-mono text-amber-200 break-all rounded-lg bg-obsidian-950 border border-amber-500/30 px-3 py-2">—</p>
+    </div>
+
+    <pre id="nx-approval-preview" class="nx-scroll max-h-56 overflow-auto rounded-lg bg-obsidian-950 border border-obsidian-750 px-3 py-2 text-[11px] font-mono text-slate-200 whitespace-pre-wrap"></pre>
+
+    <input id="nx-approval-reason" class="nx-input w-full rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-[11px] px-2.5 py-2 font-mono"
+           placeholder="Why? (used when you reject — the CEO gets the reason)" autocomplete="off" spellcheck="false" />
+
+    <div class="flex items-center gap-2">
+      <button id="nx-approval-approve" class="flex-1 bg-gradient-to-r from-mint-500 to-emerald-500 hover:from-mint-400 hover:to-emerald-400 text-obsidian-950 font-bold text-[12px] py-2.5 rounded-lg transition active:scale-[0.98] flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-check text-[10px]"></i> Approve</button>
+      <button id="nx-approval-reject" class="flex-1 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 font-bold text-[12px] py-2.5 rounded-lg border border-rose-500/40 transition active:scale-[0.98] flex items-center justify-center gap-1.5">
+        <i class="fa-solid fa-xmark text-[10px]"></i> Reject</button>
+    </div>
+
+    <p class="text-[10px] text-slate-500 text-center font-mono">Nothing runs until you decide · the run stays paused here</p>
   </div>
 </div>
 
@@ -907,8 +959,9 @@
         renderThread(state);
       } else {
         renderFeed(state);
-        renderApproval(state);
       }
+
+      renderApproval(state);
     }
 
     scrollToEnd(worker ? 'nx-thread-stage' : 'nx-stage', true);
@@ -934,7 +987,7 @@
 
   /* True when one of the overlays is in front of the chat (settings, setup, spaces, sign-in, agent). */
   function isModalOpen() {
-    var overlays = ['nx-settings', 'nx-setup', 'nx-spaces', 'nx-signin', 'nx-agent-modal'];
+    var overlays = ['nx-approval', 'nx-settings', 'nx-setup', 'nx-spaces', 'nx-signin', 'nx-agent-modal'];
 
     return overlays.some(function (id) {
       var node = el(id);
@@ -1401,9 +1454,28 @@
       '</div></div>';
   }
 
+  /* v2.0.3 — the CEO chat is a conversation, not a log.
+
+     The host still records every internal line (the delegation, each tool call, each result), because
+     those lines are what the worker views and the saved spaces are made of. The CEO transcript only
+     ever paints the two voices the user is part of: `user` and `ceo`. Everything else — a delegation,
+     a command, its output, a worker's answer to the CEO — belongs to that worker's own chat. */
+  var CHAT_KINDS = { user: true, ceo: true };
+
+  function isChatMessage(item) {
+    return !!item && CHAT_KINDS[item.kind] === true;
+  }
+
+  function chatMessages(feed) {
+    return (feed || []).filter(isChatMessage);
+  }
+
   function feedItemHtml(item) {
     var kind = item.kind || 'note';
     var who = escapeHtml(item.agent || '');
+
+    // Defensive: nothing internal can reach the CEO transcript, even if a caller forgets to filter.
+    if (!isChatMessage(item)) return '';
 
     if (kind === 'user') {
       return bubble('out', '<p class="nx-bubble-text">' + escapeHtml(item.text) + '</p>',
@@ -1415,69 +1487,17 @@
         '<i class="fa-solid fa-user-tie text-[9px] text-emerald-400"></i><span>' + who + '</span>');
     }
 
-    if (kind === 'plan') {
-      var steps = (item.steps || []).map(function (step) {
-        return '<div class="flex items-start space-x-2 mt-1">' +
-          '<span class="w-4 h-4 shrink-0 rounded-full bg-obsidian-750 text-[8.5px] text-slate-300 flex items-center justify-center">' + step.index + '</span>' +
-          '<span class="text-[12px] text-slate-200"><span class="text-cyan-300">' + escapeHtml(step.role) + '</span> — ' +
-          escapeHtml(step.instructions) + '</span></div>';
-      }).join('');
-
-      return bubble('in', steps || '<p class="nx-bubble-text">' + escapeHtml(item.text) + '</p>',
-        '<i class="fa-solid fa-list-check text-[9px] text-cyan-400"></i><span>Plan</span>');
-    }
-
-    if (kind === 'delegation') {
-      var link = item.hasThread
-        ? '<button data-open-thread="' + escapeHtml(item.threadId) + '" class="mt-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2">Open the chat with ' + escapeHtml(item.threadAgent || item.agent) + '</button>'
-        : '';
-
-      return bubble('in',
-        '<p class="nx-bubble-text">I have delegated this to <strong>' + who + '</strong>.</p>' +
-        '<p class="nx-bubble-quote">' + escapeHtml(item.text) + '</p>' + link,
-        '<i class="fa-solid fa-diagram-project text-[9px] text-amber-400"></i><span>Delegated' + (item.pending ? ' · working…' : '') + '</span>');
-    }
-
-    if (kind === 'tool') {
-      return bubble('in',
-        '<div class="flex items-center space-x-1.5 text-[10px] text-slate-400 mb-1">' +
-          '<i class="fa-solid fa-terminal text-[9px]"></i><span class="font-mono">' + escapeHtml(item.tool || 'tool') + '</span>' +
-          '<span>· ' + escapeHtml(item.title || '') + '</span></div>' +
-        '<pre class="nx-bubble-code ' + (item.failed ? 'text-rose-300' : '') + '">' + escapeHtml(item.text) + '</pre>',
-        '<span>' + who + '</span>');
-    }
-
-    if (kind === 'result') {
-      return bubble('in',
-        '<p class="nx-bubble-text">' + escapeHtml(item.text) + '</p>',
-        '<i class="fa-solid fa-reply text-[9px] text-emerald-400"></i><span>' + who + ' → CEO</span>');
-    }
-
-    if (kind === 'approval') {
-      return bubble('in',
-        '<div class="flex items-center space-x-1.5 text-[10px] text-amber-300 mb-1">' +
-          '<i class="fa-solid fa-hand text-[9px]"></i><span>waiting for your approval</span></div>' +
-        '<pre class="nx-bubble-code">' + escapeHtml(item.text) + '</pre>',
-        '<span>' + who + '</span>');
-    }
-
-    if (kind === 'error') {
-      return bubble('in',
-        '<p class="nx-bubble-text text-rose-300">' + escapeHtml(item.text) + '</p>',
-        '<i class="fa-solid fa-triangle-exclamation text-[9px] text-rose-400"></i><span>Error</span>');
-    }
-
-    return bubble('in',
-      '<p class="nx-bubble-text">' + escapeHtml(item.text) + '</p>',
-      '<span>' + (who || 'Note') + '</span>');
+    return '';
   }
 
   function renderFeed(s) {
     // A hidden chat is not painted: no string building, no DOM writes, no scrolling.
     if (currentView !== VIEW_CEO) return;
 
-    var feed = s.feed || [];
-    var hasFeed = feed.length > 0 || !!s.approval;
+    // v2.0.3: only the user's messages and the CEO's replies. The internal lines are still in the
+    // snapshot — they are what the worker views show — but they are not part of this conversation.
+    var feed = chatMessages(s.feed);
+    var hasFeed = feed.length > 0 || !!s.finalOutput;
 
     show(el('nx-hero'), !hasFeed);
     show(el('nx-feed-wrap'), hasFeed);
@@ -1750,80 +1770,75 @@
     else post({ type: 'createSpace', name: name });
   }
 
-  /* ---------------------------------------------------------------- approvals (v2.0.0)
-     state.approval is non-null while a worker's write_file / run_command is parked. The card shows
-     the diff or the command and blocks the run until it is answered. */
+  /* ---------------------------------------------------------------- approvals (v2.0.3)
+     One parked write / command blocks the window. `state.approval` is non-null (and
+     `state.pendingApproval` true) for exactly as long as a tool call is waiting, so the modal opens
+     on the next snapshot without any extra round trip and cannot be missed the way an inline card
+     could be scrolled past. The answer goes back over the same bridge the rest of the UI uses. */
+  var approvalId = null;
+
   function renderApproval(s) {
-    // The approval card lives in the CEO transcript; while a worker chat is on screen there is
-    // nothing to paint (and the card must not be touched, so a typed reason survives the switch).
-    if (currentView !== VIEW_CEO) return;
+    var modal = el('nx-approval');
+    if (!modal) return;
 
-    var box = el('nx-approval');
-    if (!box) return;
+    var approval = s.approval || null;
 
-    var approval = s.approval;
+    // The explicit boolean the host publishes is the contract; a stale object can never keep the
+    // modal open once the backend has moved on.
+    if (approval && s.pendingApproval === false) approval = null;
+
     if (!approval) {
-      box.innerHTML = '';
-      show(box, false);
+      approvalId = null;
       approvalReason = '';
+      show(modal, false);
       return;
     }
 
-    // Re-rendering on every push would steal the caret from the reason box, and a snapshot arrives
-    // for every feed line. Paint once per request and leave the DOM alone afterwards.
-    if (box.getAttribute('data-approval') === approval.id && box.firstChild) {
-      show(box, true);
-      return;
+    var isNew = approval.id !== approvalId;
+    approvalId = approval.id;
+
+    if (isNew) {
+      approvalReason = '';
+
+      // The decision is the only thing that can be done now, so the keyboard starts there instead
+      // of in whatever the composer still held.
+      var approveButton = el('nx-approval-approve');
+      if (approveButton) approveButton.focus();
     }
 
-    if (approval.id !== box.getAttribute('data-approval')) approvalReason = '';
-    box.setAttribute('data-approval', approval.id);
+    var isWrite = !!approval.isWrite;
 
-    var label = approval.isWrite ? 'WRITE' : 'COMMAND';
-    var target = approval.target || approval.summary || '';
+    text('nx-approval-summary', approval.summary || 'A worker is waiting for your decision.');
+    text('nx-approval-label', isWrite ? 'WRITE' : 'COMMAND');
+    text('nx-approval-tool', approval.toolName || 'tool');
+    text('nx-approval-agent', (approval.agentName || 'worker') + ' · ' + (approval.createdAt || ''));
+    text('nx-approval-target-label', isWrite ? 'File' : 'Command');
+    text('nx-approval-target', approval.target || approval.summary || '—');
+    text('nx-approval-preview', approval.preview || '');
 
-    box.innerHTML =
-      '<div class="flex items-start justify-between gap-3">' +
-        '<div class="flex items-center space-x-2 min-w-0">' +
-          '<span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">APPROVAL REQUIRED</span>' +
-          '<span class="px-1.5 py-0.5 rounded text-[9px] font-mono bg-obsidian-800 text-slate-300 border border-obsidian-700">' + escapeHtml(label) + '</span>' +
-          '<span class="text-[11.5px] font-semibold text-slate-100 truncate">' + escapeHtml(approval.summary) + '</span>' +
-        '</div>' +
-        '<span class="text-[10px] font-mono text-slate-400 shrink-0">' + escapeHtml(approval.agentName) + ' · ' + escapeHtml(approval.createdAt) + '</span>' +
-      '</div>' +
-      '<p class="mt-1 text-[10.5px] font-mono text-slate-400 truncate" title="' + escapeHtml(target) + '">' + escapeHtml(target) + '</p>' +
-      '<pre class="mt-2 max-h-64 overflow-auto rounded-lg bg-obsidian-950/90 border border-obsidian-750 px-3 py-2 text-[11px] font-mono text-slate-200 whitespace-pre-wrap text-opacity-100">' + escapeHtml(approval.preview) + '</pre>' +
-      '<div class="mt-2.5 flex flex-col sm:flex-row sm:items-center gap-2">' +
-        '<button id="nx-approval-approve" class="bg-gradient-to-r from-mint-500 to-emerald-500 hover:from-mint-400 hover:to-emerald-400 text-obsidian-950 font-bold text-[11.5px] py-1.5 px-3.5 rounded-lg transition active:scale-95 flex items-center justify-center gap-1.5">' +
-          '<i class="fa-solid fa-check text-[10px]"></i> Approve</button>' +
-        '<button id="nx-approval-reject" class="bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 font-bold text-[11.5px] py-1.5 px-3.5 rounded-lg border border-rose-500/40 transition active:scale-95 flex items-center justify-center gap-1.5">' +
-          '<i class="fa-solid fa-xmark text-[10px]"></i> Reject</button>' +
-        '<input id="nx-approval-reason" class="nx-input flex-1 rounded-lg bg-obsidian-850 border border-obsidian-700 text-slate-100 text-[11px] px-2.5 py-1.5 font-mono" ' +
-          'placeholder="Why? (sent back to the CEO so it can plan another way)" autocomplete="off" spellcheck="false" />' +
-      '</div>';
-
-    show(box, true);
-
-    var approve = el('nx-approval-approve');
-    var reject = el('nx-approval-reject');
+    // The reason box keeps what the user typed: writing it only when it actually differs leaves the
+    // caret alone while snapshots keep arriving for the rest of the app.
     var reason = el('nx-approval-reason');
+    if (reason && reason.value !== approvalReason) reason.value = approvalReason;
 
-    if (approve) approve.addEventListener('click', function () { decideApproval(approval.id, true, ''); });
-    if (reject) reject.addEventListener('click', function () { decideApproval(approval.id, false, reason ? reason.value : ''); });
+    show(modal, true);
+  }
 
-    if (reason) {
-      reason.value = approvalReason;
-      reason.addEventListener('input', function () { approvalReason = reason.value; });
-      reason.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') { event.preventDefault(); decideApproval(approval.id, false, reason.value); }
-      });
-    }
+  /* True while a decision is waiting — the window behind the modal is inert. */
+  function approvalOpen() {
+    var modal = el('nx-approval');
+    return !!modal && !(modal.className || '').split(/\s+/).includes('nx-hidden');
   }
 
   function decideApproval(id, approved, reason) {
-    // The host resolves the parked call; the next snapshot hides this card.
-    post({ type: 'approval', id: id, approved: !!approved, reason: reason || '' });
+    if (!id) return;
+
+    // Close first: the decision is taken, and the next snapshot reopens the sheet only if the host
+    // really still has a parked call (a second request, or a retry).
+    approvalId = null;
     approvalReason = '';
+    show(el('nx-approval'), false);
+    post({ type: 'approval', id: id, approved: !!approved, reason: reason || '' });
   }
 
   function renderComposer(s) {
@@ -1833,7 +1848,7 @@
     if (icon) icon.className = s.running ? 'fa-solid fa-stop text-[13px]' : 'fa-solid fa-paper-plane text-[13px]';
     // The dim state belongs to renderConnection (v1.0.16): dispatch is inert until a connection
     // exists, so this function must not clear it.
-    text('nx-version', s.version ? 'v' + s.version : 'v2.0.2');
+    text('nx-version', s.version ? 'v' + s.version : 'v2.0.3');
 
     var approvals = el('nx-approvals');
     if (approvals && approvals.checked !== !!s.approvalsEnabled) approvals.checked = !!s.approvalsEnabled;
@@ -1865,8 +1880,11 @@
       renderThread(s);
     } else {
       renderFeed(s);
-      renderApproval(s);
     }
+
+    // v2.0.3: an approval is not part of either transcript — it blocks the window, so it is painted
+    // no matter which chat is behind it.
+    renderApproval(s);
 
     renderAuth(s);
     renderComposer(s);
@@ -1934,6 +1952,11 @@
   /* ------------------------------------------------------------------ wiring */
   function dispatchPrompt() {
     if (!state) return;
+
+    // v2.0.3: an approval is blocking. The overlay already swallows the clicks, but the keyboard can
+    // still reach the composer, so the dispatch itself refuses until the call is decided.
+    if (approvalOpen()) return;
+
     if (state.connection && !state.connection.configured) {
       // v1.0.16: no key, no run. Re-open the blocking sheet instead of spending a round trip.
       openSetup(true);
@@ -1958,6 +1981,20 @@
     el('nx-attach').addEventListener('click', function () { post({ type: 'selectWorkspace' }); });
     el('nx-tools').addEventListener('change', function (event) { post({ type: 'setTools', enabled: event.target.checked }); });
     el('nx-approvals').addEventListener('change', function (event) { post({ type: 'setApprovals', enabled: event.target.checked }); });
+
+    // v2.0.3: the blocking approval modal. One listener each, bound once — the sheet is filled in
+    // place by renderApproval, so a snapshot can never stack a second handler on the buttons.
+    el('nx-approval-approve').addEventListener('click', function () { decideApproval(approvalId, true, ''); });
+    el('nx-approval-reject').addEventListener('click', function () { decideApproval(approvalId, false, approvalReason); });
+    el('nx-approval-reason').addEventListener('input', function (event) { approvalReason = event.target.value; });
+    el('nx-approval-reason').addEventListener('keydown', function (event) {
+      // Enter in the reason box rejects with that reason; approving is deliberate, never a keystroke
+      // that lands in the background.
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        decideApproval(approvalId, false, event.target.value);
+      }
+    });
     el('nx-new-agent').addEventListener('click', function () { openAgentModal(null); });
     el('nx-dispatch').addEventListener('click', dispatchPrompt);
     el('nx-agent-save').addEventListener('click', saveAgent);
